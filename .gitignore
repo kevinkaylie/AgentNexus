@@ -1,0 +1,34 @@
+# --- Python 基础 ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+build/
+dist/
+
+# --- 操作系统与 IDE ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- AgentNexus 核心安全 (非常重要！) ---
+# 绝不要上传任何包含私钥的文件
+*.key
+*.pem
+identity/*.json
+!identity/profile.example.json  # 允许上传示例模板
+*.db                             # 排除本地 SQLite 数据库
+*.log                            # 排除运行日志
+
+# --- AI 助手上下文 ---
+claude.md
+trae.md
+.claudecode/
+
+# --- 配置文件 ---
+.env
+config.local.yaml
