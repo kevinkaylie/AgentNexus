@@ -18,8 +18,10 @@ async def init_db():
                 did TEXT PRIMARY KEY,
                 profile TEXT NOT NULL,
                 is_local INTEGER DEFAULT 0,
-                last_seen REAL
+                last_seen REAL,
+                private_key_hex TEXT
             );
+            -- 向后兼容：为旧数据库追加列（若已存在则忽略错误）
 
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +47,12 @@ async def init_db():
             );
         """)
         await db.commit()
+        # 向后兼容：为旧数据库追加 private_key_hex 列
+        try:
+            await db.execute("ALTER TABLE agents ADD COLUMN private_key_hex TEXT")
+            await db.commit()
+        except Exception:
+            pass  # 列已存在，忽略
 
 
 async def add_pending(did: str, init_packet: dict):
@@ -88,13 +96,34 @@ async def resolve_pending(did: str, action: str) -> bool:
     return True
 
 
-async def register_agent(did: str, profile: dict, is_local: bool = True):
+async def register_agent(did: str, profile: dict, is_local: bool = True,
+                         private_key_hex: Optional[str] = None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO agents (did, profile, is_local, last_seen) VALUES (?, ?, ?, ?)",
-            (did, json.dumps(profile), int(is_local), time.time())
+            "INSERT OR REPLACE INTO agents (did, profile, is_local, last_seen, private_key_hex) VALUES (?, ?, ?, ?, ?)",
+            (did, json.dumps(profile), int(is_local), time.time(), private_key_hex)
         )
         await db.commit()
+
+
+async def store_private_key(did: str, private_key_hex: str):
+    """持久化 Agent 私钥（hex）"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE agents SET private_key_hex=? WHERE did=?",
+            (private_key_hex, did)
+        )
+        await db.commit()
+
+
+async def get_private_key(did: str) -> Optional[str]:
+    """获取 Agent 私钥 hex，未存储返回 None"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT private_key_hex FROM agents WHERE did=?", (did,)
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row and row[0] else None
 
 
 async def list_local_agents() -> list[dict]:

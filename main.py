@@ -16,6 +16,11 @@ AgentNexus CLI
   agent-nexus node blacklist list             查看黑名单
   agent-nexus node resolve <did> <allow|deny> 审批 PENDING 握手请求
 
+  agent-nexus node relay list                 查看已配置的 relay
+  agent-nexus node relay add <url>            加入种子 relay（写配置并触发 federation/join）
+  agent-nexus node relay remove <url>         移除种子 relay
+  agent-nexus node relay set-local <url>      设置本地 relay 地址
+
   agent-nexus relay start               启动公网信令/中转服务器 (:9000)
 
   agent-nexus agent list                列出所有本地 Agent
@@ -24,6 +29,9 @@ AgentNexus CLI
     --type <type>                         类型，默认 GeneralAgent
     --caps <cap1,cap2,...>                能力标签（逗号分隔）
     --location <loc>                      地理位置
+    --public                              公开注册到联邦种子站
+    --desc <description>                  名片描述
+    --tags <tag1,tag2,...>               名片标签
   agent-nexus agent update <did> [opts] 更新 Agent 字段
     --name <name>
     --type <type>
@@ -31,6 +39,7 @@ AgentNexus CLI
     --location <loc>
   agent-nexus agent delete <did>        删除指定 Agent
   agent-nexus agent search <keyword>    按能力关键词搜索
+  agent-nexus agent profile <did>       查看 Agent 的 NexusProfile 名片
 
   agent-nexus test                      运行全部测试用例
 """
@@ -210,6 +219,12 @@ def _parse_agent_opts(args: list[str]) -> dict:
             opts["capabilities"] = [c.strip() for c in next(it).split(",") if c.strip()]
         elif tok == "--location":
             opts["location"] = next(it)
+        elif tok == "--public":
+            opts["is_public"] = True
+        elif tok == "--desc":
+            opts["description"] = next(it)
+        elif tok == "--tags":
+            opts["tags"] = [t.strip() for t in next(it).split(",") if t.strip()]
     return opts
 
 
@@ -264,10 +279,13 @@ async def agent_cmd(sub: str, args: list[str]):
     # ── add ───────────────────────────────────────────────
     elif sub == "add":
         if not args:
-            print("用法: agent add <name> [--type T] [--caps c1,c2] [--location L]"); return
+            print("用法: agent add <name> [--type T] [--caps c1,c2] [--location L] [--public] [--desc D] [--tags t1,t2]"); return
         name = args[0]
         opts = _parse_agent_opts(args[1:])
         agent_did = DIDGenerator.create_new(name)
+        is_public = opts.pop("is_public", False)
+        description = opts.pop("description", "")
+        tags = opts.pop("tags", [])
         profile = AgentProfile(
             id=agent_did.did,
             name=name,
@@ -275,11 +293,30 @@ async def agent_cmd(sub: str, args: list[str]):
             capabilities=opts.get("capabilities", []),
             location=opts.get("location", ""),
         )
-        await register_agent(agent_did.did, profile.to_dict(), is_local=True)
+        from nacl.encoding import HexEncoder
+        pk_hex = agent_did.private_key.encode(HexEncoder).decode()
+        await register_agent(agent_did.did, profile.to_dict(), is_local=True, private_key_hex=pk_hex)
+
+        # 生成并显示 NexusProfile
+        nexus_info = ""
+        try:
+            from agent_net.common.profile import NexusProfile
+            nexus = NexusProfile.create(
+                did=agent_did.did,
+                signing_key=agent_did.private_key,
+                name=name,
+                description=description,
+                tags=tags or profile.capabilities,
+            )
+            nexus_info = f"\n  名片已签名: ✓ (tags={nexus.tags})"
+        except Exception:
+            pass
+
         print(f"Agent 创建成功:")
-        print(f"  DID  : {agent_did.did}")
-        print(f"  名称 : {name}")
-        print(f"  能力 : {', '.join(profile.capabilities) or '-'}")
+        print(f"  DID    : {agent_did.did}")
+        print(f"  名称   : {name}")
+        print(f"  能力   : {', '.join(profile.capabilities) or '-'}")
+        print(f"  公开   : {'是（将向种子站公告）' if is_public else '否（仅本地）'}{nexus_info}")
 
     # ── update ────────────────────────────────────────────
     elif sub == "update":
@@ -321,6 +358,33 @@ async def agent_cmd(sub: str, args: list[str]):
             print(_fmt_agent({"did": r["did"], "profile": r["profile"]}))
             print()
 
+    # ── profile ───────────────────────────────────────────
+    elif sub == "profile":
+        if not args:
+            print("用法: agent profile <did>"); return
+        did = args[0]
+        import json as _json
+        import aiohttp as _aiohttp
+        # 调用 daemon 接口，签名在 daemon 内完成（私钥不出户）
+        try:
+            async with _aiohttp.ClientSession() as s:
+                async with s.get(
+                    f"http://localhost:8765/agents/{did}/profile",
+                    timeout=_aiohttp.ClientTimeout(total=5),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        print(_json.dumps(data, ensure_ascii=False, indent=2))
+                    elif resp.status == 404:
+                        print(f"未找到 DID: {did}")
+                    elif resp.status == 409:
+                        print("该 Agent 无持久化私钥，无法生成签名名片")
+                    else:
+                        text = await resp.text()
+                        print(f"Daemon 返回 {resp.status}: {text}")
+        except _aiohttp.ClientConnectorError:
+            print("无法连接 Node Daemon（请先运行: python main.py node start）")
+
     else:
         print(f"未知 agent 子命令: '{sub}'")
         _usage()
@@ -333,6 +397,95 @@ def relay_start():
     from agent_net.relay.server import app
     print("[AgentNet] Starting Relay Server on :9000 ...")
     uvicorn.run(app, host="0.0.0.0", port=9000, log_level="info")
+
+
+# ── node relay 配置子命令 ─────────────────────────────────
+
+async def node_relay_cmd(args: list[str]):
+    """node relay list/add/remove/set-local 子命令"""
+    import aiohttp
+    from agent_net.common.constants import NODE_CONFIG_FILE, DATA_DIR
+    import json, os
+
+    def _load():
+        if os.path.exists(NODE_CONFIG_FILE):
+            try:
+                with open(NODE_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {"local_relay": "http://localhost:9000", "seed_relays": []}
+
+    def _save(cfg):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(NODE_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+    if not args:
+        print("用法: node relay <list|add|remove|set-local> [url]"); return
+
+    sub = args[0]
+
+    if sub == "list":
+        cfg = _load()
+        print(f"本地 Relay : {cfg['local_relay']}")
+        seeds = cfg.get("seed_relays", [])
+        print(f"种子 Relay ({len(seeds)} 个):")
+        for s in seeds:
+            print(f"  {s}")
+        if not seeds:
+            print("  (无)")
+
+    elif sub == "set-local":
+        if len(args) < 2:
+            print("用法: node relay set-local <url>"); return
+        url = args[1]
+        cfg = _load()
+        cfg["local_relay"] = url
+        _save(cfg)
+        print(f"本地 Relay 已设置为: {url}")
+
+    elif sub == "add":
+        if len(args) < 2:
+            print("用法: node relay add <url>"); return
+        url = args[1]
+        cfg = _load()
+        seeds = cfg.setdefault("seed_relays", [])
+        if url in seeds:
+            print(f"已存在: {url}"); return
+        seeds.append(url)
+        _save(cfg)
+        print(f"已加入种子 Relay: {url}")
+        # 向种子站注册本 relay
+        local_relay = cfg["local_relay"]
+        try:
+            async with aiohttp.ClientSession() as s:
+                resp = await s.post(
+                    f"{url}/federation/join",
+                    json={"relay_url": local_relay},
+                    timeout=aiohttp.ClientTimeout(total=5),
+                )
+                if resp.status == 200:
+                    print(f"已向 {url} 发送 federation/join ✓")
+                else:
+                    print(f"federation/join 返回 {resp.status}，配置已保存但握手失败")
+        except Exception as e:
+            print(f"federation/join 失败（网络不可达）：{e}，配置已保存")
+
+    elif sub == "remove":
+        if len(args) < 2:
+            print("用法: node relay remove <url>"); return
+        url = args[1]
+        cfg = _load()
+        seeds = cfg.get("seed_relays", [])
+        if url not in seeds:
+            print(f"未找到: {url}"); return
+        seeds.remove(url)
+        _save(cfg)
+        print(f"已移除种子 Relay: {url}")
+
+    else:
+        print(f"未知 node relay 子命令: '{sub}'")
 
 
 # ── test ─────────────────────────────────────────────────
@@ -367,6 +520,8 @@ def main():
             asyncio.run(node_demo())
         elif sub in ("status", "mode", "whitelist", "blacklist", "resolve"):
             asyncio.run(node_gate_cmd([sub] + args[2:]))
+        elif sub == "relay":
+            asyncio.run(node_relay_cmd(args[2:]))
         else:
             print(f"Unknown node subcommand: '{sub}'")
             _usage()

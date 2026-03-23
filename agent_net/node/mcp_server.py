@@ -4,6 +4,7 @@ MCP stdio 接口 —— 代理所有工具调用至 Node Daemon (localhost:8765)
 """
 import asyncio
 import json
+import os
 import aiohttp
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -13,10 +14,32 @@ DAEMON_URL = "http://localhost:8765"
 app = Server("agent-net-node-mcp")
 
 
+def _read_token() -> str:
+    """从 data/daemon_token.txt 读取鉴权 Token（若文件不存在返回空串）"""
+    try:
+        from agent_net.common.constants import DAEMON_TOKEN_FILE
+        if os.path.exists(DAEMON_TOKEN_FILE):
+            with open(DAEMON_TOKEN_FILE, "r") as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _auth_headers() -> dict:
+    token = _read_token()
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+    return {}
+
+
 async def _call(method: str, path: str, **kwargs) -> dict:
+    headers = kwargs.pop("headers", {})
+    if method in ("post", "patch", "put", "delete"):
+        headers.update(_auth_headers())
     async with aiohttp.ClientSession() as session:
         fn = getattr(session, method)
-        async with fn(f"{DAEMON_URL}{path}", **kwargs) as resp:
+        async with fn(f"{DAEMON_URL}{path}", headers=headers, **kwargs) as resp:
             return await resp.json()
 
 
@@ -24,13 +47,16 @@ async def _call(method: str, path: str, **kwargs) -> dict:
 async def list_tools() -> list[Tool]:
     return [
         Tool(name="register_agent",
-             description="注册本地Agent，分配DID和Profile",
+             description="注册本地Agent，自动生成DID、持久化私钥、生成签名名片",
              inputSchema={"type": "object",
                           "properties": {
                               "name": {"type": "string"},
                               "type": {"type": "string"},
                               "capabilities": {"type": "array", "items": {"type": "string"}},
                               "location": {"type": "string"},
+                              "is_public": {"type": "boolean", "description": "是否向联邦种子站公开"},
+                              "description": {"type": "string", "description": "名片描述"},
+                              "tags": {"type": "array", "items": {"type": "string"}, "description": "名片标签"},
                           }, "required": ["name"]}),
         Tool(name="list_local_agents",
              description="列出本节点所有已注册Agent",
@@ -75,6 +101,20 @@ async def list_tools() -> list[Tool]:
                               "action": {"type": "string", "enum": ["allow", "deny"],
                                          "description": "allow=批准 / deny=拒绝"},
                           }, "required": ["did", "action"]}),
+        Tool(name="get_card",
+             description="获取指定Agent的NexusProfile签名名片（含Ed25519签名，可验签）",
+             inputSchema={"type": "object",
+                          "properties": {"did": {"type": "string"}},
+                          "required": ["did"]}),
+        Tool(name="update_card",
+             description="更新Agent名片字段（name/description/tags），签名在daemon内完成，私钥不出户",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "did": {"type": "string"},
+                              "name": {"type": "string"},
+                              "description": {"type": "string"},
+                              "tags": {"type": "array", "items": {"type": "string"}},
+                          }, "required": ["did"]}),
     ]
 
 
@@ -100,6 +140,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 result = await _call("get", "/gate/pending")
             case "resolve_request":
                 result = await _call("post", "/gate/resolve", json=arguments)
+            case "get_card":
+                result = await _call("get", f"/agents/{arguments['did']}/profile")
+            case "update_card":
+                did = arguments.pop("did")
+                result = await _call("patch", f"/agents/{did}/card", json=arguments)
             case _:
                 result = {"error": f"Unknown tool: {name}"}
     except Exception as e:
