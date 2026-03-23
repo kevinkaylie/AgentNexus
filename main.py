@@ -4,7 +4,13 @@ AgentNexus CLI
 
 用法:
   agent-nexus node start                      启动本地节点 Daemon (:8765)
-  agent-nexus node mcp                        启动节点 MCP Server (stdio)
+  agent-nexus node mcp                        启动节点 MCP Server (stdio，无身份绑定)
+  agent-nexus node mcp --name <name>          启动 MCP 并自动注册/绑定 Agent（推荐）
+    --caps <cap1,cap2,...>                       能力标签（逗号分隔）
+    --desc <description>                        名片描述
+    --tags <tag1,tag2,...>                       名片标签
+    --public                                     公开注册到联邦种子站
+  agent-nexus node mcp --did <did>            启动 MCP 并绑定到已有 DID
   agent-nexus node demo                       本地功能演示
   agent-nexus node status [--pending]         查看节点状态（--pending 只看待审批请求）
   agent-nexus node mode set <public|ask|private>  设置访问控制模式
@@ -45,6 +51,7 @@ AgentNexus CLI
 """
 import sys
 import asyncio
+import os
 
 
 def _usage():
@@ -60,10 +67,89 @@ def node_start():
     run()
 
 
-def node_mcp():
-    from agent_net.node.mcp_server import main
-    print("[AgentNet] Starting Node MCP Server (stdio) ...")
-    asyncio.run(main())
+async def _mcp_bind_agent(name: str | None, did: str | None,
+                           caps: list, desc: str, tags: list, public: bool) -> str:
+    """
+    注册或查找 Agent，返回绑定的 DID。
+    - 指定 --did：验证存在后直接绑定
+    - 指定 --name：同名已有则复用，否则注册新 Agent（幂等）
+    所有输出写 stderr，不污染 MCP stdio 协议通道。
+    """
+    import aiohttp
+    from agent_net.common.constants import DAEMON_TOKEN_FILE
+
+    token = ""
+    if os.path.exists(DAEMON_TOKEN_FILE):
+        with open(DAEMON_TOKEN_FILE) as f:
+            token = f.read().strip()
+    auth = {"Authorization": f"Bearer {token}"} if token else {}
+    base = "http://localhost:8765"
+
+    try:
+        async with aiohttp.ClientSession() as s:
+
+            # ── 按 DID 绑定 ──────────────────────────────
+            if did:
+                async with s.get(f"{base}/agents/{did}/profile") as r:
+                    if r.status == 200:
+                        print(f"[AgentNexus MCP] 绑定已有 DID: {did}", file=sys.stderr)
+                        return did
+                    print(f"[AgentNexus MCP] 错误：未找到 DID {did}（状态 {r.status}）",
+                          file=sys.stderr)
+                    sys.exit(1)
+
+            # ── 按名称查找或注册 ─────────────────────────
+            if name:
+                # 先查找同名已有 Agent
+                async with s.get(f"{base}/agents/local") as r:
+                    if r.status == 200:
+                        data = await r.json()
+                        for a in data.get("agents", []):
+                            if a.get("profile", {}).get("name") == name:
+                                existing = a["did"]
+                                print(f"[AgentNexus MCP] 复用已有 Agent '{name}' → {existing}",
+                                      file=sys.stderr)
+                                return existing
+
+                # 未找到，注册新 Agent
+                payload = {
+                    "name": name,
+                    "capabilities": caps,
+                    "description": desc,
+                    "tags": tags,
+                    "is_public": public,
+                }
+                async with s.post(f"{base}/agents/register", json=payload, headers=auth) as r:
+                    if r.status == 200:
+                        new_did = (await r.json())["did"]
+                        print(f"[AgentNexus MCP] 注册成功 '{name}' → {new_did}", file=sys.stderr)
+                        return new_did
+                    text = await r.text()
+                    print(f"[AgentNexus MCP] 注册失败 {r.status}: {text}", file=sys.stderr)
+                    sys.exit(1)
+
+    except aiohttp.ClientConnectorError:
+        print("[AgentNexus MCP] 错误：无法连接 Node Daemon，请先运行：python main.py node start",
+              file=sys.stderr)
+        sys.exit(1)
+
+    print("[AgentNexus MCP] 错误：必须指定 --name 或 --did", file=sys.stderr)
+    sys.exit(1)
+
+
+def node_mcp(name: str | None = None, did: str | None = None,
+             caps: list | None = None, desc: str = "",
+             tags: list | None = None, public: bool = False):
+    """启动 MCP Server，可选绑定 Agent 身份（--name 自动注册/复用，--did 绑定已有）"""
+    if name or did:
+        bound_did = asyncio.run(
+            _mcp_bind_agent(name, did, caps or [], desc, tags or [], public)
+        )
+        os.environ["AGENTNEXUS_MY_DID"] = bound_did
+        print(f"[AgentNexus MCP] 已绑定 DID: {bound_did}", file=sys.stderr)
+
+    from agent_net.node.mcp_server import main as mcp_main
+    asyncio.run(mcp_main())
 
 
 async def node_demo():
@@ -515,7 +601,27 @@ def main():
         if sub == "start":
             node_start()
         elif sub == "mcp":
-            node_mcp()
+            # 解析 node mcp 的可选参数
+            mcp_name = mcp_did = mcp_desc = ""
+            mcp_caps: list = []
+            mcp_tags: list = []
+            mcp_public = False
+            it = iter(args[2:])
+            for tok in it:
+                if tok == "--name":    mcp_name   = next(it, "")
+                elif tok == "--did":   mcp_did    = next(it, "")
+                elif tok == "--caps":  mcp_caps   = [c.strip() for c in next(it, "").split(",") if c.strip()]
+                elif tok == "--desc":  mcp_desc   = next(it, "")
+                elif tok == "--tags":  mcp_tags   = [t.strip() for t in next(it, "").split(",") if t.strip()]
+                elif tok == "--public": mcp_public = True
+            node_mcp(
+                name=mcp_name or None,
+                did=mcp_did or None,
+                caps=mcp_caps,
+                desc=mcp_desc,
+                tags=mcp_tags,
+                public=mcp_public,
+            )
         elif sub == "demo":
             asyncio.run(node_demo())
         elif sub in ("status", "mode", "whitelist", "blacklist", "resolve"):
