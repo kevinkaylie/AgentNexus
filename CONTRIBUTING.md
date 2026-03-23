@@ -129,7 +129,7 @@ def test_daemon(tmp_path, monkeypatch):
 
 - 文件：`tests/test_<模块>.py`
 - 函数：`test_<编号>_<描述>`，如 `test_tf13_new_feature`
-- 编号延续现有序列（当前最高：`tf12`、`tg10`、`tc05`）
+- 编号延续现有序列（当前最高：`tf12`、`tg10`、`tc05`、`tm07`）
 
 ### Commit 信息规范
 
@@ -317,7 +317,7 @@ def test_daemon(tmp_path, monkeypatch):
 
 - File: `tests/test_<module>.py`
 - Function: `test_<id>_<description>`, e.g. `test_tf13_new_feature`
-- Continue from existing sequence (current highest: `tf12`, `tg10`, `tc05`)
+- Continue from existing sequence (current highest: `tf12`, `tg10`, `tc05`, `tm07`)
 
 ### Commit Message Convention
 
