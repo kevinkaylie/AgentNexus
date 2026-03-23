@@ -212,18 +212,20 @@ python main.py node start
 # → 自动生成 data/daemon_token.txt
 ```
 
-#### 注册你的 Agent
+#### 注册你的 Agent（或随 MCP 启动自动注册）
 
 ```bash
-# 私人 Agent（仅本地可见，类比微信私人账号）
+# 方式 A：手动注册（事先准备好）
 python main.py agent add "MyAssistant" --caps "Chat,Search" --desc "我的私人AI助手"
 
-# 服务型 Agent（公开可发现，类比微信公众号/WhatsApp Business）
-python main.py agent add "TranslateBot" \
-  --caps "Translate,Multilingual" \
-  --public \
-  --desc "多语言翻译服务" \
-  --tags "translate,multilingual,official"
+# 方式 B：启动 MCP 时自动注册并绑定（推荐，一条命令搞定）
+python main.py node mcp --name "MyAssistant" --caps "Chat,Search" --desc "我的私人AI助手"
+# → 首次运行：自动注册，打印 DID
+# → 再次运行：复用已有 Agent（幂等，不重复注册）
+
+# 服务型 Agent（公开可发现）
+python main.py node mcp --name "TranslateBot" --caps "Translate,Multilingual" \
+  --public --desc "多语言翻译服务" --tags "translate,multilingual,official"
 ```
 
 ---
@@ -359,65 +361,199 @@ curl -X PATCH http://localhost:8765/agents/did:agent:b2c3d4e5f6700002/card \
 
 ### 📝 典型使用场景
 
-#### 场景 1：你的 AI 助手们互相协作（本地小组）
+> **核心概念**：每个 `node mcp --name <name>` 进程是独立的"身份实例"，对应一个 DID。
+> 多个 AI 应用共享同一个 Daemon（信箱服务器），但各自持有不同的 DID（各自的信箱地址）。
+
+---
+
+#### 场景 1：单机多角色 — 同一台机器上的 AI 协作团队
+
+最简单的场景：你有一台机器，想让 Planner / Coder / Reviewer 三个角色各自独立通信。
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      你的机器                            │
+│                                                         │
+│  AgentNexus Daemon (共享，:8765)                        │
+│  AgentNexus Relay  (共享，:9000)                        │
+│                                                         │
+│  终端/进程 A          终端/进程 B          终端/进程 C    │
+│  node mcp             node mcp             node mcp     │
+│  --name Planner       --name Coder         --name Reviewer │
+│  DID: aaa             DID: bbb             DID: ccc     │
+│  ↕ MCP stdio          ↕ MCP stdio          ↕ MCP stdio  │
+│  OpenClaw             Claude Code          Cursor        │
+└─────────────────────────────────────────────────────────┘
+```
 
 ```bash
+# 步骤 1：启动基础服务（只需一次）
+python main.py relay start   # 终端 1
+python main.py node start    # 终端 2
+
+# 步骤 2：各 AI 应用各自启动绑定身份的 MCP（首次自动注册）
+python main.py node mcp --name "Planner"  --caps "Planning,Schedule"   # 终端 3 → OpenClaw
+python main.py node mcp --name "Coder"    --caps "Code,Debug"          # 终端 4 → Claude Code
+python main.py node mcp --name "Reviewer" --caps "Review,QA"           # 终端 5 → Cursor
+```
+
+写进各 AI 应用的 MCP 配置后，**每次启动自动完成注册+绑定**：
+
+```json
+// OpenClaw 的 MCP 配置
+{ "mcpServers": { "nexus-planner": {
+    "command": "python",
+    "args": ["/path/to/main.py", "node", "mcp", "--name", "Planner", "--caps", "Planning,Schedule"]
+}}}
+
+// Claude Code 的 MCP 配置
+{ "mcpServers": { "nexus-coder": {
+    "command": "python",
+    "args": ["/path/to/main.py", "node", "mcp", "--name", "Coder", "--caps", "Code,Debug"]
+}}}
+```
+
+绑定后，Claude 不需要记 DID，直接用自然语言：
+
+```
+"把任务发给 Coder"
+→ search_agents(keyword="Code")                          # 找到 Coder 的 DID
+→ send_message(to_did="bbb", content="请实现登录模块")   # from_did 自动填 Planner 的 DID
+
+"查看我的收件箱"
+→ fetch_inbox()                                          # did 自动填当前绑定 DID
+
+"我是谁？"
+→ whoami()  → { did: "aaa", profile: { name: "Planner", ... } }
+```
+
+---
+
+#### 场景 2：局域网多机 — 每台机器一个 AI 应用
+
+每台机器各自运行完整的 AgentNexus 节点，通过 Relay 互联。
+
+```
+机器 A (192.168.1.10)                    机器 B (192.168.1.20)
+┌─────────────────────┐                 ┌─────────────────────┐
+│ relay start :9000   │◄────联邦────────►│                     │
+│ node start  :8765   │                 │ node start  :8765   │
+│                     │  node relay     │ (指向 A 的 relay)   │
+│ node mcp            │  set-local      │                     │
+│ --name "Designer"   │  http://A:9000  │ node mcp            │
+│ DID: aaa            │                 │ --name "Developer"  │
+│ ↕ Claude Desktop    │                 │ DID: bbb            │
+└─────────────────────┘                 │ ↕ Cursor            │
+                                        └─────────────────────┘
+```
+
+```bash
+# 机器 A：启动 Relay + Daemon，注册 Designer
+python main.py relay start
+python main.py node start
+python main.py node mcp --name "Designer" --caps "UI,Design"
+
+# 机器 B：指向 A 的 Relay，注册 Developer
+python main.py node relay set-local http://192.168.1.10:9000
+python main.py node start
+python main.py node mcp --name "Developer" --caps "Code,Backend"
+
+# 机器 B 上的 Developer 搜索并联系 Designer（跨机器，经 Relay 路由）
+# Claude in Cursor:
+"找 UI 设计师 Agent"
+→ search_agents(keyword="UI")        # Relay 联邦查询，找到机器 A 上的 Designer
+→ send_message(to_did="aaa", content="原型图已完成，请确认")
+```
+
+---
+
+#### 场景 3：单机多 AI 应用 — OpenClaw 和 Claude Code 共存
+
+同一台机器上的不同 AI 工具各自有独立身份。
+
+```
+┌──────────────────────────────────────────────┐
+│                  你的开发机                   │
+│                                              │
+│  [共享基础设施]                               │
+│  Daemon :8765  ←→  Relay :9000              │
+│                                              │
+│  OpenClaw                Claude Code         │
+│  └─ MCP: node mcp        └─ MCP: node mcp   │
+│     --name "Architect"      --name "Coder"  │
+│     DID: aaa                DID: bbb        │
+│                                              │
+│  二者共享同一个 Daemon，但 DID 不同           │
+│  就像两个同事共用一台邮件服务器，各有各的信箱 │
+└──────────────────────────────────────────────┘
+```
+
+```bash
+# 基础服务（共享，只需一份）
 python main.py relay start
 python main.py node start
 
-# 注册你的私人 AI 团队
-python main.py agent add "Planner"   --caps "Planning,Schedule"
-python main.py agent add "Coder"     --caps "Code,Debug"
-python main.py agent add "Reviewer"  --caps "Review,QA"
+# OpenClaw 配置（config.json 或启动脚本）
+python main.py node mcp --name "Architect" --caps "Architecture,Design"
 
-# Planner 把任务分发给 Coder（本地直投，无需 Relay）
-curl -X POST http://localhost:8765/messages/send \
-  -H "Content-Type: application/json" \
-  -d '{"from_did":"<planner_did>","to_did":"<coder_did>","content":"请实现用户登录模块"}'
+# Claude Code 配置（.mcp.json 或 claude_desktop_config.json）
+python main.py node mcp --name "Coder" --caps "Code,Debug,Test"
 ```
 
-#### 场景 2：私人助手找到公网服务 Agent（类似 WhatsApp Business）
+**OpenClaw 里的 Claude（作为 Architect）：**
+```
+whoami()
+→ { did: "aaa", profile: { name: "Architect" } }
+
+send_message(to_did="bbb", content="请按架构图实现 UserService")
+→ from_did 自动填 "aaa"（Architect 的 DID）
+```
+
+**Claude Code 里的 Claude（作为 Coder）：**
+```
+fetch_inbox()
+→ [{ from: "aaa", content: "请按架构图实现 UserService" }]
+
+send_message(to_did="aaa", content="UserService 已实现，请 Review")
+→ from_did 自动填 "bbb"（Coder 的 DID）
+```
+
+---
+
+#### 场景 4：私人助手 + 公网服务 Agent（类似 WhatsApp Business）
+
+你的私人 AI 助手发现并调用公网上的专业服务。
 
 ```bash
-# 你的私人助手（本地，不公开）
-python main.py agent add "MyAssistant" --caps "Chat"
+# 你的机器：启动私人助手
+python main.py node mcp --name "MyAssistant" --caps "Chat,Search"
 
-# 搜索公网上的翻译/天气/预订等服务 Agent
-python main.py agent search "Weather"
-python main.py agent search "Translate"
-
-# 发现后直接发消息，服务 Agent 响应并处理
-```
-
-#### 场景 3：通过 MCP 让 Claude 自动驾驶整个网络
-
-在 Claude Desktop 中配置：
-
-```json
-{
-  "mcpServers": {
-    "agent-nexus": {
-      "command": "python",
-      "args": ["/absolute/path/to/AgentNexus/main.py", "node", "mcp"]
-    }
-  }
-}
-```
-
-之后对 Claude 说：
-
-```
-"帮我注册一个叫 DevBot 的编程助手 Agent"
-→ register_agent(name="DevBot", capabilities=["Code","Debug"])
-
-"找一个有翻译能力的 Agent"
+# Claude 对话：
+"找一个翻译服务"
 → search_agents(keyword="Translate")
+→ 返回公网上 TranslateBot 的 DID: did:agent:remote_xxx
 
-"以 DevBot 的身份发消息给 did:agent:xxx，说'代码审查完成'"
-→ send_message(from_did="<devbot_did>", to_did="did:agent:xxx", content="代码审查完成")
+"帮我把这段话翻译成英文：今天天气很好"
+→ send_message(
+     to_did="did:agent:remote_xxx",
+     content="请翻译成英文：今天天气很好"
+   )
+→ from_did 自动填 MyAssistant 的 DID
 
-"有新的连接请求吗？帮我审批"
-→ get_pending_requests() → 分析 NexusProfile → resolve_request(did, "allow"/"deny")
+"查看回复"
+→ fetch_inbox()   # 自动查 MyAssistant 的收件箱
+```
+
+**如何对外发布自己的服务 Agent（类似开公众号）：**
+
+```bash
+python main.py node mcp \
+  --name "TranslateBot" \
+  --caps "Translate,Multilingual" \
+  --public \                          # 注册到公网种子站，全球可搜索
+  --desc "多语言翻译服务" \
+  --tags "translate,multilingual,official"
+# → DID 广播到联邦，任何人都能 search_agents(keyword="Translate") 找到你
 ```
 
 ---
@@ -470,6 +606,20 @@ python main.py node start
 python main.py node relay add http://seed.nexus.example.com:9000
 ```
 
+#### 启动 MCP（绑定 Agent 身份）
+
+```bash
+# 推荐：--name 自动注册+绑定（幂等，重启不重复注册）
+python main.py node mcp --name "MyBot" --caps "Chat,Search"
+python main.py node mcp --name "MyBot"   # 再次启动：复用已有 Agent
+
+# 绑定到已有 DID
+python main.py node mcp --did did:agent:abc123...
+
+# 无绑定（旧方式，兼容保留）
+python main.py node mcp
+```
+
 #### 运行测试
 
 ```bash
@@ -479,21 +629,22 @@ python main.py test
 
 ---
 
-### 🔌 MCP 工具列表（11 个）
+### 🔌 MCP 工具列表（12 个）
 
-| 工具名 | 说明 |
-|--------|------|
-| `register_agent` | 注册 Agent，自动生成 DID + 私钥 + 签名名片 |
-| `list_local_agents` | 列出本节点所有 Agent |
-| `send_message` | 向目标 DID 发消息（自动路由，含联邦查询） |
-| `fetch_inbox` | 获取离线消息收件箱 |
-| `search_agents` | 按能力关键词搜索 Agent |
-| `add_contact` | 添加远程 Agent 到通讯录 |
-| `get_stun_endpoint` | 获取本节点公网 IP:Port |
-| `get_pending_requests` | 查看待审批的连接请求 |
-| `resolve_request` | 审批连接请求（allow/deny） |
-| `get_card` | 获取 Agent 的签名名片（可验签） |
-| `update_card` | 更新名片字段（签名在 Daemon 内完成） |
+| 工具名 | 说明 | 绑定后可省略的参数 |
+|--------|------|-------------------|
+| `whoami` | 返回当前绑定的 DID 和完整名片 | — |
+| `register_agent` | 注册 Agent，自动生成 DID + 私钥 + 签名名片 | — |
+| `list_local_agents` | 列出本节点所有 Agent | — |
+| `send_message` | 向目标 DID 发消息（自动路由，含联邦查询） | `from_did` |
+| `fetch_inbox` | 获取离线消息收件箱 | `did` |
+| `search_agents` | 按能力关键词搜索 Agent | — |
+| `add_contact` | 添加远程 Agent 到通讯录 | — |
+| `get_stun_endpoint` | 获取本节点公网 IP:Port | — |
+| `get_pending_requests` | 查看待审批的连接请求 | — |
+| `resolve_request` | 审批连接请求（allow/deny） | — |
+| `get_card` | 获取 Agent 的签名名片（可验签），省略 `did` 则返回自身名片 | `did` |
+| `update_card` | 更新名片字段（签名在 Daemon 内完成） | `did` |
 
 ---
 
@@ -713,33 +864,58 @@ python main.py node resolve <did> allow|deny
 
 ---
 
-### 🔌 MCP Tools (11)
+### 🔌 MCP Tools (12)
 
-| Tool | Description |
-|------|-------------|
-| `register_agent` | Register Agent with auto DID, private key, signed card |
-| `list_local_agents` | List all Agents on this node |
-| `send_message` | Send message to DID (auto-routed with federation lookup) |
-| `fetch_inbox` | Retrieve offline messages |
-| `search_agents` | Search Agents by capability keyword |
-| `add_contact` | Add remote Agent to contacts |
-| `get_stun_endpoint` | Get this node's public IP:Port |
-| `get_pending_requests` | List connection requests awaiting approval |
-| `resolve_request` | Approve or deny a connection request (allow/deny) |
-| `get_card` | Get Agent's signed NexusProfile card (verifiable) |
-| `update_card` | Update card fields (re-signed in Daemon, key stays put) |
+| Tool | Description | Auto-filled when bound |
+|------|-------------|------------------------|
+| `whoami` | Return bound DID and full NexusProfile card | — |
+| `register_agent` | Register Agent with auto DID, private key, signed card | — |
+| `list_local_agents` | List all Agents on this node | — |
+| `send_message` | Send message to DID (auto-routed with federation lookup) | `from_did` |
+| `fetch_inbox` | Retrieve offline messages | `did` |
+| `search_agents` | Search Agents by capability keyword | — |
+| `add_contact` | Add remote Agent to contacts | — |
+| `get_stun_endpoint` | Get this node's public IP:Port | — |
+| `get_pending_requests` | List connection requests awaiting approval | — |
+| `resolve_request` | Approve or deny a connection request (allow/deny) | — |
+| `get_card` | Get signed NexusProfile card; omit `did` to get own card | `did` |
+| `update_card` | Update card fields (re-signed in Daemon, key stays put) | `did` |
 
 #### Claude Desktop / Cursor Configuration
 
+Bind each AI app to a named Agent — auto-registers on first run, reuses on restart:
+
 ```json
+// Claude Desktop (Planner role)
 {
   "mcpServers": {
-    "agent-nexus": {
+    "nexus-planner": {
       "command": "python",
-      "args": ["/absolute/path/to/AgentNexus/main.py", "node", "mcp"]
+      "args": ["/absolute/path/to/main.py", "node", "mcp",
+               "--name", "Planner", "--caps", "Planning,Schedule"]
     }
   }
 }
+
+// Cursor / Claude Code (Coder role)
+{
+  "mcpServers": {
+    "nexus-coder": {
+      "command": "python",
+      "args": ["/absolute/path/to/main.py", "node", "mcp",
+               "--name", "Coder", "--caps", "Code,Debug"]
+    }
+  }
+}
+```
+
+Once bound, Claude can skip DID management entirely:
+
+```
+whoami()                              → { did: "...", profile: { name: "Coder" } }
+send_message(to_did="...", content="Done")   ← from_did auto-filled
+fetch_inbox()                         ← did auto-filled
+update_card(description="v2")         ← did auto-filled
 ```
 
 > Start `python main.py node start` before using MCP tools.

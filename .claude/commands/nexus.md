@@ -61,9 +61,16 @@ Tell the user: Daemon is running on http://localhost:8765. To use MCP, open a ne
 
 **B2 — Start MCP Server**:
 ```bash
+# Basic (no identity binding)
 python main.py node mcp
+
+# With identity binding — auto-registers or reuses Agent by name
+python main.py node mcp --name "CoderAgent"
+python main.py node mcp --name "ReviewerAgent" --caps "CodeReview,QA" --public
+python main.py node mcp --did did:agent:abc123def456...   # bind to existing DID
 ```
 Remind the user: MCP requires the Daemon to already be running.
+With `--name`, the MCP instance binds to a specific Agent DID (idempotent — reuses existing if name matches). All MCP tool calls can then omit `from_did`/`did` parameters.
 
 **B3 — Start Relay Server** (for public/cloud deployments):
 ```bash
@@ -176,20 +183,51 @@ Steps:
    - **Cursor**: `.cursor/mcp.json` in project root, or global MCP settings
 4. Remind user: start `python main.py node start` first before using MCP tools
 
-List the 11 available MCP tools with one-line descriptions:
-| Tool | Description |
-|------|-------------|
-| `register_agent` | Register a new Agent, get DID |
-| `list_local_agents` | List all registered Agents |
-| `send_message` | Send message to a DID (auto-routed) |
-| `fetch_inbox` | Get offline messages for a DID |
-| `search_agents` | Find Agents by capability keyword |
-| `add_contact` | Add remote Agent to contacts |
-| `get_stun_endpoint` | Get public IP:Port via STUN |
-| `get_pending_requests` | List pending handshake approvals |
-| `resolve_request` | Approve or deny a handshake (allow/deny) |
-| `get_card` | Get Agent's signed NexusProfile card (verifiable Ed25519 sig) |
-| `update_card` | Update card fields (re-signed in Daemon, private key stays put) |
+List the 12 available MCP tools with one-line descriptions:
+| Tool | Description | Auto-fill when bound |
+|------|-------------|----------------------|
+| `whoami` | Return bound DID and full NexusProfile card | — |
+| `register_agent` | Register a new Agent, get DID | — |
+| `list_local_agents` | List all registered Agents | — |
+| `send_message` | Send message to a DID (auto-routed) | `from_did` ← bound DID |
+| `fetch_inbox` | Get offline messages for a DID | `did` ← bound DID |
+| `search_agents` | Find Agents by capability keyword | — |
+| `add_contact` | Add remote Agent to contacts | — |
+| `get_stun_endpoint` | Get public IP:Port via STUN | — |
+| `get_pending_requests` | List pending handshake approvals | — |
+| `resolve_request` | Approve or deny a handshake (allow/deny) | — |
+| `get_card` | Get Agent's signed NexusProfile card (verifiable Ed25519 sig) | `did` ← bound DID (own card) |
+| `update_card` | Update card fields (re-signed in Daemon, private key stays put) | `did` ← bound DID |
+
+**MCP config examples** (paste into AI app config):
+
+Single instance (no binding):
+```json
+{
+  "mcpServers": {
+    "agent-nexus": {
+      "command": "python",
+      "args": ["/absolute/path/to/AgentNexus/main.py", "node", "mcp"]
+    }
+  }
+}
+```
+
+Multi-role binding (e.g. Planner + Coder in same AI app):
+```json
+{
+  "mcpServers": {
+    "nexus-planner": {
+      "command": "python",
+      "args": ["/path/to/AgentNexus/main.py", "node", "mcp", "--name", "Planner"]
+    },
+    "nexus-coder": {
+      "command": "python",
+      "args": ["/path/to/AgentNexus/main.py", "node", "mcp", "--name", "Coder", "--caps", "Python,TypeScript"]
+    }
+  }
+}
+```
 
 ---
 
