@@ -221,7 +221,8 @@ async def api_register_agent(req: RegisterRequest, _=Depends(_require_token)):
     from nacl.encoding import HexEncoder
     pk_hex = signing_key.encode(HexEncoder).decode()
     await register_agent(did, profile_dict, is_local=True, private_key_hex=pk_hex)
-    router.register_local_session(did)
+    # 不注册 local session：daemon 注册 ≠ 有活跃 MCP 消费者。
+    # 消息应落 DB（offline），由 MCP 轮询 fetch_inbox 取出。
 
     if _heartbeat_task is None or _heartbeat_task.done():
         _heartbeat_task = asyncio.create_task(_heartbeat_loop(did, endpoint))
