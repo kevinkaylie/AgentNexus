@@ -92,9 +92,9 @@ async def _mcp_bind_agent(name: str | None, did: str | None,
             if did:
                 async with s.get(f"{base}/agents/{did}/profile") as r:
                     if r.status == 200:
-                        print(f"[AgentNexus MCP] 绑定已有 DID: {did}", file=sys.stderr)
+                        print(f"[AgentNexus MCP] Bound existing DID: {did}", file=sys.stderr)
                         return did
-                    print(f"[AgentNexus MCP] 错误：未找到 DID {did}（状态 {r.status}）",
+                    print(f"[AgentNexus MCP] Error: DID not found {did} (status {r.status})",
                           file=sys.stderr)
                     sys.exit(1)
 
@@ -107,7 +107,7 @@ async def _mcp_bind_agent(name: str | None, did: str | None,
                         for a in data.get("agents", []):
                             if a.get("profile", {}).get("name") == name:
                                 existing = a["did"]
-                                print(f"[AgentNexus MCP] 复用已有 Agent '{name}' → {existing}",
+                                print(f"[AgentNexus MCP] Reusing existing agent '{name}' → {existing}",
                                       file=sys.stderr)
                                 return existing
 
@@ -122,18 +122,18 @@ async def _mcp_bind_agent(name: str | None, did: str | None,
                 async with s.post(f"{base}/agents/register", json=payload, headers=auth) as r:
                     if r.status == 200:
                         new_did = (await r.json())["did"]
-                        print(f"[AgentNexus MCP] 注册成功 '{name}' → {new_did}", file=sys.stderr)
+                        print(f"[AgentNexus MCP] Registered '{name}' → {new_did}", file=sys.stderr)
                         return new_did
                     text = await r.text()
-                    print(f"[AgentNexus MCP] 注册失败 {r.status}: {text}", file=sys.stderr)
+                    print(f"[AgentNexus MCP] Registration failed {r.status}: {text}", file=sys.stderr)
                     sys.exit(1)
 
     except aiohttp.ClientConnectorError:
-        print("[AgentNexus MCP] 错误：无法连接 Node Daemon，请先运行：python main.py node start",
+        print("[AgentNexus MCP] Error: cannot connect to Node Daemon. Run: python main.py node start",
               file=sys.stderr)
         sys.exit(1)
 
-    print("[AgentNexus MCP] 错误：必须指定 --name 或 --did", file=sys.stderr)
+    print("[AgentNexus MCP] Error: --name or --did is required", file=sys.stderr)
     sys.exit(1)
 
 
@@ -146,7 +146,7 @@ def node_mcp(name: str | None = None, did: str | None = None,
             _mcp_bind_agent(name, did, caps or [], desc, tags or [], public)
         )
         os.environ["AGENTNEXUS_MY_DID"] = bound_did
-        print(f"[AgentNexus MCP] 已绑定 DID: {bound_did}", file=sys.stderr)
+        print(f"[AgentNexus MCP] Bound DID: {bound_did}", file=sys.stderr)
 
     from agent_net.node.mcp_server import main as mcp_main
     asyncio.run(mcp_main())
@@ -181,7 +181,7 @@ async def node_demo():
     print(f"[Demo] Bob received: {msg}")
 
     router.unregister_local_session(bob.did)
-    result2 = await router.route_message(alice.did, bob.did, "Bob你离线了，这是离线消息。")
+    result2 = await router.route_message(alice.did, bob.did, "Bob is offline, this is an offline message.")
     print(f"[Demo] Alice->Bob(offline): {result2}")
 
     inbox = await fetch_inbox(bob.did)
@@ -205,88 +205,88 @@ async def node_gate_cmd(args: list[str]):
         pending_only = "--pending" in args
         items = await list_pending()
         if pending_only or items:
-            print(f"待审批请求 ({len(items)} 条):")
+            print(f"Pending requests ({len(items)}):")
             if not items:
-                print("  (无)")
+                print("  (none)")
             for it in items:
                 import datetime
                 dt = datetime.datetime.fromtimestamp(it["requested_at"]).strftime("%Y-%m-%d %H:%M:%S")
-                print(f"  DID: {it['did']}  时间: {dt}")
+                print(f"  DID: {it['did']}  time: {dt}")
         if not pending_only:
             mode = load_mode()
-            print(f"访问控制模式: {mode}")
+            print(f"Access control mode: {mode}")
             wl = gatekeeper.whitelist_all()
             bl = gatekeeper.blacklist_all()
-            print(f"白名单: {wl or '(空)'}")
-            print(f"黑名单: {bl or '(空)'}")
+            print(f"Whitelist: {wl or '(empty)'}")
+            print(f"Blacklist: {bl or '(empty)'}")
 
     # ── node mode set <mode> ───────────────────────────────
     elif sub == "mode":
         if len(args) < 3 or args[1] != "set":
-            print("用法: node mode set <public|ask|private>"); return
+            print("Usage: node mode set <public|ask|private>"); return
         mode = args[2]
         if mode not in ("public", "ask", "private"):
-            print("mode 必须是 public / ask / private"); return
+            print("mode must be one of: public / ask / private"); return
         save_mode(mode)
-        print(f"访问控制模式已设置为: {mode}")
+        print(f"Access control mode set to: {mode}")
 
     # ── node whitelist add/remove/list <did> ──────────────
     elif sub == "whitelist":
         action = args[1] if len(args) > 1 else ""
         if action == "add":
             did = args[2] if len(args) > 2 else ""
-            if not did: print("用法: node whitelist add <did>"); return
+            if not did: print("Usage: node whitelist add <did>"); return
             gatekeeper.whitelist_add(did)
-            print(f"已加入白名单: {did}")
+            print(f"Added to whitelist: {did}")
         elif action == "remove":
             did = args[2] if len(args) > 2 else ""
-            if not did: print("用法: node whitelist remove <did>"); return
+            if not did: print("Usage: node whitelist remove <did>"); return
             gatekeeper.whitelist_remove(did)
-            print(f"已移出白名单: {did}")
+            print(f"Removed from whitelist: {did}")
         elif action == "list":
             wl = gatekeeper.whitelist_all()
-            print("白名单:" if wl else "白名单: (空)")
+            print("Whitelist:" if wl else "Whitelist: (empty)")
             for d in wl:
                 print(f"  {d}")
         else:
-            print("用法: node whitelist <add|remove|list> [did]")
+            print("Usage: node whitelist <add|remove|list> [did]")
 
     # ── node blacklist add/remove/list <did> ──────────────
     elif sub == "blacklist":
         action = args[1] if len(args) > 1 else ""
         if action == "add":
             did = args[2] if len(args) > 2 else ""
-            if not did: print("用法: node blacklist add <did>"); return
+            if not did: print("Usage: node blacklist add <did>"); return
             gatekeeper.blacklist_add(did)
-            print(f"已加入黑名单: {did}")
+            print(f"Added to blacklist: {did}")
         elif action == "remove":
             did = args[2] if len(args) > 2 else ""
-            if not did: print("用法: node blacklist remove <did>"); return
+            if not did: print("Usage: node blacklist remove <did>"); return
             gatekeeper.blacklist_remove(did)
-            print(f"已移出黑名单: {did}")
+            print(f"Removed from blacklist: {did}")
         elif action == "list":
             bl = gatekeeper.blacklist_all()
-            print("黑名单:" if bl else "黑名单: (空)")
+            print("Blacklist:" if bl else "Blacklist: (empty)")
             for d in bl:
                 print(f"  {d}")
         else:
-            print("用法: node blacklist <add|remove|list> [did]")
+            print("Usage: node blacklist <add|remove|list> [did]")
 
     # ── node resolve <did> <allow|deny> ───────────────────
     elif sub == "resolve":
         if len(args) < 3:
-            print("用法: node resolve <did> <allow|deny>"); return
+            print("Usage: node resolve <did> <allow|deny>"); return
         did, action = args[1], args[2]
         if action not in ("allow", "deny"):
-            print("action 必须是 allow 或 deny"); return
+            print("action must be 'allow' or 'deny'"); return
         ok = await gatekeeper.resolve(did, action)
         if ok:
-            print(f"已 {action}: {did}")
+            print(f"{action}: {did}")
         else:
-            print(f"未找到待审批请求: {did}")
+            print(f"No pending request found for: {did}")
 
     else:
-        print(f"未知 node 子命令: '{sub}'")
+        print(f"Unknown node subcommand: '{sub}'")
         _usage()
 
 
@@ -321,12 +321,12 @@ def _fmt_agent(entry: dict) -> str:
     dt = datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S") if ts else "-"
     caps = ", ".join(p.get("capabilities", [])) or "-"
     lines = [
-        f"  DID      : {entry['did']}",
-        f"  名称     : {p.get('name', '-')}",
-        f"  类型     : {p.get('type', '-')}",
-        f"  能力     : {caps}",
-        f"  位置     : {p.get('location', '-') or '-'}",
-        f"  最后活跃 : {dt}",
+        f"  DID          : {entry['did']}",
+        f"  Name         : {p.get('name', '-')}",
+        f"  Type         : {p.get('type', '-')}",
+        f"  Capabilities : {caps}",
+        f"  Location     : {p.get('location', '-') or '-'}",
+        f"  Last seen    : {dt}",
     ]
     return "\n".join(lines)
 
@@ -345,9 +345,9 @@ async def agent_cmd(sub: str, args: list[str]):
     if sub == "list":
         agents = await list_local_agents()
         if not agents:
-            print("(暂无本地 Agent)")
+            print("(no local agents)")
             return
-        print(f"本地 Agent 共 {len(agents)} 个:\n")
+        print(f"Local agents: {len(agents)}\n")
         for a in agents:
             print(_fmt_agent(a))
             print()
@@ -355,17 +355,17 @@ async def agent_cmd(sub: str, args: list[str]):
     # ── get ───────────────────────────────────────────────
     elif sub == "get":
         if not args:
-            print("用法: agent get <did>"); return
+            print("Usage: agent get <did>"); return
         did = args[0]
         entry = await get_agent(did)
         if not entry:
-            print(f"未找到 DID: {did}"); return
+            print(f"DID not found: {did}"); return
         print(_fmt_agent(entry))
 
     # ── add ───────────────────────────────────────────────
     elif sub == "add":
         if not args:
-            print("用法: agent add <name> [--type T] [--caps c1,c2] [--location L] [--public] [--desc D] [--tags t1,t2]"); return
+            print("Usage: agent add <name> [--type T] [--caps c1,c2] [--location L] [--public] [--desc D] [--tags t1,t2]"); return
         name = args[0]
         opts = _parse_agent_opts(args[1:])
         agent_did = DIDGenerator.create_new(name)
@@ -394,52 +394,51 @@ async def agent_cmd(sub: str, args: list[str]):
                 description=description,
                 tags=tags or profile.capabilities,
             )
-            nexus_info = f"\n  名片已签名: ✓ (tags={nexus.tags})"
+            nexus_info = f"\n  Card signed: ✓ (tags={nexus.tags})"
         except Exception:
             pass
 
-        print(f"Agent 创建成功:")
-        print(f"  DID    : {agent_did.did}")
-        print(f"  名称   : {name}")
-        print(f"  能力   : {', '.join(profile.capabilities) or '-'}")
-        print(f"  公开   : {'是（将向种子站公告）' if is_public else '否（仅本地）'}{nexus_info}")
+        print(f"Agent created:")
+        print(f"  DID          : {agent_did.did}")
+        print(f"  Name         : {name}")
+        print(f"  Capabilities : {', '.join(profile.capabilities) or '-'}")
+        print(f"  Public       : {'yes (will announce to seed relays)' if is_public else 'no (local only)'}{nexus_info}")
 
     # ── update ────────────────────────────────────────────
     elif sub == "update":
         if not args:
-            print("用法: agent update <did> [--name N] [--type T] [--caps c1,c2] [--location L]"); return
+            print("Usage: agent update <did> [--name N] [--type T] [--caps c1,c2] [--location L]"); return
         did = args[0]
         opts = _parse_agent_opts(args[1:])
         if not opts:
-            print("未提供任何更新字段"); return
+            print("No fields provided to update"); return
         ok = await update_agent_profile(did, opts)
         if not ok:
-            print(f"未找到 DID: {did}"); return
+            print(f"DID not found: {did}"); return
         entry = await get_agent(did)
-        print(f"更新成功:")
+        print(f"Updated:")
         print(_fmt_agent(entry))
 
     # ── delete ────────────────────────────────────────────
     elif sub == "delete":
         if not args:
-            print("用法: agent delete <did>"); return
+            print("Usage: agent delete <did>"); return
         did = args[0]
-        # 二次确认
-        confirm = input(f"确认删除 {did} ? [y/N] ").strip().lower()
+        confirm = input(f"Confirm delete {did}? [y/N] ").strip().lower()
         if confirm != "y":
-            print("已取消"); return
+            print("Cancelled"); return
         ok = await delete_agent(did)
-        print("删除成功" if ok else f"未找到 DID: {did}")
+        print("Deleted" if ok else f"DID not found: {did}")
 
     # ── search ────────────────────────────────────────────
     elif sub == "search":
         if not args:
-            print("用法: agent search <keyword>"); return
+            print("Usage: agent search <keyword>"); return
         keyword = args[0]
         results = await search_agents_by_capability(keyword)
         if not results:
-            print(f"未找到匹配 '{keyword}' 的 Agent"); return
-        print(f"搜索 '{keyword}' 共 {len(results)} 个结果:\n")
+            print(f"No agents found matching '{keyword}'"); return
+        print(f"Search '{keyword}': {len(results)} result(s)\n")
         for r in results:
             print(_fmt_agent({"did": r["did"], "profile": r["profile"]}))
             print()
@@ -447,11 +446,10 @@ async def agent_cmd(sub: str, args: list[str]):
     # ── profile ───────────────────────────────────────────
     elif sub == "profile":
         if not args:
-            print("用法: agent profile <did>"); return
+            print("Usage: agent profile <did>"); return
         did = args[0]
         import json as _json
         import aiohttp as _aiohttp
-        # 调用 daemon 接口，签名在 daemon 内完成（私钥不出户）
         try:
             async with _aiohttp.ClientSession() as s:
                 async with s.get(
@@ -462,17 +460,17 @@ async def agent_cmd(sub: str, args: list[str]):
                         data = await resp.json()
                         print(_json.dumps(data, ensure_ascii=False, indent=2))
                     elif resp.status == 404:
-                        print(f"未找到 DID: {did}")
+                        print(f"DID not found: {did}")
                     elif resp.status == 409:
-                        print("该 Agent 无持久化私钥，无法生成签名名片")
+                        print("No persistent private key for this agent; cannot generate signed card")
                     else:
                         text = await resp.text()
-                        print(f"Daemon 返回 {resp.status}: {text}")
+                        print(f"Daemon returned {resp.status}: {text}")
         except _aiohttp.ClientConnectorError:
-            print("无法连接 Node Daemon（请先运行: python main.py node start）")
+            print("Cannot connect to Node Daemon (run: python main.py node start)")
 
     else:
-        print(f"未知 agent 子命令: '{sub}'")
+        print(f"Unknown agent subcommand: '{sub}'")
         _usage()
 
 
@@ -508,40 +506,40 @@ async def node_relay_cmd(args: list[str]):
             json.dump(cfg, f, indent=2, ensure_ascii=False)
 
     if not args:
-        print("用法: node relay <list|add|remove|set-local> [url]"); return
+        print("Usage: node relay <list|add|remove|set-local> [url]"); return
 
     sub = args[0]
 
     if sub == "list":
         cfg = _load()
-        print(f"本地 Relay : {cfg['local_relay']}")
+        print(f"Local relay  : {cfg['local_relay']}")
         seeds = cfg.get("seed_relays", [])
-        print(f"种子 Relay ({len(seeds)} 个):")
+        print(f"Seed relays ({len(seeds)}):")
         for s in seeds:
             print(f"  {s}")
         if not seeds:
-            print("  (无)")
+            print("  (none)")
 
     elif sub == "set-local":
         if len(args) < 2:
-            print("用法: node relay set-local <url>"); return
+            print("Usage: node relay set-local <url>"); return
         url = args[1]
         cfg = _load()
         cfg["local_relay"] = url
         _save(cfg)
-        print(f"本地 Relay 已设置为: {url}")
+        print(f"Local relay set to: {url}")
 
     elif sub == "add":
         if len(args) < 2:
-            print("用法: node relay add <url>"); return
+            print("Usage: node relay add <url>"); return
         url = args[1]
         cfg = _load()
         seeds = cfg.setdefault("seed_relays", [])
         if url in seeds:
-            print(f"已存在: {url}"); return
+            print(f"Already exists: {url}"); return
         seeds.append(url)
         _save(cfg)
-        print(f"已加入种子 Relay: {url}")
+        print(f"Seed relay added: {url}")
         # 向种子站注册本 relay
         local_relay = cfg["local_relay"]
         try:
@@ -552,26 +550,26 @@ async def node_relay_cmd(args: list[str]):
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
                 if resp.status == 200:
-                    print(f"已向 {url} 发送 federation/join ✓")
+                    print(f"federation/join sent to {url} ✓")
                 else:
-                    print(f"federation/join 返回 {resp.status}，配置已保存但握手失败")
+                    print(f"federation/join returned {resp.status}; config saved but handshake failed")
         except Exception as e:
-            print(f"federation/join 失败（网络不可达）：{e}，配置已保存")
+            print(f"federation/join failed (network unreachable): {e}; config saved")
 
     elif sub == "remove":
         if len(args) < 2:
-            print("用法: node relay remove <url>"); return
+            print("Usage: node relay remove <url>"); return
         url = args[1]
         cfg = _load()
         seeds = cfg.get("seed_relays", [])
         if url not in seeds:
-            print(f"未找到: {url}"); return
+            print(f"Not found: {url}"); return
         seeds.remove(url)
         _save(cfg)
-        print(f"已移除种子 Relay: {url}")
+        print(f"Seed relay removed: {url}")
 
     else:
-        print(f"未知 node relay 子命令: '{sub}'")
+        print(f"Unknown node relay subcommand: '{sub}'")
 
 
 # ── test ─────────────────────────────────────────────────
