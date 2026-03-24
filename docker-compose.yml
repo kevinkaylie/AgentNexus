@@ -1,14 +1,16 @@
 # AgentNexus Seed Relay — docker-compose
 #
-# 首次部署流程：
-#   1. 复制并编辑 nginx 配置：
-#        sed -i 's/YOUR_DOMAIN/relay.example.com/g' nginx/conf.d/relay.conf
-#   2. 申请 SSL 证书（需先确保端口 80 未被占用）：
-#        bash scripts/init-ssl.sh relay.example.com admin@example.com
-#   3. 启动全部服务：
-#        docker compose up -d
+# 两种部署模式，按实际情况选择：
 #
-# 后续证书自动续期由 certbot 服务处理（每 12 小时检查一次）。
+# 模式 A（默认）：Cloudflare Tunnel
+#   适合：服务器上已有其他服务占用 80/443（如 x-ui）
+#   步骤：docker compose up -d
+#         bash scripts/init-cloudflare.sh relay.example.com
+#
+# 模式 B：自带 nginx + Let's Encrypt
+#   适合：服务器 80/443 空闲
+#   步骤：bash scripts/init-ssl.sh relay.example.com admin@example.com
+#         docker compose --profile nginx up -d
 
 services:
 
@@ -18,11 +20,9 @@ services:
     restart: always
     volumes:
       - redis_data:/data
-    # AOF + RDB 双重持久化，重启不丢数据
     command: redis-server --appendonly yes --save 60 1
     networks:
       - internal
-    # 不对外暴露端口，只有 relay 容器可访问
 
   # ── Relay 应用 ────────────────────────────────────────────
   relay:
@@ -30,16 +30,30 @@ services:
     restart: always
     environment:
       - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "127.0.0.1:9000:9000"   # 只绑本机，不对公网暴露；cloudflared 通过此端口转发
     depends_on:
       - redis
     networks:
       - internal
-    # 不对外暴露端口，只有 nginx 可访问
 
-  # ── Nginx 反向代理 ────────────────────────────────────────
+  # ── Cloudflare Tunnel（模式 A）────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}   # 从 Cloudflare Dashboard 获取
+    depends_on:
+      - relay
+    networks:
+      - internal
+
+  # ── Nginx 反向代理（模式 B，profiles 控制，默认不启动）───
   nginx:
     image: nginx:alpine
     restart: always
+    profiles: ["nginx"]
     ports:
       - "80:80"
       - "443:443"
@@ -52,14 +66,14 @@ services:
     networks:
       - internal
 
-  # ── Certbot 自动续期 ─────────────────────────────────────
+  # ── Certbot 自动续期（模式 B）────────────────────────────
   certbot:
     image: certbot/certbot
     restart: always
+    profiles: ["nginx"]
     volumes:
       - ./nginx/certs:/etc/letsencrypt
       - ./nginx/www:/var/www/certbot
-    # 每 12 小时尝试续期（证书到期前 30 天自动续）
     entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done'
     networks:
       - internal
