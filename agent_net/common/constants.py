@@ -12,6 +12,9 @@ DEFAULT_SEEDS: list[str] = [
     # "https://seed1.nexus-relay.io:9000",
 ]
 
+# ── Redis ──────────────────────────────────────────────────
+REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 # ── 路径 ───────────────────────────────────────────────────
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(_BASE_DIR, "data")

@@ -113,15 +113,18 @@ def test_tf03b_nexus_profile_no_signature_raises():
 # ═══════════════════════════════════════════════════════════════
 
 @pytest.fixture
-def relay_client():
-    """每次测试用全新的 relay app 实例（重置内存状态）"""
-    # 重新导入以重置模块级内存字典
+def relay_client(monkeypatch):
+    """每次测试用全新的 relay app 实例（注入 fakeredis，隔离状态）"""
     import importlib
     import agent_net.relay.server as srv
     importlib.reload(srv)
-    # TestClient 使用 anyio 内部运行 lifespan
-    client = TestClient(srv.app)
-    return client, srv
+
+    import fakeredis.aioredis
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(srv, "_create_redis", lambda: fake)
+
+    with TestClient(srv.app) as client:
+        yield client, srv
 
 
 def test_tf04_relay_federation_join(relay_client):
