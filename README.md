@@ -567,46 +567,27 @@ python main.py node mcp \
 | 项目 | 说明 |
 |------|------|
 | 云服务器 | 1核1G 即可，Ubuntu 22.04 / Debian 12 推荐 |
-| 域名 | 托管在 Cloudflare（推荐）或自行管理 |
+| 安全组 | 开放入站 TCP **80**（证书申请）和 **443**（正式流量） |
+| 域名 | 解析到服务器 IP（例如 `relay.example.com → 1.2.3.4`） |
 | 软件 | Docker + docker compose（`apt install docker.io docker-compose-plugin`） |
 
-> 如果服务器 80/443 已被占用（如装了 x-ui），用**模式 A（Cloudflare Tunnel）**，无需开任何入站端口。
-> 如果 80/443 空闲，用**模式 B（自带 nginx）**。
-
-#### 模式 A：Cloudflare Tunnel（推荐，无端口冲突）
-
-域名托管在 Cloudflare，cloudflared 主动向外建隧道，服务器不需要开放任何入站端口。
+#### 部署步骤
 
 ```bash
 # 1. 克隆代码
 git clone https://github.com/kevinkaylie/AgentNexus.git
 cd AgentNexus
 
-# 2. 安装 cloudflared
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-     -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
-
-# 3. 初始化隧道（浏览器授权 Cloudflare，自动写入 .env）
-bash scripts/init-cloudflare.sh relay.example.com
-
-# 4. 启动
-docker compose up -d
-
-# 5. 验证（约 30 秒后生效）
-curl https://relay.example.com/health
-```
-
-#### 模式 B：自带 nginx + Let's Encrypt（服务器 80/443 空闲时）
-
-```bash
-git clone https://github.com/kevinkaylie/AgentNexus.git
-cd AgentNexus
-
-# 一键申请证书 + 启动（包含 nginx 和 certbot 服务）
+# 2. 一键申请证书 + 启动全部服务
+#    会自动：替换域名占位符 → 申请 Let's Encrypt 证书 → 启动 relay / redis / nginx / certbot
 bash scripts/init-ssl.sh relay.example.com admin@example.com
 
+# 3. 验证部署结果
 curl https://relay.example.com/health
+# → {"status":"ok","registered":0,"peers":0,"peer_directory":0,...}
 ```
+
+> 证书每 12 小时自动续期，无需人工干预。
 
 #### 本地节点加入种子站
 
@@ -965,46 +946,29 @@ Run a public seed relay so Agents anywhere in the world can discover each other 
 
 | Item | Details |
 |------|---------|
-| Cloud server | 1 vCPU / 1 GB RAM; Ubuntu 22.04 / Debian 12 recommended |
-| Domain | Hosted on Cloudflare (recommended) or self-managed |
+| Cloud server | 1 vCPU / 1 GB RAM is enough; Ubuntu 22.04 / Debian 12 recommended |
+| Firewall | Open inbound TCP **80** (cert validation) and **443** (traffic) |
+| Domain | DNS A record pointing to the server IP (e.g. `relay.example.com → 1.2.3.4`) |
 | Software | Docker + docker compose (`apt install docker.io docker-compose-plugin`) |
 
-> **Port conflict?** If 80/443 are already taken (e.g. x-ui is running), use **Mode A (Cloudflare Tunnel)** — no inbound ports needed at all.
-> If 80/443 are free, use **Mode B (built-in nginx)**.
-
-#### Mode A: Cloudflare Tunnel (recommended — zero port conflicts)
-
-The domain is managed on Cloudflare. `cloudflared` opens an outbound tunnel — the server needs no open inbound ports.
+#### Deploy
 
 ```bash
-# 1. Clone
+# 1. Clone the repo
 git clone https://github.com/kevinkaylie/AgentNexus.git
 cd AgentNexus
 
-# 2. Install cloudflared
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-     -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
-
-# 3. Initialize tunnel (browser auth with Cloudflare, auto-writes .env)
-bash scripts/init-cloudflare.sh relay.example.com
-
-# 4. Start
-docker compose up -d
-
-# 5. Verify (allow ~30s for DNS to propagate)
-curl https://relay.example.com/health
-```
-
-#### Mode B: Built-in nginx + Let's Encrypt (when 80/443 are free)
-
-```bash
-git clone https://github.com/kevinkaylie/AgentNexus.git
-cd AgentNexus
-
+# 2. One-command certificate + full stack startup
+#    Automatically: replace domain placeholder → get Let's Encrypt cert
+#                 → start relay / redis / nginx / certbot
 bash scripts/init-ssl.sh relay.example.com admin@example.com
 
+# 3. Verify
 curl https://relay.example.com/health
+# → {"status":"ok","registered":0,"peers":0,"peer_directory":0,...}
 ```
+
+> Certificates renew automatically every 12 hours — no manual intervention needed.
 
 #### Connect your local node
 
