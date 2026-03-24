@@ -9,7 +9,7 @@ NEXUS_VERSION = "1.0"
 
 # ── 联邦种子站列表（可在此追加公网种子地址） ────────────────
 DEFAULT_SEEDS: list[str] = [
-    # "https://seed1.nexus-relay.io:9000",
+    "https://www.agentnexus.top",
 ]
 
 # ── Redis ──────────────────────────────────────────────────
