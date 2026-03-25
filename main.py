@@ -394,7 +394,7 @@ async def agent_cmd(sub: str, args: list[str]):
                 description=description,
                 tags=tags or profile.capabilities,
             )
-            nexus_info = f"\n  Card signed: ✓ (tags={nexus.tags})"
+            nexus_info = f"\n  Card signed: OK (tags={nexus.tags})"
         except Exception:
             pass
 
@@ -550,7 +550,7 @@ async def node_relay_cmd(args: list[str]):
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
                 if resp.status == 200:
-                    print(f"federation/join sent to {url} ✓")
+                    print(f"federation/join sent to {url} [ok]")
                 else:
                     print(f"federation/join returned {resp.status}; config saved but handshake failed")
         except Exception as e:
