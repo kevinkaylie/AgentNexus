@@ -33,3 +33,10 @@ FEDERATION_PROXY_TIMEOUT = 5   # 联邦代理查询超时（秒）
 # ── 握手 ───────────────────────────────────────────────────
 CHALLENGE_TTL = 30       # Challenge 有效期（秒）
 HANDSHAKE_PENDING_TIMEOUT = 300  # 审批等待超时（秒）
+
+# ── Announce 签名验证 ────────────────────────────────────
+ANNOUNCE_CLOCK_SKEW = 60           # announce 签名最大时钟偏差（秒）
+ANNOUNCE_RATE_WINDOW = 60          # 速率限制窗口（秒）
+ANNOUNCE_RATE_MAX = 30             # 窗口内最大请求数
+RELAY_JOIN_VERIFY_TIMEOUT = 5      # federation/join 回调超时（秒）
+ANNOUNCE_PUBKEY_PREFIX = "relay:pk:"  # Redis TOFU 公钥绑定 key 前缀

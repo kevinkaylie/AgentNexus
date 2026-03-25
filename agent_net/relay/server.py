@@ -13,6 +13,7 @@ import time
 import asyncio
 import aiohttp
 import redis.asyncio as aioredis
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -20,6 +21,11 @@ from typing import Optional
 
 from agent_net.common.constants import (
     RELAY_TTL, FEDERATION_PROXY_TIMEOUT, REDIS_URL,
+    ANNOUNCE_CLOCK_SKEW, ANNOUNCE_RATE_WINDOW, ANNOUNCE_RATE_MAX,
+    RELAY_JOIN_VERIFY_TIMEOUT, ANNOUNCE_PUBKEY_PREFIX,
+)
+from agent_net.common.profile import (
+    NexusProfile, verify_signed_payload, canonical_announce,
 )
 
 # ── Redis 客户端 ─────────────────────────────────────────────
@@ -60,6 +66,10 @@ class AnnounceRequest(BaseModel):
     relay: Optional[str] = None
     public_ip: Optional[str] = None
     public_port: Optional[int] = None
+    # 签名验证字段
+    pubkey: Optional[str] = None       # Ed25519 verify key, hex
+    timestamp: Optional[float] = None  # Unix timestamp（被签名）
+    signature: Optional[str] = None    # Ed25519 签名, hex
 
 
 class AnnounceResponse(BaseModel):
@@ -88,11 +98,105 @@ class FederationAnnounceRequest(BaseModel):
     profile: Optional[dict] = None
 
 
+# ── 速率限制 ─────────────────────────────────────────────────
+
+_rate_limits: dict[str, list[float]] = defaultdict(list)
+_rate_call_count = 0
+
+
+def _check_rate_limit(key: str) -> None:
+    """按 key（DID 或 URL）限速，超限抛 429。"""
+    global _rate_call_count
+    now = time.time()
+    window = _rate_limits[key]
+    _rate_limits[key] = [t for t in window if now - t < ANNOUNCE_RATE_WINDOW]
+    if len(_rate_limits[key]) >= ANNOUNCE_RATE_MAX:
+        raise HTTPException(429, "Rate limit exceeded")
+    _rate_limits[key].append(now)
+    # 每 100 次调用清理过期 key
+    _rate_call_count += 1
+    if _rate_call_count >= 100:
+        _rate_call_count = 0
+        stale = [k for k, v in _rate_limits.items() if not v or now - v[-1] > ANNOUNCE_RATE_WINDOW]
+        for k in stale:
+            del _rate_limits[k]
+
+
+# ── 签名验证 ─────────────────────────────────────────────────
+
+async def _verify_announce(req: AnnounceRequest) -> None:
+    """验证 /announce 请求的 Ed25519 签名 + TOFU 公钥绑定。"""
+    if not req.pubkey or not req.signature or req.timestamp is None:
+        raise HTTPException(401, "Missing pubkey/signature/timestamp in announce request")
+
+    # 1. 时钟偏差检查（防重放）
+    skew = abs(time.time() - req.timestamp)
+    if skew > ANNOUNCE_CLOCK_SKEW:
+        raise HTTPException(401, f"Announce timestamp too stale ({skew:.0f}s skew)")
+
+    # 2. 签名验证
+    payload = canonical_announce(
+        req.did, req.endpoint, req.timestamp, req.public_ip, req.public_port,
+    )
+    try:
+        verify_signed_payload(payload, req.signature, req.pubkey)
+    except Exception:
+        raise HTTPException(401, "Invalid announce signature")
+
+    # 3. TOFU: 首次存储公钥，后续校验一致
+    pk_key = f"{ANNOUNCE_PUBKEY_PREFIX}{req.did}"
+    stored_pk = await _redis.get(pk_key)
+    if stored_pk:
+        if stored_pk != req.pubkey:
+            raise HTTPException(403, "Pubkey mismatch for DID (TOFU violation)")
+    else:
+        await _redis.set(pk_key, req.pubkey)
+
+
+async def _verify_federation_announce(req) -> None:
+    """验证 /federation/announce 的 NexusProfile 签名。"""
+    if not req.profile:
+        raise HTTPException(401, "Missing profile in federation announce")
+
+    try:
+        profile = NexusProfile.from_dict(req.profile)
+    except (KeyError, TypeError) as e:
+        raise HTTPException(400, f"Invalid profile structure: {e}")
+
+    if profile.did != req.did:
+        raise HTTPException(400, f"Profile DID '{profile.did}' does not match request DID '{req.did}'")
+
+    try:
+        profile.verify()
+    except ValueError as e:
+        raise HTTPException(401, f"Profile has no signature: {e}")
+    except Exception:
+        raise HTTPException(401, "Profile signature verification failed")
+
+
+async def _verify_federation_join(req) -> None:
+    """回调验证加入联邦的 relay 确实在运行。"""
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(
+                f"{req.relay_url}/health",
+                timeout=aiohttp.ClientTimeout(total=RELAY_JOIN_VERIFY_TIMEOUT),
+            ) as resp:
+                if resp.status != 200:
+                    raise HTTPException(400, f"Relay at {req.relay_url} health check failed (status {resp.status})")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Cannot reach relay at {req.relay_url}: {e}")
+
+
 # ── 本地注册/心跳接口 ─────────────────────────────────────────
 
 @app.post("/announce", response_model=AnnounceResponse)
 async def announce(req: AnnounceRequest):
     """Agent 上报自身 DID 和物理地址（注册 / 心跳）。TTL 到期自动清除。"""
+    _check_rate_limit(req.did)
+    await _verify_announce(req)
     now = time.time()
     value = json.dumps({
         "did": req.did,
@@ -153,6 +257,8 @@ async def lookup(did: str):
 @app.post("/federation/join")
 async def federation_join(req: FederationJoinRequest):
     """另一个 relay 请求加入联邦（报名成为已知 peer）。"""
+    _check_rate_limit(req.relay_url)
+    await _verify_federation_join(req)
     await _redis.sadd(_PEERS_KEY, req.relay_url)
     count = await _redis.scard(_PEERS_KEY)
     return {"status": "ok", "relay_url": req.relay_url, "peers_count": count}
@@ -161,6 +267,8 @@ async def federation_join(req: FederationJoinRequest):
 @app.post("/federation/announce")
 async def federation_announce(req: FederationAnnounceRequest):
     """本地 relay 代表公开 Agent 向种子站公告（is_public=True 触发）。"""
+    _check_rate_limit(req.did)
+    await _verify_federation_announce(req)
     value = json.dumps({
         "relay_url": req.relay_url,
         "profile": req.profile,

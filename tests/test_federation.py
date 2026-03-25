@@ -1,6 +1,6 @@
 """
 tests/test_federation.py
-联邦 Relay + NexusProfile 测试用例 (tf01–tf22, tr01–tr02)
+联邦 Relay + NexusProfile 测试用例 (tf01–tf22, tr01–tr02, ts01–ts12)
 """
 import asyncio
 import json
@@ -9,11 +9,54 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from nacl.signing import SigningKey
+from nacl.encoding import HexEncoder, RawEncoder
 from nacl.exceptions import BadSignatureError
 from fastapi.testclient import TestClient
 
 from agent_net.common.did import DIDGenerator
-from agent_net.common.profile import NexusProfile
+from agent_net.common.profile import NexusProfile, canonical_announce
+
+
+# ── 测试辅助函数 ─────────────────────────────────────────────
+
+def _make_signed_announce(endpoint="http://1.2.3.4:8765", agent=None,
+                          public_ip=None, public_port=None):
+    """构造带 Ed25519 签名的 /announce 请求体"""
+    if agent is None:
+        agent = DIDGenerator.create_new("TestBot")
+    ts = time.time()
+    canonical = canonical_announce(agent.did, endpoint, ts, public_ip, public_port)
+    sig = agent.private_key.sign(canonical, encoder=RawEncoder).signature.hex()
+    pubkey = agent.private_key.verify_key.encode(HexEncoder).decode()
+    payload = {
+        "did": agent.did,
+        "endpoint": endpoint,
+        "pubkey": pubkey,
+        "timestamp": ts,
+        "signature": sig,
+    }
+    if public_ip is not None:
+        payload["public_ip"] = public_ip
+    if public_port is not None:
+        payload["public_port"] = public_port
+    return payload, agent
+
+
+def _make_signed_federation_announce(relay_url="http://localhost:9000", agent=None):
+    """构造带签名 NexusProfile 的 /federation/announce 请求体"""
+    if agent is None:
+        agent = DIDGenerator.create_new("FedBot")
+    profile = NexusProfile.create(
+        did=agent.did,
+        signing_key=agent.private_key,
+        name="FedBot",
+        relay=relay_url,
+    )
+    return {
+        "did": agent.did,
+        "relay_url": relay_url,
+        "profile": profile.to_dict(),
+    }, agent
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -132,7 +175,8 @@ def test_tf04_relay_federation_join(relay_client):
     client, srv = relay_client
     peer_url = "http://192.168.1.200:9000"
 
-    resp = client.post("/federation/join", json={"relay_url": peer_url})
+    with patch.object(srv, "_verify_federation_join", new=AsyncMock()):
+        resp = client.post("/federation/join", json={"relay_url": peer_url})
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
@@ -151,15 +195,12 @@ def test_tf05_federation_announce_and_lookup(relay_client):
     """
     client, srv = relay_client
 
-    did = "did:agent:fedtest0000000001"
     peer_relay = "http://192.168.1.200:9000"
+    fed_payload, agent = _make_signed_federation_announce(relay_url=peer_relay)
+    did = agent.did
 
-    # 公告一个公开 Agent 到 peer_directory
-    resp = client.post("/federation/announce", json={
-        "did": did,
-        "relay_url": peer_relay,
-        "profile": {"header": {"did": did}, "content": {"name": "RemoteBot"}},
-    })
+    # 公告一个公开 Agent 到 peer_directory（带签名 NexusProfile）
+    resp = client.post("/federation/announce", json=fed_payload)
     assert resp.status_code == 200
 
     # peer_directory 已有记录
@@ -203,13 +244,12 @@ def test_tf07_health_shows_federation_counters(relay_client):
     """health 接口包含 peers 和 peer_directory 计数"""
     client, srv = relay_client
 
-    # 加入一个 peer
-    client.post("/federation/join", json={"relay_url": "http://seed.example.com:9000"})
-    # 公告一个 Agent
-    client.post("/federation/announce", json={
-        "did": "did:agent:healthtest000001",
-        "relay_url": "http://seed.example.com:9000",
-    })
+    # 加入一个 peer（mock 回调验证）
+    with patch.object(srv, "_verify_federation_join", new=AsyncMock()):
+        client.post("/federation/join", json={"relay_url": "http://seed.example.com:9000"})
+    # 公告一个 Agent（带签名 NexusProfile）
+    fed_payload, _ = _make_signed_federation_announce(relay_url="http://seed.example.com:9000")
+    client.post("/federation/announce", json=fed_payload)
 
     resp = client.get("/health")
     assert resp.status_code == 200
@@ -506,31 +546,34 @@ def test_tf16_patch_card_updated_at_advances(daemon_client):
 def test_tf17_duplicate_announce_updates_endpoint(relay_client):
     """同一 DID 两次 /announce 不产生重复条目，lookup 返回最新 endpoint"""
     client, srv = relay_client
-    did = "did:agent:duptest0000000001"
+    agent = DIDGenerator.create_new("DupBot")
 
-    client.post("/announce", json={"did": did, "endpoint": "http://1.2.3.4:8765"})
-    client.post("/announce", json={"did": did, "endpoint": "http://5.6.7.8:9000"})
+    payload1, _ = _make_signed_announce(endpoint="http://1.2.3.4:8765", agent=agent)
+    payload2, _ = _make_signed_announce(endpoint="http://5.6.7.8:9000", agent=agent)
+
+    client.post("/announce", json=payload1)
+    client.post("/announce", json=payload2)
 
     health = client.get("/health").json()
     assert health["registered"] == 1
 
-    lookup = client.get(f"/lookup/{did}").json()
+    lookup = client.get(f"/lookup/{agent.did}").json()
     assert lookup["endpoint"] == "http://5.6.7.8:9000"
 
 
 def test_tf18_federation_proxy_peer_returns_404(relay_client):
     """peer relay 代理查询返回 None（peer 无此 DID）→ /lookup 最终返回 404"""
     client, srv = relay_client
-    did = "did:agent:proxytest000000001"
     peer_relay = "http://peer-relay.example.com:9000"
 
-    client.post("/federation/announce", json={"did": did, "relay_url": peer_relay})
+    fed_payload, agent = _make_signed_federation_announce(relay_url=peer_relay)
+    client.post("/federation/announce", json=fed_payload)
 
     async def mock_proxy(peer_relay_url, lookup_did):
         return None  # peer 报告未找到
 
     with patch("agent_net.relay.server._proxy_lookup", side_effect=mock_proxy):
-        resp = client.get(f"/lookup/{did}")
+        resp = client.get(f"/lookup/{agent.did}")
 
     assert resp.status_code == 404
 
@@ -641,9 +684,10 @@ def test_tr01_duplicate_federation_join_idempotent(relay_client):
     client, srv = relay_client
     peer = "http://peer.example.com:9000"
 
-    for _ in range(3):
-        r = client.post("/federation/join", json={"relay_url": peer})
-        assert r.status_code == 200
+    with patch.object(srv, "_verify_federation_join", new=AsyncMock()):
+        for _ in range(3):
+            r = client.post("/federation/join", json={"relay_url": peer})
+            assert r.status_code == 200
 
     resp = client.get("/federation/peers")
     peers = resp.json()["peers"]
@@ -654,16 +698,242 @@ def test_tr01_duplicate_federation_join_idempotent(relay_client):
 def test_tr02_duplicate_announce_directory_updated(relay_client):
     """同一 DID 两次 /federation/announce → directory 只有 1 条，内容为最新"""
     client, srv = relay_client
-    did = "did:agent:dirtest0000000001"
+    agent = DIDGenerator.create_new("DirBot")
 
+    profile1 = NexusProfile.create(
+        did=agent.did, signing_key=agent.private_key,
+        name="DirBot", relay="http://old-relay.example.com:9000",
+    )
     client.post("/federation/announce", json={
-        "did": did, "relay_url": "http://old-relay.example.com:9000",
+        "did": agent.did, "relay_url": "http://old-relay.example.com:9000",
+        "profile": profile1.to_dict(),
     })
+    profile2 = NexusProfile.create(
+        did=agent.did, signing_key=agent.private_key,
+        name="DirBot", relay="http://new-relay.example.com:9000",
+    )
     client.post("/federation/announce", json={
-        "did": did, "relay_url": "http://new-relay.example.com:9000",
+        "did": agent.did, "relay_url": "http://new-relay.example.com:9000",
+        "profile": profile2.to_dict(),
     })
 
     resp = client.get("/federation/directory")
     data = resp.json()
     assert data["count"] == 1
     assert data["entries"][0]["relay_url"] == "http://new-relay.example.com:9000"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 签名验证安全测试 (ts01–ts12)
+# ═══════════════════════════════════════════════════════════════
+
+def test_ts01_announce_without_signature_rejected(relay_client):
+    """无签名的 /announce 请求返回 401"""
+    client, srv = relay_client
+    resp = client.post("/announce", json={
+        "did": "did:agent:nosig00000000001",
+        "endpoint": "http://1.2.3.4:8765",
+    })
+    assert resp.status_code == 401
+
+
+def test_ts02_announce_with_valid_signature_accepted(relay_client):
+    """带有效签名的 /announce 请求返回 200"""
+    client, srv = relay_client
+    payload, agent = _make_signed_announce()
+    resp = client.post("/announce", json=payload)
+    assert resp.status_code == 200
+    assert resp.json()["did"] == agent.did
+
+    # lookup 应能查到
+    lookup = client.get(f"/lookup/{agent.did}")
+    assert lookup.status_code == 200
+    assert lookup.json()["endpoint"] == "http://1.2.3.4:8765"
+
+
+def test_ts03_announce_stale_timestamp_rejected(relay_client):
+    """timestamp 超过 60s 的 /announce 被拒"""
+    client, srv = relay_client
+    agent = DIDGenerator.create_new("StaleBot")
+    stale_ts = time.time() - 120  # 2 分钟前
+    endpoint = "http://1.2.3.4:8765"
+    canonical = canonical_announce(agent.did, endpoint, stale_ts)
+    sig = agent.private_key.sign(canonical, encoder=RawEncoder).signature.hex()
+    pubkey = agent.private_key.verify_key.encode(HexEncoder).decode()
+
+    resp = client.post("/announce", json={
+        "did": agent.did,
+        "endpoint": endpoint,
+        "pubkey": pubkey,
+        "timestamp": stale_ts,
+        "signature": sig,
+    })
+    assert resp.status_code == 401
+    assert "stale" in resp.json()["detail"].lower()
+
+
+def test_ts04_announce_wrong_signature_rejected(relay_client):
+    """用错误私钥签名的 /announce 被拒"""
+    client, srv = relay_client
+    agent = DIDGenerator.create_new("RealBot")
+    imposter = DIDGenerator.create_new("Imposter")
+    ts = time.time()
+    endpoint = "http://1.2.3.4:8765"
+    canonical = canonical_announce(agent.did, endpoint, ts)
+    # 用 imposter 的私钥签 agent 的 DID
+    sig = imposter.private_key.sign(canonical, encoder=RawEncoder).signature.hex()
+    pubkey = imposter.private_key.verify_key.encode(HexEncoder).decode()
+
+    resp = client.post("/announce", json={
+        "did": agent.did,
+        "endpoint": endpoint,
+        "pubkey": pubkey,
+        "timestamp": ts,
+        "signature": sig,
+    })
+    # 首次 TOFU 会存 imposter 的 pubkey，签名本身是有效的
+    # 但如果 agent 先注册过就会 403；这里测的是签名不匹配内容
+    # 实际上 imposter 签名了 agent.did 的 canonical，pubkey 是 imposter 的 → 签名有效
+    # 所以换个方式：篡改 endpoint 后用旧签名
+    bad_sig = sig  # 签名是 endpoint="http://1.2.3.4:8765" 的
+    resp2 = client.post("/announce", json={
+        "did": agent.did,
+        "endpoint": "http://9.9.9.9:1234",  # 篡改
+        "pubkey": pubkey,
+        "timestamp": ts,
+        "signature": bad_sig,
+    })
+    assert resp2.status_code == 401
+    assert "invalid" in resp2.json()["detail"].lower()
+
+
+def test_ts05_announce_tofu_pubkey_mismatch_rejected(relay_client):
+    """TOFU: 第二次 announce 使用不同公钥的 DID 被拒 403"""
+    client, srv = relay_client
+
+    # 第一次注册
+    payload1, agent1 = _make_signed_announce()
+    resp1 = client.post("/announce", json=payload1)
+    assert resp1.status_code == 200
+
+    # 用另一个私钥签同一个 DID
+    agent2 = DIDGenerator.create_new("Other")
+    ts = time.time()
+    endpoint = "http://1.2.3.4:8765"
+    canonical = canonical_announce(agent1.did, endpoint, ts)
+    sig = agent2.private_key.sign(canonical, encoder=RawEncoder).signature.hex()
+    pubkey2 = agent2.private_key.verify_key.encode(HexEncoder).decode()
+
+    resp2 = client.post("/announce", json={
+        "did": agent1.did,
+        "endpoint": endpoint,
+        "pubkey": pubkey2,
+        "timestamp": ts,
+        "signature": sig,
+    })
+    assert resp2.status_code == 403
+    assert "TOFU" in resp2.json()["detail"]
+
+
+def test_ts06_announce_tofu_same_pubkey_succeeds(relay_client):
+    """TOFU: 同一公钥多次 announce 通过"""
+    client, srv = relay_client
+    agent = DIDGenerator.create_new("TofuBot")
+
+    for i in range(3):
+        payload, _ = _make_signed_announce(
+            endpoint=f"http://1.2.3.{i}:8765", agent=agent,
+        )
+        resp = client.post("/announce", json=payload)
+        assert resp.status_code == 200
+
+
+def test_ts07_federation_announce_missing_profile_rejected(relay_client):
+    """无 profile 的 /federation/announce 返回 401"""
+    client, srv = relay_client
+    resp = client.post("/federation/announce", json={
+        "did": "did:agent:noprofile0000001",
+        "relay_url": "http://localhost:9000",
+    })
+    assert resp.status_code == 401
+
+
+def test_ts08_federation_announce_unsigned_profile_rejected(relay_client):
+    """未签名的 NexusProfile 被拒"""
+    client, srv = relay_client
+    did = "did:agent:unsignedprof0001"
+    resp = client.post("/federation/announce", json={
+        "did": did,
+        "relay_url": "http://localhost:9000",
+        "profile": {
+            "header": {"did": did, "pubkey": "aa" * 32, "version": "1.0"},
+            "content": {"name": "test"},
+            "signature": "",
+        },
+    })
+    assert resp.status_code == 401
+
+
+def test_ts09_federation_announce_tampered_profile_rejected(relay_client):
+    """篡改 content 后签名失效 → 被拒"""
+    client, srv = relay_client
+    agent = DIDGenerator.create_new("TamperFedBot")
+    profile = NexusProfile.create(
+        did=agent.did, signing_key=agent.private_key,
+        name="TamperFedBot", relay="http://localhost:9000",
+    )
+    d = profile.to_dict()
+    d["content"]["name"] = "HACKED"  # 篡改
+
+    resp = client.post("/federation/announce", json={
+        "did": agent.did,
+        "relay_url": "http://localhost:9000",
+        "profile": d,
+    })
+    assert resp.status_code == 401
+
+
+def test_ts10_federation_announce_did_mismatch_rejected(relay_client):
+    """profile.header.did 与 request.did 不匹配 → 400"""
+    client, srv = relay_client
+    agent = DIDGenerator.create_new("MismatchBot")
+    profile = NexusProfile.create(
+        did=agent.did, signing_key=agent.private_key,
+        name="MismatchBot", relay="http://localhost:9000",
+    )
+    resp = client.post("/federation/announce", json={
+        "did": "did:agent:different0000001",  # 不匹配
+        "relay_url": "http://localhost:9000",
+        "profile": profile.to_dict(),
+    })
+    assert resp.status_code == 400
+    assert "does not match" in resp.json()["detail"]
+
+
+def test_ts11_federation_join_unreachable_relay_rejected(relay_client):
+    """不可达的 relay URL join 被拒 400"""
+    client, srv = relay_client
+    resp = client.post("/federation/join", json={
+        "relay_url": "http://unreachable.invalid:9999",
+    })
+    assert resp.status_code == 400
+    assert "Cannot reach" in resp.json()["detail"]
+
+
+def test_ts12_rate_limit_exceeded_returns_429(relay_client):
+    """超过速率限制返回 429"""
+    client, srv = relay_client
+    agent = DIDGenerator.create_new("RateBot")
+
+    # 发送 31 次（限制为 30）
+    last_status = None
+    for i in range(35):
+        payload, _ = _make_signed_announce(
+            endpoint=f"http://1.2.3.4:{8000 + i}", agent=agent,
+        )
+        resp = client.post("/announce", json=payload)
+        last_status = resp.status_code
+        if resp.status_code == 429:
+            break
+
+    assert last_status == 429

@@ -29,6 +29,7 @@ from agent_net.common.constants import (
     RELAY_HEARTBEAT_INTERVAL, FEDERATION_PROXY_TIMEOUT,
 )
 from agent_net.common.did import DIDGenerator, AgentProfile
+from agent_net.common.profile import canonical_announce
 from agent_net.storage import (
     init_db, register_agent, list_local_agents, get_agent,
     fetch_inbox, search_agents_by_capability, upsert_contact,
@@ -105,14 +106,30 @@ RELAY_URL: str = _node_cfg["local_relay"]
 
 async def _announce_to_relay(did: str, endpoint: str, relay_url: str | None = None):
     url = relay_url or RELAY_URL
+    payload: dict = {
+        "did": did,
+        "endpoint": endpoint,
+        "public_ip": _public_endpoint.get("public_ip") if _public_endpoint else None,
+        "public_port": _public_endpoint.get("public_port") if _public_endpoint else None,
+    }
+    # 签名 announce 请求
+    pk_hex = await get_private_key(did)
+    if pk_hex:
+        from nacl.signing import SigningKey as _SK
+        from nacl.encoding import HexEncoder as _HE, RawEncoder as _RE
+        sk = _SK(bytes.fromhex(pk_hex))
+        ts = time.time()
+        canonical = canonical_announce(
+            did, endpoint, ts, payload.get("public_ip"), payload.get("public_port"),
+        )
+        sig = sk.sign(canonical, encoder=_RE).signature.hex()
+        payload["pubkey"] = sk.verify_key.encode(_HE).decode()
+        payload["timestamp"] = ts
+        payload["signature"] = sig
     try:
         async with aiohttp.ClientSession() as s:
-            await s.post(f"{url}/announce", json={
-                "did": did,
-                "endpoint": endpoint,
-                "public_ip": _public_endpoint.get("public_ip") if _public_endpoint else None,
-                "public_port": _public_endpoint.get("public_port") if _public_endpoint else None,
-            }, timeout=aiohttp.ClientTimeout(total=5))
+            await s.post(f"{url}/announce", json=payload,
+                         timeout=aiohttp.ClientTimeout(total=5))
     except Exception:
         pass
 

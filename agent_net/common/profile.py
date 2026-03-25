@@ -39,6 +39,33 @@ def _canonical(content: dict) -> bytes:
     return json.dumps(content, sort_keys=True, separators=(',', ':')).encode('utf-8')
 
 
+def canonical_announce(
+    did: str,
+    endpoint: str,
+    timestamp: float,
+    public_ip: str | None = None,
+    public_port: int | None = None,
+) -> bytes:
+    """生成 /announce 签名载荷的 canonical JSON bytes"""
+    obj: dict = {"did": did, "endpoint": endpoint, "timestamp": timestamp}
+    if public_ip is not None:
+        obj["public_ip"] = public_ip
+    if public_port is not None:
+        obj["public_port"] = public_port
+    return json.dumps(obj, sort_keys=True, separators=(',', ':')).encode('utf-8')
+
+
+def verify_signed_payload(payload: bytes, signature_hex: str, pubkey_hex: str) -> bool:
+    """
+    通用 Ed25519 签名验证。
+    成功返回 True，签名无效抛 nacl.exceptions.BadSignatureError。
+    """
+    vk = VerifyKey(bytes.fromhex(pubkey_hex))
+    sig_bytes = bytes.fromhex(signature_hex)
+    vk.verify(payload, sig_bytes)
+    return True
+
+
 # ── 主类 ─────────────────────────────────────────────────────
 
 @dataclass
