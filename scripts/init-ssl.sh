@@ -22,6 +22,7 @@ docker compose up -d redis relay
 
 echo "[3/4] 申请 SSL 证书（standalone 模式，certbot 自己监听 80 端口）..."
 docker compose run --rm \
+  --entrypoint certbot \
   -p 80:80 \
   certbot certonly \
     --standalone \
