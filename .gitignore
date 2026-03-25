@@ -15,6 +15,9 @@ dist/
 .vscode/
 *.swp
 
+# --- AgentNexus 运行时数据 ---
+data/                            # 运行时生成：DB、token、白/黑名单、配置
+
 # --- AgentNexus 核心安全 (非常重要！) ---
 # 绝不要上传任何包含私钥的文件
 *.key
