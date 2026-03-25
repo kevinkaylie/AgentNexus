@@ -1,12 +1,12 @@
 """
 tests/test_federation.py
-联邦 Relay + NexusProfile 测试用例 (tf01–tf07)
+联邦 Relay + NexusProfile 测试用例 (tf01–tf22, tr01–tr02)
 """
 import asyncio
 import json
 import time
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from nacl.signing import SigningKey
 from nacl.exceptions import BadSignatureError
@@ -295,10 +295,11 @@ def daemon_client(tmp_path, monkeypatch):
     # 2. 重新加载 daemon，使其内部状态（全局变量）重置
     importlib.reload(d)
 
-    # 3. patch daemon 模块级名称，使 token 写入 tmp_path
+    # 3. patch daemon 模块级名称，使 token、配置均写入 tmp_path（完全隔离）
     token_file = str(tmp_path / "daemon_token.txt")
     monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", token_file)
     monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
 
     # 4. 用 context manager 确保 lifespan（init_db + _init_daemon_token）运行
     from fastapi.testclient import TestClient
@@ -367,3 +368,302 @@ def test_tf12_patch_card_updates_and_resigns(daemon_client):
     # content 字段已更新
     assert restored.content["description"] == "更新后的描述"
     assert restored.tags == ["updated", "v2"]
+
+
+# ═══════════════════════════════════════════════════════════════
+# 新增测试 tf13–tf22：Relay 容错 / 签名同步 / Token / 联邦边界
+# ═══════════════════════════════════════════════════════════════
+
+def test_tf13_local_relay_unreachable_register_succeeds(daemon_client, monkeypatch):
+    """本地 Relay 不可达时，register 仍返回 200，agent 写入本地 DB（announce 静默失败）"""
+    client, d, token_file = daemon_client
+    with open(token_file) as f:
+        token = f.read().strip()
+
+    # 替换 aiohttp.ClientSession，使所有 POST 立即抛 ConnectionRefusedError
+    class _FailSession:
+        def post(self, *args, **kwargs):
+            raise ConnectionRefusedError("simulated relay down")
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+
+    monkeypatch.setattr(d.aiohttp, "ClientSession", _FailSession)
+
+    resp = client.post(
+        "/agents/register",
+        json={"name": "RelayDownAgent", "capabilities": ["ping"]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "did" in data
+
+    # agent 已写入本地 DB
+    local = client.get("/agents/local")
+    assert any(a["did"] == data["did"] for a in local.json()["agents"])
+
+
+def test_tf14_seed_relay_unreachable_announce_silent(daemon_client, monkeypatch):
+    """is_public=True 时 federation announce 向不可达种子站发送，注册不受影响"""
+    client, d, token_file = daemon_client
+    with open(token_file) as f:
+        token = f.read().strip()
+
+    # 写入含不可达种子站的节点配置
+    with open(d.NODE_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump({
+            "local_relay": "http://localhost:9000",
+            "seed_relays": ["http://unreachable-seed.invalid:9999"],
+        }, f)
+
+    # aiohttp 全部失败
+    class _FailSession:
+        def post(self, *args, **kwargs):
+            raise ConnectionRefusedError("no route to host")
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+
+    monkeypatch.setattr(d.aiohttp, "ClientSession", _FailSession)
+
+    resp = client.post(
+        "/agents/register",
+        json={"name": "PublicBot", "is_public": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_public"] is True
+    assert "did" in resp.json()
+
+
+def test_tf15_patch_card_old_sig_invalid_on_new_content(daemon_client):
+    """PATCH card 后，旧签名无法验证新内容（签名严格绑定内容）"""
+    client, d, token_file = daemon_client
+    with open(token_file) as f:
+        token = f.read().strip()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = client.post(
+        "/agents/register",
+        json={"name": "SigBoundBot", "description": "original"},
+        headers=headers,
+    )
+    did = resp.json()["did"]
+    old_np = NexusProfile.from_dict(resp.json()["nexus_profile"])
+    old_sig = old_np.signature
+
+    resp2 = client.patch(
+        f"/agents/{did}/card",
+        json={"description": "modified after patch"},
+        headers=headers,
+    )
+    assert resp2.status_code == 200
+    new_np = NexusProfile.from_dict(resp2.json())
+
+    # 新签名与旧签名不同
+    assert new_np.signature != old_sig
+    # 新签名可验证新内容
+    assert new_np.verify() is True
+
+    # 用旧签名 + 新内容拼成混合 profile → 验签应失败
+    from nacl.exceptions import BadSignatureError
+    franken = NexusProfile(
+        header=new_np.header,
+        content=new_np.content,
+        signature=old_sig,
+    )
+    with pytest.raises(BadSignatureError):
+        franken.verify()
+
+
+def test_tf16_patch_card_updated_at_advances(daemon_client):
+    """PATCH card 后 updated_at 不小于注册时的值，且新签名仍有效"""
+    client, d, token_file = daemon_client
+    with open(token_file) as f:
+        token = f.read().strip()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = client.post(
+        "/agents/register",
+        json={"name": "TimeBot"},
+        headers=headers,
+    )
+    did = resp.json()["did"]
+    old_at = resp.json()["nexus_profile"]["content"]["updated_at"]
+
+    time.sleep(0.05)  # 确保时钟推进
+
+    resp2 = client.patch(
+        f"/agents/{did}/card",
+        json={"description": "updated description"},
+        headers=headers,
+    )
+    assert resp2.status_code == 200
+    new_np = NexusProfile.from_dict(resp2.json())
+    assert new_np.content["updated_at"] >= old_at
+    assert new_np.verify() is True
+
+
+def test_tf17_duplicate_announce_updates_endpoint(relay_client):
+    """同一 DID 两次 /announce 不产生重复条目，lookup 返回最新 endpoint"""
+    client, srv = relay_client
+    did = "did:agent:duptest0000000001"
+
+    client.post("/announce", json={"did": did, "endpoint": "http://1.2.3.4:8765"})
+    client.post("/announce", json={"did": did, "endpoint": "http://5.6.7.8:9000"})
+
+    health = client.get("/health").json()
+    assert health["registered"] == 1
+
+    lookup = client.get(f"/lookup/{did}").json()
+    assert lookup["endpoint"] == "http://5.6.7.8:9000"
+
+
+def test_tf18_federation_proxy_peer_returns_404(relay_client):
+    """peer relay 代理查询返回 None（peer 无此 DID）→ /lookup 最终返回 404"""
+    client, srv = relay_client
+    did = "did:agent:proxytest000000001"
+    peer_relay = "http://peer-relay.example.com:9000"
+
+    client.post("/federation/announce", json={"did": did, "relay_url": peer_relay})
+
+    async def mock_proxy(peer_relay_url, lookup_did):
+        return None  # peer 报告未找到
+
+    with patch("agent_net.relay.server._proxy_lookup", side_effect=mock_proxy):
+        resp = client.get(f"/lookup/{did}")
+
+    assert resp.status_code == 404
+
+
+def test_tf19_proxy_lookup_exception_returns_none():
+    """_proxy_lookup 内部 aiohttp 超时/异常时返回 None，不向外抛出"""
+    import importlib
+    import agent_net.relay.server as srv
+    importlib.reload(srv)
+
+    async def _run():
+        with patch("agent_net.relay.server.aiohttp.ClientSession") as mock_cls:
+            mock_session = MagicMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+            # 模拟 GET 请求超时
+            mock_get = MagicMock()
+            mock_get.__aenter__ = AsyncMock(side_effect=asyncio.TimeoutError())
+            mock_get.__aexit__ = AsyncMock(return_value=None)
+            mock_session.get = MagicMock(return_value=mock_get)
+
+            result = await srv._proxy_lookup("http://fake-relay:9000", "did:agent:test")
+            assert result is None
+
+    asyncio.run(_run())
+
+
+def test_tf20_malformed_token_returns_401(daemon_client):
+    """Authorization 头格式错误或 token 值错误时，写接口返回 401"""
+    client, d, token_file = daemon_client
+    with open(token_file) as f:
+        valid_token = f.read().strip()
+
+    bad_headers = [
+        {},                                                   # 无头
+        {"Authorization": "Token " + valid_token},           # 错误 scheme
+        {"Authorization": "Bearer"},                         # 缺少 token 值
+        {"Authorization": "Bearer "},                        # 空 token
+        {"Authorization": "Bearer wrong-token-deadbeef"},    # 错误 token
+    ]
+    for hdrs in bad_headers:
+        resp = client.post("/agents/register", json={"name": "X"}, headers=hdrs)
+        assert resp.status_code == 401, \
+            f"Expected 401 for {hdrs!r}, got {resp.status_code}"
+
+
+def test_tf21_relay_add_triggers_federation_join(daemon_client, monkeypatch):
+    """POST /node/config/relay/add 向新种子站发送 /federation/join 请求"""
+    client, d, token_file = daemon_client
+    with open(token_file) as f:
+        token = f.read().strip()
+
+    posted_urls = []
+
+    class _SpySession:
+        def post(self, url, **kwargs):
+            posted_urls.append(url)
+            async def _ok():
+                class _R:
+                    status = 200
+                return _R()
+            return _ok()
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+
+    monkeypatch.setattr(d.aiohttp, "ClientSession", _SpySession)
+
+    resp = client.post(
+        "/node/config/relay/add",
+        json={"url": "http://new-seed.example.com:9000"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert any("/federation/join" in url for url in posted_urls), \
+        f"Expected /federation/join call, posted to: {posted_urls}"
+
+
+def test_tf22_tamper_header_pubkey_fails_verify():
+    """header.pubkey 替换为另一个公钥 → verify() 抛 BadSignatureError"""
+    from nacl.encoding import HexEncoder
+    from nacl.exceptions import BadSignatureError
+
+    agent = DIDGenerator.create_new("PubkeyBot")
+    other = DIDGenerator.create_new("OtherBot")
+
+    profile = NexusProfile.create(
+        did=agent.did,
+        signing_key=agent.private_key,
+        name="PubkeyBot",
+        relay="http://localhost:9000",
+    )
+    assert profile.verify() is True
+
+    # 换成另一个 agent 的公钥
+    other_pubkey_hex = other.verify_key.encode(HexEncoder).decode()
+    profile.header["pubkey"] = other_pubkey_hex
+
+    with pytest.raises(BadSignatureError):
+        profile.verify()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Relay 边界行为测试 (tr01–tr02)
+# ═══════════════════════════════════════════════════════════════
+
+def test_tr01_duplicate_federation_join_idempotent(relay_client):
+    """同一 relay URL 多次 /federation/join → peers 集合中只有 1 条"""
+    client, srv = relay_client
+    peer = "http://peer.example.com:9000"
+
+    for _ in range(3):
+        r = client.post("/federation/join", json={"relay_url": peer})
+        assert r.status_code == 200
+
+    resp = client.get("/federation/peers")
+    peers = resp.json()["peers"]
+    assert peers.count(peer) == 1
+    assert resp.json()["count"] == 1
+
+
+def test_tr02_duplicate_announce_directory_updated(relay_client):
+    """同一 DID 两次 /federation/announce → directory 只有 1 条，内容为最新"""
+    client, srv = relay_client
+    did = "did:agent:dirtest0000000001"
+
+    client.post("/federation/announce", json={
+        "did": did, "relay_url": "http://old-relay.example.com:9000",
+    })
+    client.post("/federation/announce", json={
+        "did": did, "relay_url": "http://new-relay.example.com:9000",
+    })
+
+    resp = client.get("/federation/directory")
+    data = resp.json()
+    assert data["count"] == 1
+    assert data["entries"][0]["relay_url"] == "http://new-relay.example.com:9000"

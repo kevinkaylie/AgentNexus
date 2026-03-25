@@ -161,6 +161,57 @@ def test_tc05_semantic_search():
     asyncio.run(_run())
 
 
+# ── tc06: 通讯录 endpoint 为空 → 自动降级 offline ──────────────
+
+def test_tc06_empty_contact_endpoint_falls_back_offline():
+    """tc06 - contact 存在但 endpoint 为空时，路由自动降级到 offline"""
+    async def _run():
+        r = Router()
+        did_a = generate_did("tc06_sender")
+        did_b = generate_did("tc06_receiver")
+        r.register_local_session(did_a)
+
+        # 注册通讯录但 endpoint 为空字符串（模拟地址已失效）
+        await storage.upsert_contact(did_b, "", None)
+
+        result = await r.route_message(did_a, did_b, "fallback test")
+        assert result["method"] == "offline"
+        assert result["status"] == "queued"
+        print(f"  [tc06 PASS] 空 endpoint 自动降级: method={result['method']}")
+
+    asyncio.run(_run())
+
+
+# ── tc07: 多发送方消息独立存储，fetch_inbox 一次性取回 ──────────
+
+def test_tc07_inbox_multiple_senders():
+    """tc07 - 多个发送方的消息独立存储，fetch_inbox 全部取回且不重复"""
+    async def _run():
+        r = Router()
+        did_a = generate_did("tc07_a")
+        did_b = generate_did("tc07_b")
+        did_c = generate_did("tc07_c")  # 收件人（离线）
+        r.register_local_session(did_a)
+        r.register_local_session(did_b)
+
+        r1 = await r.route_message(did_a, did_c, "from A")
+        r2 = await r.route_message(did_b, did_c, "from B")
+        assert r1["status"] == "queued"
+        assert r2["status"] == "queued"
+
+        inbox = await storage.fetch_inbox(did_c)
+        assert len(inbox) == 2
+        senders = {m["from"] for m in inbox}
+        assert did_a in senders and did_b in senders
+
+        # 再次取收件箱 → 已标记 delivered，不重复返回
+        inbox2 = await storage.fetch_inbox(did_c)
+        assert len(inbox2) == 0
+        print(f"  [tc07 PASS] 两封消息独立存储并取回，第二次为空")
+
+    asyncio.run(_run())
+
+
 if __name__ == "__main__":
     print("=== AgentNexus 自测用例 ===\n")
     tests = [
