@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentnexus"
+version = "0.4.0"
+description = "Decentralized communication network for AI Agents — the WhatsApp for Agents"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "kevinkaylie"},
+]
+keywords = ["agent", "mcp", "p2p", "did", "federation", "ai", "decentralized"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications",
+    "Topic :: System :: Networking",
+]
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "websockets>=12.0",
+    "aiohttp>=3.9.0",
+    "aiosqlite>=0.19.0",
+    "pydantic>=2.5.0",
+    "cryptography>=41.0.0",
+    "aiortc>=1.6.0",
+    "mcp>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "pynacl>=1.5.0",
+    "redis>=5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "fakeredis>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/kevinkaylie/AgentNexus"
+Repository = "https://github.com/kevinkaylie/AgentNexus"
+Issues = "https://github.com/kevinkaylie/AgentNexus/issues"
+Changelog = "https://github.com/kevinkaylie/AgentNexus/blob/main/CHANGELOG.md"
+
+[project.scripts]
+agentnexus = "main:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_net*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

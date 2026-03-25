@@ -9,7 +9,8 @@
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
-  [![Tests](https://img.shields.io/badge/Tests-42%20passing-brightgreen)]()
+  [![Tests](https://img.shields.io/badge/Tests-68%20passing-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
+  [![CI](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml)
 
   **[中文](#-中文文档) | [English](#-english-documentation)**
 </div>
@@ -39,7 +40,7 @@
 | 🌐 **联邦 Relay 网络** | 本地/公网 Relay 互联，1 跳查询，类比 WhatsApp 去中心化服务器集群 |
 | 🛡️ **语义门禁** | 三级隐私控制（Public/Ask/Private）+ 黑白名单，AI 自动审批或人工把关 |
 | 🌀 **智能消息路由** | 四级降级：本地直投 → 远程 P2P → Relay 中转 → 离线存储，消息不丢 |
-| 🔌 **MCP 原生支持** | 11 个标准工具，AI Agent（Claude/GPT 等）通过 MCP 直接操控整个通信网络 |
+| 🔌 **MCP 原生支持** | 12 个标准工具，AI Agent（Claude/GPT 等）通过 MCP 直接操控整个通信网络 |
 | 📡 **STUN 公网穿透** | 纯 UDP 实现，自动获取公网 IP:Port，支持 NAT 穿透 |
 | 🔒 **私钥不出户** | 签名在 Daemon 内完成，私钥永不离开本地进程 |
 
@@ -52,7 +53,7 @@
 │              你的 AI（Claude / GPT / 本地模型）           │
 │         "帮我找一个会翻译的 Agent 然后发消息给它"          │
 └──────────────────────┬──────────────────────────────────┘
-                       │ MCP stdio（11 个工具）
+                       │ MCP stdio（12 个工具）
 ┌──────────────────────▼──────────────────────────────────┐
 │              AgentNexus MCP Server (stdio)               │
 │   register / send / search / get_card / resolve / ...    │
@@ -65,10 +66,10 @@
 │  │谁能加你  │  │本地→P2P→Relay │  │  Agent+私钥+消息  │  │
 │  └──────────┘  └───────────────┘  └──────────────────┘  │
 └──────────────────────┬──────────────────────────────────┘
-                       │ HTTP announce/lookup/relay
+                       │ HTTP announce/lookup/relay（Ed25519 签名）
 ┌──────────────────────▼──────────────────────────────────┐
 │           AgentNexus Relay Server (:9000)                │
-│   本地注册表 + PeerDirectory + 1跳联邦代理               │
+│   签名验证 + TOFU 公钥绑定 + 速率限制 + 1跳联邦代理     │
 │   类比：WhatsApp/微信 的服务器，但可自部署、可联邦        │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -121,7 +122,7 @@ AgentNexus/
     │   └── profile.py         # NexusProfile 名片（sign/verify）
     ├── node/
     │   ├── daemon.py          # FastAPI 后端 :8765
-    │   ├── mcp_server.py      # MCP stdio 服务（11 工具）
+    │   ├── mcp_server.py      # MCP stdio 服务（12 工具）
     │   └── gatekeeper.py      # 访问控制网关
     ├── relay/
     │   └── server.py          # 公网信令+中转+联邦 :9000
@@ -698,7 +699,7 @@ python main.py node mcp
 
 ```bash
 python main.py test
-# 35 tests: tc01-tc05（路由）+ tf01-tf12（联邦+名片+鉴权）+ tg01-tg10（门禁）+ 握手
+# 68 tests: tc01-tc07（路由）+ tf01-tf22 + tr01-tr02 + ts01-ts12（联邦+签名验证）+ tg01-tg10（门禁）+ 握手 + tm01-tm07（MCP绑定）
 ```
 
 ---
@@ -726,12 +727,12 @@ python main.py test
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/announce` | POST | 注册/心跳（TTL=120s） |
+| `/announce` | POST | 注册/心跳（TTL=120s，需 Ed25519 签名 + TOFU） |
 | `/lookup/{did}` | GET | DID 查询（本地 + 1 跳联邦代理） |
 | `/agents` | GET | 列出本地注册 Agent |
 | `/relay` | POST | 消息中转 |
-| `/federation/join` | POST | Relay 加入联邦 |
-| `/federation/announce` | POST | 公告公开 Agent 到 PeerDirectory |
+| `/federation/join` | POST | Relay 加入联邦（回调验证） |
+| `/federation/announce` | POST | 公告公开 Agent 到 PeerDirectory（需签名 NexusProfile） |
 | `/federation/peers` | GET | 列出已知 peer relay |
 | `/federation/directory` | GET | 列出 PeerDirectory 条目 |
 | `/health` | GET | 健康检查（含联邦统计） |
@@ -750,6 +751,8 @@ python main.py test
 | 私钥持久化 | SQLite agents 表（hex 存储），签名不出 Daemon |
 | Challenge TTL | 30 秒 |
 | 写接口鉴权 | secrets.token_hex(32)，存于 data/daemon_token.txt |
+| Relay 签名验证 | Ed25519 签名 + TOFU 公钥绑定 + 时间戳防重放（60s） |
+| 速率限制 | 30 req/min per DID（内存计数器） |
 
 ### 🛠️ 技术栈
 
@@ -803,7 +806,7 @@ Every "duck" (Agent) starts out isolated. Fitted with the retro-futuristic **Nex
 | 🌐 **Federated Relay** | Local + public relays interconnected, 1-hop lookup, decentralized like Signal's servers |
 | 🛡️ **Semantic Gatekeeper** | 3-tier privacy: Public / Ask / Private; AI-automated approval via `/gatekeeper` skill |
 | 🌀 **Smart Routing** | 4-tier fallback: local → P2P → relay → offline queue, messages never lost |
-| 🔌 **Native MCP** | 11 tools, stdio mode — Claude/GPT can control the entire network via natural language |
+| 🔌 **Native MCP** | 12 tools, stdio mode — Claude/GPT can control the entire network via natural language |
 | 📡 **STUN Discovery** | Pure UDP, auto-detects public IP:Port for NAT traversal |
 | 🔒 **Key Isolation** | Signing happens inside Daemon — private key never leaves the local process |
 
@@ -1075,6 +1078,8 @@ update_card(description="v2")         ← did auto-filled
 | Key persistence | SQLite hex storage — signing never leaves Daemon |
 | Challenge TTL | 30 seconds |
 | Write auth | secrets.token_hex(32) in data/daemon_token.txt |
+| Relay signature | Ed25519 signed announce + TOFU pubkey binding + timestamp replay protection (60s) |
+| Rate limiting | 30 req/min per DID (in-memory counter) |
 
 ### 🛠️ Tech Stack
 
