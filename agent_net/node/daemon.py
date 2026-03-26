@@ -29,7 +29,7 @@ from agent_net.common.constants import (
     NODE_CONFIG_FILE, DATA_DIR, DAEMON_TOKEN_FILE,
     RELAY_HEARTBEAT_INTERVAL, FEDERATION_PROXY_TIMEOUT,
 )
-from agent_net.common.did import DIDGenerator, AgentProfile
+from agent_net.common.did import DIDGenerator, AgentProfile, DIDResolver, DIDError, build_services_from_profile
 from agent_net.common.profile import canonical_announce
 from agent_net.storage import (
     init_db, register_agent, list_local_agents, get_agent,
@@ -172,7 +172,7 @@ async def lifespan(app: FastAPI):
         _heartbeat_task.cancel()
 
 
-app = FastAPI(title="AgentNet Node Daemon", version="0.5.0", lifespan=lifespan)
+app = FastAPI(title="AgentNet Node Daemon", version="0.6.0", lifespan=lifespan)
 
 
 # ── 请求模型 ──────────────────────────────────────────────────
@@ -186,6 +186,7 @@ class RegisterRequest(BaseModel):
     is_public: bool = False
     description: str = ""
     tags: list[str] = []
+    did_format: str = "agentnexus"  # "agentnexus" | "agent" (legacy)
 
 
 class SendMessageRequest(BaseModel):
@@ -227,9 +228,20 @@ class CertifyRequest(BaseModel):
 async def api_register_agent(req: RegisterRequest, _=Depends(_require_token)):
     global _heartbeat_task
 
-    agent_did_obj = DIDGenerator.create_new(req.name)
-    did = req.did or agent_did_obj.did
-    signing_key = agent_did_obj.private_key
+    # 生成 DID：默认使用 did:agentnexus 格式（W3C 兼容），支持回退到 did:agent（旧格式）
+    if req.did:
+        did = req.did
+        agent_did_obj = DIDGenerator.create_new(req.name)
+        signing_key = agent_did_obj.private_key
+    elif req.did_format == "agent":
+        agent_did_obj = DIDGenerator.create_new(req.name)
+        did = agent_did_obj.did
+        signing_key = agent_did_obj.private_key
+    else:
+        # did:agentnexus (默认)
+        agent_did_obj, _ = DIDGenerator.create_agentnexus(req.name)
+        did = agent_did_obj.did
+        signing_key = agent_did_obj.private_key
 
     endpoint = f"http://localhost:{NODE_PORT}"
     if _public_endpoint:
@@ -245,6 +257,7 @@ async def api_register_agent(req: RegisterRequest, _=Depends(_require_token)):
     profile_dict["description"] = req.description
     profile_dict["tags"] = req.tags or req.capabilities
     profile_dict["is_public"] = req.is_public
+    profile_dict["public_key_hex"] = signing_key.verify_key.encode().hex()
 
     from nacl.encoding import HexEncoder
     pk_hex = signing_key.encode(HexEncoder).decode()
@@ -293,6 +306,80 @@ async def api_list_local_agents():
 async def api_search_agents(keyword: str):
     results = await search_agents_by_capability(keyword)
     return {"results": results, "count": len(results)}
+
+
+@app.get("/resolve/{did:path}")
+async def api_resolve_did(did: str):
+    """
+    W3C DID Resolution — 返回 DID Document + service 数组
+
+    解析优先级:
+      1. 本地 agent (is_local=1) → 从私钥推导公钥，构建 DID Doc + services
+      2. 非本地 agent → 从 profile 中的 public_key_hex 构建
+      3. did:agentnexus 纯密码学解析（无需数据库）
+      4. 转发到 relay（若已配置）
+      5. 404
+    """
+    from nacl.signing import SigningKey
+
+    resolver = DIDResolver()
+
+    # 1 & 2: 查本地数据库
+    agent = await get_agent(did)
+    if agent:
+        profile = agent.get("profile", {}) if isinstance(agent.get("profile"), dict) else {}
+        pubkey_bytes = None
+
+        # 优先从私钥推导
+        private_key_hex = await get_private_key(did)
+        if private_key_hex:
+            try:
+                sk = SigningKey(bytes.fromhex(private_key_hex))
+                pubkey_bytes = sk.verify_key.encode()
+            except Exception:
+                pass
+
+        # 回退到 profile 中的 public_key_hex
+        if not pubkey_bytes:
+            pubkey_hex = profile.get("public_key_hex")
+            if pubkey_hex:
+                try:
+                    pubkey_bytes = bytes.fromhex(pubkey_hex)
+                except ValueError:
+                    pass
+
+        if pubkey_bytes:
+            node_config = _load_node_config()
+            relay_url = node_config.get("local_relay", "")
+            services = build_services_from_profile(profile, relay_url)
+            doc = resolver._build_did_document(did, pubkey_bytes, services)
+            return {"didDocument": doc, "source": "local_db"}
+
+    # 3. did:agentnexus 纯密码学解析
+    try:
+        result = await resolver.resolve(did)
+        return {"didDocument": result.did_document, "source": "cryptographic"}
+    except DIDError:
+        pass
+
+    # 4. 转发到 relay
+    node_config = _load_node_config()
+    relay_url = node_config.get("local_relay", "")
+    if relay_url:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{relay_url.rstrip('/')}/resolve/{did}",
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        data["_via_relay"] = relay_url
+                        return data
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=404, detail=f"Cannot resolve DID: {did}")
 
 
 @app.get("/agents/{did}")
@@ -407,6 +494,80 @@ async def api_get_certifications(did: str):
     """获取 Agent 的所有认证"""
     certs = await get_certifications(did)
     return {"certifications": certs, "count": len(certs)}
+
+
+# ── 密钥导出/导入 API ──────────────────────────────────────────
+
+class ExportRequest(BaseModel):
+    password: str
+
+
+class ImportRequest(BaseModel):
+    data: str   # export_agent() 返回的 JSON bytes → base64 or raw str
+    password: str
+
+
+@app.get("/agents/{did}/export")
+async def api_export_agent(did: str, password: str, _=Depends(_require_token)):
+    """
+    导出 Agent 身份包（加密）
+
+    Query params:
+        password: 加密密码
+    """
+    from agent_net.common.keystore import export_agent as _export_agent
+
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+
+    private_key_hex = await get_private_key(did)
+    if not private_key_hex:
+        raise HTTPException(400, "No private key stored for this agent")
+
+    profile = agent.get("profile", {}) or {}
+    certs = await get_certifications(did)
+
+    encrypted_bytes = _export_agent(
+        did=did,
+        private_key_hex=private_key_hex,
+        profile=profile,
+        password=password,
+        certifications=certs,
+    )
+    return {"data": encrypted_bytes.decode("utf-8")}
+
+
+@app.post("/agents/import")
+async def api_import_agent(req: ImportRequest, _=Depends(_require_token)):
+    """
+    导入 Agent 身份包（解密后注册到本地数据库）
+
+    如 DID 已存在则更新私钥和 profile。
+    """
+    from agent_net.common.keystore import import_agent as _import_agent
+
+    try:
+        payload = _import_agent(req.data.encode("utf-8"), req.password)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    did = payload["did"]
+    private_key_hex = payload["private_key_hex"]
+    profile = payload.get("profile", {})
+    certs = payload.get("certifications", [])
+
+    # 注册到本地数据库（upsert 语义）
+    await register_agent(did, profile, is_local=True, private_key_hex=private_key_hex)
+
+    # 恢复认证
+    for cert in certs:
+        try:
+            await add_certification(did, cert)
+        except Exception:
+            pass
+
+    return {"status": "ok", "did": did, "certifications_restored": len(certs)}
 
 
 # ── 消息 API ──────────────────────────────────────────────────

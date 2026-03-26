@@ -27,6 +27,7 @@ from agent_net.common.constants import (
 from agent_net.common.profile import (
     NexusProfile, verify_signed_payload, canonical_announce,
 )
+from agent_net.common.did import DIDResolver, DIDError, build_services_from_profile
 
 # ── Redis 客户端 ─────────────────────────────────────────────
 _redis: aioredis.Redis | None = None
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI):
     await _redis.aclose()
 
 
-app = FastAPI(title="AgentNet Relay/Signaling Server", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="AgentNet Relay/Signaling Server", version="0.6.0", lifespan=lifespan)
 
 
 # ── 请求/响应模型 ─────────────────────────────────────────────
@@ -327,6 +328,60 @@ async def relay_message(payload: dict):
 
 
 # ── 调试 / 健康 ───────────────────────────────────────────────
+
+@app.get("/resolve/{did:path}")
+async def resolve_did(did: str):
+    """
+    W3C DID Resolution — 返回 DID Document + service 数组
+
+    解析优先级:
+      1. 查本地注册表 → 用 announce 中的 pubkey 构建 DID Doc + service
+      2. 查 PeerDirectory → 含 relay service
+      3. 纯密码学解析 (did:agentnexus multikey) — 无需网络
+      4. 404
+    """
+    resolver = DIDResolver()
+
+    # 1. 本地注册表
+    raw = await _redis.get(f"{_REG_PREFIX}{did}")
+    if raw:
+        info = json.loads(raw)
+        pubkey_hex = info.get("pubkey_hex") or info.get("public_key_hex")
+        if pubkey_hex:
+            try:
+                pubkey_bytes = bytes.fromhex(pubkey_hex)
+                relay_url = ""
+                services = build_services_from_profile(info, relay_url)
+                doc = resolver._build_did_document(did, pubkey_bytes, services)
+                return {"didDocument": doc, "source": "local_registry"}
+            except Exception:
+                pass
+
+    # 2. PeerDirectory
+    peer_raw = await _redis.get(f"{_DIR_PREFIX}{did}")
+    if peer_raw:
+        peer_entry = json.loads(peer_raw)
+        pubkey_hex = peer_entry.get("pubkey_hex") or peer_entry.get("public_key_hex")
+        relay_url = peer_entry.get("relay_url", "")
+        if pubkey_hex:
+            try:
+                pubkey_bytes = bytes.fromhex(pubkey_hex)
+                services = build_services_from_profile(peer_entry, relay_url)
+                doc = resolver._build_did_document(did, pubkey_bytes, services)
+                return {"didDocument": doc, "source": "peer_directory", "_via_relay": relay_url}
+            except Exception:
+                pass
+
+    # 3. 纯密码学解析 (did:agentnexus)
+    try:
+        result = await resolver.resolve(did)
+        doc = result.did_document
+        return {"didDocument": doc, "source": "cryptographic"}
+    except DIDError:
+        pass
+
+    raise HTTPException(status_code=404, detail=f"Cannot resolve DID: {did}")
+
 
 @app.get("/agents")
 async def list_agents():

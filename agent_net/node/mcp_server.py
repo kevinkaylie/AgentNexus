@@ -164,6 +164,22 @@ async def list_tools() -> list[Tool]:
                           "properties": {
                               "did": {"type": "string", "description": "Target DID; omit when bound to get own certifications"},
                           }}),
+        Tool(name="export_agent",
+             description="Export an Agent's identity (DID + private key + profile + certifications) as an encrypted bundle. "
+                         "did can be omitted when bound.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "did": {"type": "string", "description": "Agent DID; omit when bound"},
+                              "password": {"type": "string", "description": "Password to encrypt the export bundle"},
+                          }, "required": ["password"]}),
+        Tool(name="import_agent",
+             description="Import an Agent identity from an encrypted bundle (created by export_agent). "
+                         "Restores DID, private key, profile and certifications.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "data": {"type": "string", "description": "The encrypted bundle (JSON string from export_agent)"},
+                              "password": {"type": "string", "description": "Password to decrypt the bundle"},
+                          }, "required": ["data", "password"]}),
     ]
 
 
@@ -258,6 +274,27 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     result = {"error": "No DID bound — provide did or start with --name"}
                 else:
                     result = await _call("get", f"/agents/{did}/certifications")
+
+            case "export_agent":
+                did = arguments.get("did") or _MY_DID
+                if not did:
+                    result = {"error": "No DID bound — provide did or start with --name"}
+                else:
+                    password = arguments.get("password", "")
+                    if not password:
+                        result = {"error": "password is required for export_agent"}
+                    else:
+                        result = await _call("get", f"/agents/{did}/export",
+                                             params={"password": password})
+
+            case "import_agent":
+                data = arguments.get("data", "")
+                password = arguments.get("password", "")
+                if not data or not password:
+                    result = {"error": "data and password are required for import_agent"}
+                else:
+                    result = await _call("post", "/agents/import",
+                                         json={"data": data, "password": password})
 
             case _:
                 result = {"error": f"Unknown tool: {name}"}

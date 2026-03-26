@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.6.0] - 2026-03-26
+
+### Added
+- **W3C DID Method `did:agentnexus`** — new DID format based on Ed25519 multikey encoding
+  - Format: `did:agentnexus:z<base58btc(0xED01 || pubkey)>`
+  - New `DIDGenerator.create_agentnexus()` in `common/did.py`
+  - `DIDResolver` supports resolution of `did:agentnexus` by pure crypto (no network)
+- **W3C DID Document** — `_build_did_document()` now outputs full W3C-compliant DID Doc
+  - `Ed25519VerificationKey2018` verification method with multibase encoding
+  - `X25519KeyAgreementKey2019` derived from Ed25519 pubkey for ECDH
+  - Optional `service` array (relay endpoint + agent endpoint)
+- **`GET /resolve/{did}` on Relay** — returns W3C DID Document + source metadata
+  - Checks local registry → PeerDirectory → pure crypto (did:agentnexus)
+- **`GET /resolve/{did}` on Daemon** — returns W3C DID Document with service endpoints
+  - Derives pubkey from stored private key for local agents
+  - Falls back to relay for non-local DIDs
+- **Key export/import** — `agent_net/common/keystore.py`
+  - `export_agent()`: argon2id KDF + AES-256-GCM (nacl SecretBox) encryption
+  - `import_agent()`: decrypt and restore DID + private key + profile + certifications
+  - Daemon endpoints: `GET /agents/{did}/export`, `POST /agents/import` (token required)
+  - CLI: `python main.py agent export <did> --output <file> --password <pw>`
+  - CLI: `python main.py agent import <file> --password <pw>`
+  - MCP tools: `export_agent` (16th) and `import_agent` (17th)
+- **`build_services_from_profile()`** helper in `common/did.py` for DID Doc service extraction
+- **44 new tests** in `tests/test_did_resolution.py` (new endpoint tests + async fixes) and `tests/test_keystore.py` (tk01–tk05)
+
+### Changed
+- `RegisterRequest` now defaults to `did_format="agentnexus"` — new agents get `did:agentnexus:z...` DIDs
+  - `did_format="agent"` preserves legacy `did:agent:<hex>` behavior
+  - `public_key_hex` saved to profile for DID resolution without private key
+- Relay version: `0.3.0` → `0.6.0`
+- Daemon version: `0.5.0` → `0.6.0`
+- `requirements.txt`: added `httpx>=0.27.0` (for `did:web` resolution)
+
+### Technical
+- Total tests: 124 (up from 80 in v0.5)
+- All existing tests pass unchanged
+
+---
+
 ## [0.5.0] - 2026-03-26
 
 ### Added

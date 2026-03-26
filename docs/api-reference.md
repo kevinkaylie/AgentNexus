@@ -12,6 +12,7 @@
 |------|------|------|
 | `/announce` | POST | 注册/心跳（TTL=120s，需 Ed25519 签名 + TOFU） |
 | `/lookup/{did}` | GET | DID 查询（本地 + 1 跳联邦代理） |
+| `/resolve/{did}` | GET | W3C DID Resolution（返回 DID Document + service 数组） |
 | `/agents` | GET | 列出本地注册 Agent |
 | `/relay` | POST | 消息中转 |
 | `/federation/join` | POST | Relay 加入联邦（回调验证） |
@@ -24,7 +25,7 @@
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/agents/register` | POST | 注册 Agent（需 Token） |
+| `/agents/register` | POST | 注册 Agent（需 Token，默认 did:agentnexus 格式） |
 | `/agents/local` | GET | 列出本地 Agent |
 | `/agents/search/{keyword}` | GET | 按能力搜索 Agent |
 | `/agents/{did}` | GET | 获取 Agent 详情 |
@@ -32,6 +33,9 @@
 | `/agents/{did}/card` | PATCH | 更新名片字段并重签（需 Token） |
 | `/agents/{did}/certify` | POST | 为 Agent 签发认证（需 Token） |
 | `/agents/{did}/certifications` | GET | 获取 Agent 的所有认证 |
+| `/agents/{did}/export` | GET | 导出 Agent 身份包（加密，需 Token + ?password=） |
+| `/agents/import` | POST | 导入 Agent 身份包（解密恢复，需 Token） |
+| `/resolve/{did}` | GET | W3C DID Resolution（本地优先，回落到 relay） |
 | `/messages/send` | POST | 发送消息（支持 session_id、reply_to） |
 | `/messages/inbox/{did}` | GET | 获取未读消息（含 session_id、reply_to） |
 | `/messages/session/{session_id}` | GET | 按会话 ID 查询完整对话历史 |
@@ -126,6 +130,7 @@
 |----------|--------|-------------|
 | `/announce` | POST | Register/heartbeat (TTL=120s, requires Ed25519 signature + TOFU) |
 | `/lookup/{did}` | GET | DID lookup (local + 1-hop federation proxy) |
+| `/resolve/{did}` | GET | W3C DID Resolution (returns DID Document + service array) |
 | `/agents` | GET | List locally registered agents |
 | `/relay` | POST | Message relay |
 | `/federation/join` | POST | Relay joins federation (callback verification) |

@@ -54,6 +54,15 @@ import asyncio
 import os
 
 
+def _read_token() -> str:
+    """从 data/daemon_token.txt 读取 daemon Token（写接口鉴权用）"""
+    from agent_net.common.constants import DAEMON_TOKEN_FILE
+    if os.path.exists(DAEMON_TOKEN_FILE):
+        with open(DAEMON_TOKEN_FILE) as f:
+            return f.read().strip()
+    return ""
+
+
 def _usage():
     print(__doc__)
     sys.exit(1)
@@ -466,6 +475,69 @@ async def agent_cmd(sub: str, args: list[str]):
                     else:
                         text = await resp.text()
                         print(f"Daemon returned {resp.status}: {text}")
+        except _aiohttp.ClientConnectorError:
+            print("Cannot connect to Node Daemon (run: python main.py node start)")
+
+    # ── export ────────────────────────────────────────────
+    elif sub == "export":
+        import argparse as _ap
+        _p = _ap.ArgumentParser(prog="agent export")
+        _p.add_argument("did")
+        _p.add_argument("--output", "-o", required=True, help="Output file path")
+        _p.add_argument("--password", "-p", required=True, help="Encryption password")
+        _ns = _p.parse_args(args)
+        import json as _json
+        import aiohttp as _aiohttp
+        token = _read_token()
+        try:
+            async with _aiohttp.ClientSession() as s:
+                async with s.get(
+                    f"http://localhost:8765/agents/{_ns.did}/export",
+                    params={"password": _ns.password},
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=_aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        with open(_ns.output, "w", encoding="utf-8") as f:
+                            f.write(data["data"])
+                        print(f"Agent exported to {_ns.output}")
+                    elif resp.status == 404:
+                        print(f"DID not found: {_ns.did}")
+                    else:
+                        text = await resp.text()
+                        print(f"Daemon returned {resp.status}: {text}")
+        except _aiohttp.ClientConnectorError:
+            print("Cannot connect to Node Daemon (run: python main.py node start)")
+
+    # ── import ────────────────────────────────────────────
+    elif sub == "import":
+        import argparse as _ap
+        _p = _ap.ArgumentParser(prog="agent import")
+        _p.add_argument("file", help="Identity bundle file to import")
+        _p.add_argument("--password", "-p", required=True, help="Decryption password")
+        _ns = _p.parse_args(args)
+        import aiohttp as _aiohttp
+        token = _read_token()
+        try:
+            with open(_ns.file, "r", encoding="utf-8") as f:
+                bundle_data = f.read()
+            async with _aiohttp.ClientSession() as s:
+                async with s.post(
+                    "http://localhost:8765/agents/import",
+                    json={"data": bundle_data, "password": _ns.password},
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=_aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        print(f"Agent imported: {data['did']}")
+                        print(f"Certifications restored: {data['certifications_restored']}")
+                    else:
+                        text = await resp.text()
+                        print(f"Daemon returned {resp.status}: {text}")
+        except FileNotFoundError:
+            print(f"File not found: {_ns.file}")
         except _aiohttp.ClientConnectorError:
             print("Cannot connect to Node Daemon (run: python main.py node start)")
 
