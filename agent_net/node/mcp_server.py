@@ -75,13 +75,19 @@ async def list_tools() -> list[Tool]:
              inputSchema={"type": "object", "properties": {}}),
         Tool(name="send_message",
              description=f"Send a message to a target DID (auto-routed){bound_hint}. "
-                         "from_did can be omitted when bound.",
+                         "from_did can be omitted when bound. "
+                         "session_id can be omitted for a new conversation (auto-generated). "
+                         "reply_to is the message id this replies to.",
              inputSchema={"type": "object",
                           "properties": {
                               "from_did": {"type": "string",
                                            "description": "Sender DID; omit when bound"},
                               "to_did": {"type": "string"},
                               "content": {"type": "string"},
+                              "session_id": {"type": "string",
+                                             "description": "Conversation ID; omit to start new conversation"},
+                              "reply_to": {"type": "integer",
+                                           "description": "Message ID this replies to"},
                           }, "required": ["to_did", "content"]}),
         Tool(name="fetch_inbox",
              description=f"Fetch offline message inbox{inbox_hint}. did can be omitted when bound.",
@@ -134,6 +140,29 @@ async def list_tools() -> list[Tool]:
                               "name": {"type": "string"},
                               "description": {"type": "string"},
                               "tags": {"type": "array", "items": {"type": "string"}},
+                          }}),
+        Tool(name="get_session",
+             description="Retrieve full conversation history for a session_id (includes all messages, both read and unread).",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "session_id": {"type": "string",
+                                             "description": "The conversation session ID"},
+                          }, "required": ["session_id"]}),
+        Tool(name="certify_agent",
+             description="Issue a certification for a target Agent. The issuer (this agent when bound) signs the claim with its private key. "
+                         "issuer_did can be omitted when bound.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "target_did": {"type": "string", "description": "DID of the agent to certify"},
+                              "issuer_did": {"type": "string", "description": "DID of the issuer; omit when bound"},
+                              "claim": {"type": "string", "description": "Certification claim (e.g. 'payment_verified', 'service_quality_A')"},
+                              "evidence": {"type": "string", "description": "Supporting evidence (e.g. transaction hash, interaction count)"},
+                          }, "required": ["target_did", "claim"]}),
+        Tool(name="get_certifications",
+             description="Get all certifications for an Agent. Each certification is independently signed by its issuer.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "did": {"type": "string", "description": "Target DID; omit when bound to get own certifications"},
                           }}),
     ]
 
@@ -203,6 +232,32 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     result = {"error": "No DID bound — provide did or start with --name"}
                 else:
                     result = await _call("patch", f"/agents/{did}/card", json=arguments)
+
+            case "get_session":
+                sid = arguments.get("session_id", "")
+                if not sid:
+                    result = {"error": "session_id is required"}
+                else:
+                    result = await _call("get", f"/messages/session/{sid}")
+
+            case "certify_agent":
+                issuer = arguments.get("issuer_did") or _MY_DID
+                if not issuer:
+                    result = {"error": "No DID bound — provide issuer_did or start with --name"}
+                else:
+                    target = arguments["target_did"]
+                    result = await _call("post", f"/agents/{target}/certify", json={
+                        "issuer_did": issuer,
+                        "claim": arguments["claim"],
+                        "evidence": arguments.get("evidence", ""),
+                    })
+
+            case "get_certifications":
+                did = arguments.get("did") or _MY_DID
+                if not did:
+                    result = {"error": "No DID bound — provide did or start with --name"}
+                else:
+                    result = await _call("get", f"/agents/{did}/certifications")
 
             case _:
                 result = {"error": f"Unknown tool: {name}"}

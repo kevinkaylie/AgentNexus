@@ -15,6 +15,7 @@ import json
 import os
 import secrets
 import time
+import uuid
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, Depends
@@ -32,9 +33,10 @@ from agent_net.common.did import DIDGenerator, AgentProfile
 from agent_net.common.profile import canonical_announce
 from agent_net.storage import (
     init_db, register_agent, list_local_agents, get_agent,
-    fetch_inbox, search_agents_by_capability, upsert_contact,
+    fetch_inbox, fetch_session, search_agents_by_capability, upsert_contact,
     list_pending, get_pending, resolve_pending,
     store_private_key, get_private_key, update_agent_profile,
+    add_certification, get_certifications,
 )
 from agent_net.router import router
 from agent_net.stun import get_public_endpoint
@@ -170,7 +172,7 @@ async def lifespan(app: FastAPI):
         _heartbeat_task.cancel()
 
 
-app = FastAPI(title="AgentNet Node Daemon", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="AgentNet Node Daemon", version="0.5.0", lifespan=lifespan)
 
 
 # ── 请求模型 ──────────────────────────────────────────────────
@@ -190,6 +192,8 @@ class SendMessageRequest(BaseModel):
     from_did: str
     to_did: str
     content: str
+    session_id: str = ""
+    reply_to: int | None = None
 
 
 class AddContactRequest(BaseModel):
@@ -208,6 +212,13 @@ class UpdateCardRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[list[str]] = None
+
+
+class CertifyRequest(BaseModel):
+    """认证请求：issuer 为 target_did 签发认证"""
+    issuer_did: str
+    claim: str
+    evidence: str = ""
 
 
 # ── Agent 管理 API ────────────────────────────────────────────
@@ -315,6 +326,9 @@ async def api_get_nexus_profile(did: str):
         relay=RELAY_URL,
         direct=p.get("endpoints", {}).get("p2p"),
     )
+    # 追加已有的认证（不影响 content 签名）
+    for cert in p.get("certifications", []):
+        nexus.add_certification(cert)
     return nexus.to_dict()
 
 
@@ -364,19 +378,58 @@ async def api_update_card(did: str, req: UpdateCardRequest, _=Depends(_require_t
     return nexus.to_dict()
 
 
+@app.post("/agents/{did}/certify")
+async def api_certify_agent(did: str, req: CertifyRequest, _=Depends(_require_token)):
+    """为 Agent 签发认证：issuer 用自己的私钥签名，认证追加到目标 Agent 的 profile"""
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, "Target agent not found")
+    # issuer 必须是本地 Agent 且有私钥
+    issuer_pk_hex = await get_private_key(req.issuer_did)
+    if not issuer_pk_hex:
+        raise HTTPException(409, f"Private key not available for issuer {req.issuer_did}")
+    from agent_net.common.profile import create_certification
+    from nacl.signing import SigningKey
+    issuer_sk = SigningKey(bytes.fromhex(issuer_pk_hex))
+    cert = create_certification(
+        target_did=did,
+        issuer_did=req.issuer_did,
+        issuer_signing_key=issuer_sk,
+        claim=req.claim,
+        evidence=req.evidence,
+    )
+    await add_certification(did, cert)
+    return {"status": "ok", "certification": cert}
+
+
+@app.get("/agents/{did}/certifications")
+async def api_get_certifications(did: str):
+    """获取 Agent 的所有认证"""
+    certs = await get_certifications(did)
+    return {"certifications": certs, "count": len(certs)}
+
+
 # ── 消息 API ──────────────────────────────────────────────────
 
 @app.post("/messages/send")
 async def api_send_message(req: SendMessageRequest):
     if not router.is_local(req.to_did):
         await _resolve_from_relay(req.to_did)
-    return await router.route_message(req.from_did, req.to_did, req.content)
+    session_id = req.session_id or f"sess_{uuid.uuid4().hex[:16]}"
+    return await router.route_message(req.from_did, req.to_did, req.content,
+                                      session_id, req.reply_to)
 
 
 @app.get("/messages/inbox/{did}")
 async def api_fetch_inbox(did: str):
     messages = await fetch_inbox(did)
     return {"messages": messages, "count": len(messages)}
+
+
+@app.get("/messages/session/{session_id}")
+async def api_fetch_session(session_id: str):
+    messages = await fetch_session(session_id)
+    return {"messages": messages, "count": len(messages), "session_id": session_id}
 
 
 # ── 通讯录 / STUN ─────────────────────────────────────────────
@@ -569,7 +622,9 @@ async def api_deliver(payload: dict):
     content = payload.get("content")
     if not all([from_did, to_did, content]):
         raise HTTPException(400, "Missing fields")
-    return await router.route_message(from_did, to_did, content)
+    session_id = payload.get("session_id", "")
+    reply_to = payload.get("reply_to")
+    return await router.route_message(from_did, to_did, content, session_id, reply_to)
 
 
 async def _resolve_from_relay(did: str):

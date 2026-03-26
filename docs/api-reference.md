@@ -20,6 +20,29 @@
 | `/federation/directory` | GET | 列出 PeerDirectory 条目 |
 | `/health` | GET | 健康检查（含联邦统计） |
 
+### Node Daemon API
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/agents/register` | POST | 注册 Agent（需 Token） |
+| `/agents/local` | GET | 列出本地 Agent |
+| `/agents/search/{keyword}` | GET | 按能力搜索 Agent |
+| `/agents/{did}` | GET | 获取 Agent 详情 |
+| `/agents/{did}/profile` | GET | 获取签名 NexusProfile（含 certifications） |
+| `/agents/{did}/card` | PATCH | 更新名片字段并重签（需 Token） |
+| `/agents/{did}/certify` | POST | 为 Agent 签发认证（需 Token） |
+| `/agents/{did}/certifications` | GET | 获取 Agent 的所有认证 |
+| `/messages/send` | POST | 发送消息（支持 session_id、reply_to） |
+| `/messages/inbox/{did}` | GET | 获取未读消息（含 session_id、reply_to） |
+| `/messages/session/{session_id}` | GET | 按会话 ID 查询完整对话历史 |
+| `/contacts/add` | POST | 添加通讯录（需 Token） |
+| `/stun/endpoint` | GET | 获取公网 IP:Port |
+| `/gate/pending` | GET | 查看待审批请求 |
+| `/gate/resolve` | POST | 审批请求（需 Token） |
+| `/gate/mode` | GET/POST | 获取/设置访问控制模式 |
+| `/node/config/*` | GET/POST | Relay 配置管理 |
+| `/health` | GET | 健康检查 |
+
 ### 密码学实现
 
 | 用途 | 算法 |
@@ -52,7 +75,7 @@
 | 表名 | 说明 |
 |------|------|
 | `agents` | DID、Profile、is_local、last_seen、private_key_hex |
-| `messages` | 离线消息，`delivered=1` 防重复投递 |
+| `messages` | 离线消息，`delivered=1` 防重复投递，`session_id` 会话标识，`reply_to` 回复 |
 | `contacts` | 远程 Agent 通讯录（endpoint/relay） |
 | `pending_requests` | Gatekeeper PENDING 状态握手请求 |
 

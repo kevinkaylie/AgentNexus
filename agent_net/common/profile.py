@@ -29,7 +29,7 @@ from nacl.encoding import HexEncoder, RawEncoder
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
-from agent_net.common.constants import NEXUS_VERSION, NEXUS_CONTENT_SCHEMA_VERSION
+from agent_net.common.constants import NEXUS_VERSION, NEXUS_CONTENT_SCHEMA_VERSION, NEXUS_CERTIFICATION_VERSION
 
 
 # ── 工具函数 ─────────────────────────────────────────────────
@@ -66,6 +66,51 @@ def verify_signed_payload(payload: bytes, signature_hex: str, pubkey_hex: str) -
     return True
 
 
+def _canonical_certification(did: str, claim: str, evidence: str, issued_at: float) -> bytes:
+    """生成 certification 签名载荷的 canonical JSON bytes"""
+    obj = {"claim": claim, "did": did, "evidence": evidence, "issued_at": issued_at}
+    return json.dumps(obj, sort_keys=True, separators=(',', ':')).encode('utf-8')
+
+
+def create_certification(
+    target_did: str,
+    issuer_did: str,
+    issuer_signing_key: SigningKey,
+    claim: str,
+    evidence: str = "",
+) -> dict:
+    """
+    签发一条认证：issuer 用自己的私钥为 target_did 签名。
+    返回完整的 certification dict。
+    """
+    issued_at = time.time()
+    canonical = _canonical_certification(target_did, claim, evidence, issued_at)
+    raw_sig = issuer_signing_key.sign(canonical, encoder=RawEncoder).signature
+    issuer_pubkey = issuer_signing_key.verify_key.encode(HexEncoder).decode()
+    return {
+        "version": NEXUS_CERTIFICATION_VERSION,
+        "issuer": issuer_did,
+        "issuer_pubkey": issuer_pubkey,
+        "claim": claim,
+        "evidence": evidence,
+        "issued_at": issued_at,
+        "signature": raw_sig.hex(),
+    }
+
+
+def verify_certification(cert: dict, target_did: str) -> bool:
+    """
+    验证一条认证的签名。成功返回 True，失败抛 BadSignatureError。
+    """
+    canonical = _canonical_certification(
+        target_did, cert["claim"], cert.get("evidence", ""), cert["issued_at"],
+    )
+    vk = VerifyKey(bytes.fromhex(cert["issuer_pubkey"]))
+    sig_bytes = bytes.fromhex(cert["signature"])
+    vk.verify(canonical, sig_bytes)
+    return True
+
+
 # ── 主类 ─────────────────────────────────────────────────────
 
 @dataclass
@@ -79,6 +124,7 @@ class NexusProfile:
     header: dict
     content: dict
     signature: str = ""
+    certifications: list[dict] | None = None
 
     # ── 构造 ─────────────────────────────────────────────────
 
@@ -139,11 +185,14 @@ class NexusProfile:
     # ── 序列化 ────────────────────────────────────────────────
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "header": dict(self.header),
             "content": dict(self.content),
             "signature": self.signature,
         }
+        if self.certifications:
+            d["certifications"] = list(self.certifications)
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "NexusProfile":
@@ -151,6 +200,7 @@ class NexusProfile:
             header=data["header"],
             content=data["content"],
             signature=data.get("signature", ""),
+            certifications=data.get("certifications"),
         )
 
     # ── 便捷属性 ──────────────────────────────────────────────
@@ -182,6 +232,13 @@ class NexusProfile:
     @property
     def updated_at(self) -> float:
         return self.content.get("updated_at", 0.0)
+
+    def add_certification(self, cert: dict) -> "NexusProfile":
+        """追加一条认证（不影响 content 签名）"""
+        if self.certifications is None:
+            self.certifications = []
+        self.certifications.append(cert)
+        return self
 
     def __repr__(self) -> str:
         return (

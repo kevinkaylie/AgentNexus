@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.5.0] - 2026-03-26
+
+### Added
+- **Session management** — messages now carry `session_id` and `reply_to` fields for conversation continuity
+  - Auto-generated `sess_<uuid>` when omitted; explicit session ID preserved when provided
+  - New endpoint `GET /messages/session/{session_id}` for full conversation history
+  - New MCP tool `get_session` (13th tool) for retrieving conversation context
+- **Multi-party certification system** — NexusProfile supports third-party signed certifications
+  - `certifications` top-level field (outside signed `content`, independently verifiable)
+  - Each certification: `{issuer, issuer_pubkey, claim, evidence, issued_at, signature}`
+  - New helper functions: `create_certification()`, `verify_certification()` in `profile.py`
+  - New endpoint `POST /agents/{did}/certify` for issuing certifications (token required)
+  - New endpoint `GET /agents/{did}/certifications` for listing certifications
+  - New MCP tools: `certify_agent` (14th) and `get_certifications` (15th)
+  - `GET /agents/{did}/profile` now includes certifications in response
+- **Giskard integration proposal** — `docs/giskard-proposal.md` with technical alignment plan
+- 12 new tests (tv01–tv12) in `tests/test_v05.py`
+
+### Changed
+- `SendMessageRequest` extended with `session_id` and `reply_to` fields
+- `store_message()` and `fetch_inbox()` support session_id and reply_to
+- `router.route_message()` passes session_id and reply_to through all routing paths
+- Total MCP tools: 12 → 15
+- Total test count: 68 → 80
+
 ## [0.4.0] - 2025-03-25
 
 ### Added

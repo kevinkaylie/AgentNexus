@@ -24,53 +24,62 @@ class Router:
     def is_local(self, did: str) -> bool:
         return did in self._local_sessions
 
-    async def route_message(self, from_did: str, to_did: str, content: str) -> dict:
+    async def route_message(self, from_did: str, to_did: str, content: str,
+                            session_id: str = "", reply_to: int | None = None) -> dict:
         """路由消息：本地直投 -> 远程P2P -> Relay -> 离线存储"""
         # 1. 本地直投
         if self.is_local(to_did):
             await self._local_sessions[to_did].put({
                 "from": from_did,
                 "content": content,
+                "session_id": session_id,
+                "reply_to": reply_to,
             })
-            return {"status": "delivered", "method": "local"}
+            return {"status": "delivered", "method": "local", "session_id": session_id}
 
         # 2. 查通讯录，尝试远程投递
         contact = await storage.get_contact(to_did)
         if contact and contact.get("endpoint"):
             try:
-                result = await self._send_remote(from_did, to_did, content, contact["endpoint"])
+                result = await self._send_remote(from_did, to_did, content, contact["endpoint"],
+                                                 session_id, reply_to)
                 if result:
-                    return {"status": "delivered", "method": "p2p"}
+                    return {"status": "delivered", "method": "p2p", "session_id": session_id}
             except Exception:
                 pass
 
         # 3. 尝试 Relay
         if contact and contact.get("relay"):
             try:
-                result = await self._send_relay(from_did, to_did, content, contact["relay"])
+                result = await self._send_relay(from_did, to_did, content, contact["relay"],
+                                                session_id, reply_to)
                 if result:
-                    return {"status": "delivered", "method": "relay"}
+                    return {"status": "delivered", "method": "relay", "session_id": session_id}
             except Exception:
                 pass
 
         # 4. 离线存储
-        await storage.store_message(from_did, to_did, content)
-        return {"status": "queued", "method": "offline"}
+        await storage.store_message(from_did, to_did, content, session_id, reply_to)
+        return {"status": "queued", "method": "offline", "session_id": session_id}
 
-    async def _send_remote(self, from_did: str, to_did: str, content: str, endpoint: str) -> bool:
+    async def _send_remote(self, from_did: str, to_did: str, content: str, endpoint: str,
+                           session_id: str = "", reply_to: int | None = None) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{endpoint}/deliver",
-                json={"from": from_did, "to": to_did, "content": content},
+                json={"from": from_did, "to": to_did, "content": content,
+                      "session_id": session_id, "reply_to": reply_to},
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 return resp.status == 200
 
-    async def _send_relay(self, from_did: str, to_did: str, content: str, relay: str) -> bool:
+    async def _send_relay(self, from_did: str, to_did: str, content: str, relay: str,
+                          session_id: str = "", reply_to: int | None = None) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{relay}/relay",
-                json={"from": from_did, "to": to_did, "content": content},
+                json={"from": from_did, "to": to_did, "content": content,
+                      "session_id": session_id, "reply_to": reply_to},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
                 return resp.status == 200

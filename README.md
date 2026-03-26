@@ -9,7 +9,7 @@
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
-  [![Tests](https://img.shields.io/badge/Tests-68%20passing-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
+  [![Tests](https://img.shields.io/badge/Tests-80%20passing-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
   [![CI](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml)
 
   **[中文](#-中文) | [English](#-english)**
@@ -42,7 +42,7 @@
 | 🌐 **联邦 Relay 网络** | 本地/公网 Relay 互联，1 跳查询，任何人都能运行 |
 | 🛡️ **语义门禁** | Public/Ask/Private 三级隐私 + 黑白名单 + AI 自动审批 |
 | 🌀 **智能路由** | 本地直投 → P2P → Relay → 离线存储，四级降级，消息不丢 |
-| 🔌 **MCP 原生支持** | 12 个工具，Claude Desktop / Cursor / Claude Code 开箱即用 |
+| 🔌 **MCP 原生支持** | 15 个工具，Claude Desktop / Cursor / Claude Code 开箱即用 |
 | 📡 **STUN 穿透** | 自动获取公网 IP:Port，支持 NAT 穿透 |
 | 🔒 **私钥不出户** | 签名在 Daemon 内完成，私钥永不离开本地进程 |
 
@@ -54,7 +54,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │              你的 AI（Claude / GPT / 本地模型）           │
 └──────────────────────┬──────────────────────────────────┘
-                       │ MCP stdio（12 个工具）
+                       │ MCP stdio（15 个工具）
 ┌──────────────────────▼──────────────────────────────────┐
 │              AgentNexus MCP Server (stdio)               │
 └──────────────────────┬──────────────────────────────────┘
@@ -152,7 +152,7 @@ Every multi-agent framework today (CrewAI, AutoGen, MetaGPT…) is a walled gard
 | 🌐 **Federated Relay** | Local + public relays, 1-hop lookup, self-hostable |
 | 🛡️ **Semantic Gatekeeper** | Public / Ask / Private + blacklist/whitelist + AI auto-approval |
 | 🌀 **Smart Routing** | local → P2P → relay → offline — messages never lost |
-| 🔌 **Native MCP** | 12 tools — Claude Desktop / Cursor / Claude Code out of the box |
+| 🔌 **Native MCP** | 15 tools — Claude Desktop / Cursor / Claude Code out of the box |
 | 📡 **STUN Discovery** | Auto public IP:Port for NAT traversal |
 | 🔒 **Key Isolation** | Signing inside Daemon — private key never leaves local process |
 

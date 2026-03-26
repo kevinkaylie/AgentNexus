@@ -47,12 +47,17 @@ async def init_db():
             );
         """)
         await db.commit()
-        # 向后兼容：为旧数据库追加 private_key_hex 列
-        try:
-            await db.execute("ALTER TABLE agents ADD COLUMN private_key_hex TEXT")
-            await db.commit()
-        except Exception:
-            pass  # 列已存在，忽略
+        # 向后兼容：为旧数据库追加列（若已存在则忽略错误）
+        for alter in [
+            "ALTER TABLE agents ADD COLUMN private_key_hex TEXT",
+            "ALTER TABLE messages ADD COLUMN session_id TEXT DEFAULT ''",
+            "ALTER TABLE messages ADD COLUMN reply_to INTEGER DEFAULT NULL",
+        ]:
+            try:
+                await db.execute(alter)
+                await db.commit()
+            except Exception:
+                pass  # 列已存在，忽略
 
 
 async def add_pending(did: str, init_packet: dict):
@@ -146,11 +151,13 @@ async def get_agent(did: str) -> Optional[dict]:
     return None
 
 
-async def store_message(from_did: str, to_did: str, content: str):
+async def store_message(from_did: str, to_did: str, content: str,
+                        session_id: str = "", reply_to: int | None = None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO messages (from_did, to_did, content, timestamp) VALUES (?, ?, ?, ?)",
-            (from_did, to_did, content, time.time())
+            "INSERT INTO messages (from_did, to_did, content, timestamp, session_id, reply_to) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (from_did, to_did, content, time.time(), session_id, reply_to)
         )
         await db.commit()
 
@@ -158,7 +165,8 @@ async def store_message(from_did: str, to_did: str, content: str):
 async def fetch_inbox(did: str) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT id, from_did, content, timestamp FROM messages WHERE to_did=? AND delivered=0 ORDER BY timestamp",
+            "SELECT id, from_did, content, timestamp, session_id, reply_to "
+            "FROM messages WHERE to_did=? AND delivered=0 ORDER BY timestamp",
             (did,)
         ) as cursor:
             rows = await cursor.fetchall()
@@ -168,7 +176,21 @@ async def fetch_inbox(did: str) -> list[dict]:
                 f"UPDATE messages SET delivered=1 WHERE id IN ({','.join('?'*len(ids))})", ids
             )
             await db.commit()
-    return [{"id": r[0], "from": r[1], "content": r[2], "timestamp": r[3]} for r in rows]
+    return [{"id": r[0], "from": r[1], "content": r[2], "timestamp": r[3],
+             "session_id": r[4] or "", "reply_to": r[5]} for r in rows]
+
+
+async def fetch_session(session_id: str) -> list[dict]:
+    """按 session_id 查询完整会话历史（含已读消息）"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id, from_did, to_did, content, timestamp, reply_to, delivered "
+            "FROM messages WHERE session_id=? ORDER BY timestamp",
+            (session_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [{"id": r[0], "from": r[1], "to": r[2], "content": r[3],
+             "timestamp": r[4], "reply_to": r[5], "delivered": bool(r[6])} for r in rows]
 
 
 async def search_agents_by_capability(keyword: str) -> list[dict]:
@@ -211,6 +233,35 @@ async def delete_agent(did: str) -> bool:
         await db.execute("DELETE FROM agents WHERE did=?", (did,))
         await db.commit()
     return True
+
+
+async def add_certification(did: str, cert: dict) -> bool:
+    """为 Agent 追加一条认证到 profile.certifications"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT profile FROM agents WHERE did=?", (did,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return False
+        profile = json.loads(row[0])
+        certs = profile.setdefault("certifications", [])
+        certs.append(cert)
+        await db.execute(
+            "UPDATE agents SET profile=? WHERE did=?",
+            (json.dumps(profile), did)
+        )
+        await db.commit()
+    return True
+
+
+async def get_certifications(did: str) -> list[dict]:
+    """获取 Agent 的所有认证"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT profile FROM agents WHERE did=?", (did,)) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return []
+    profile = json.loads(row[0])
+    return profile.get("certifications", [])
 
 
 async def upsert_contact(did: str, endpoint: str, relay: str = None):

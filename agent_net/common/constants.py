@@ -23,6 +23,7 @@ DAEMON_TOKEN_FILE = os.path.join(DATA_DIR, "daemon_token.txt")
 
 # ── NexusProfile ───────────────────────────────────────────────
 NEXUS_CONTENT_SCHEMA_VERSION = "1.0"   # content 字段格式版本（已签名，防篡改）
+NEXUS_CERTIFICATION_VERSION = "1.0"    # certification 条目格式版本
 
 # ── Relay 参数 ──────────────────────────────────────────────
 RELAY_TTL = 120          # 注册条目存活时间（秒）

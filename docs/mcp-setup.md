@@ -6,7 +6,7 @@
 
 ## 🇨🇳 中文
 
-### MCP 工具列表（12 个）
+### MCP 工具列表（15 个）
 
 | 工具名 | 说明 | 绑定后可省略的参数 |
 |--------|------|-------------------|
@@ -22,6 +22,9 @@
 | `resolve_request` | 审批连接请求（allow/deny） | — |
 | `get_card` | 获取 Agent 的签名名片（可验签），省略 `did` 则返回自身名片 | `did` |
 | `update_card` | 更新名片字段（签名在 Daemon 内完成） | `did` |
+| `get_session` | 按 session_id 查询完整会话历史（含已读消息） | — |
+| `certify_agent` | 为目标 Agent 签发认证（issuer 用私钥签名） | `issuer_did` |
+| `get_certifications` | 获取 Agent 的所有认证（每条独立签名） | `did` |
 
 ### 前置条件
 
@@ -115,7 +118,7 @@ python main.py node mcp
 
 ## 🇬🇧 English
 
-### MCP Tools (12)
+### MCP Tools (15)
 
 | Tool | Description | Auto-filled when bound |
 |------|-------------|------------------------|
@@ -131,6 +134,9 @@ python main.py node mcp
 | `resolve_request` | Approve or deny a connection request (allow/deny) | — |
 | `get_card` | Get signed NexusProfile card; omit `did` to get own card | `did` |
 | `update_card` | Update card fields (re-signed in Daemon, key stays put) | `did` |
+| `get_session` | Retrieve full conversation history for a session ID (all messages) | — |
+| `certify_agent` | Issue a certification for a target Agent (issuer signs with private key) | `issuer_did` |
+| `get_certifications` | Get all certifications for an Agent (each independently signed) | `did` |
 
 ### Prerequisites
 
