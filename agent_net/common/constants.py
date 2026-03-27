@@ -21,6 +21,10 @@ DATA_DIR = os.path.join(_BASE_DIR, "data")
 NODE_CONFIG_FILE = os.path.join(DATA_DIR, "node_config.json")
 DAEMON_TOKEN_FILE = os.path.join(DATA_DIR, "daemon_token.txt")
 
+# ── Relay 身份配置 ──────────────────────────────────────────
+RELAY_HOST = os.environ.get("RELAY_HOST", "relay.agentnexus.top")
+RELAY_IDENTITY_FILE = os.path.join(DATA_DIR, "relay_identity.json")
+
 # ── NexusProfile ───────────────────────────────────────────────
 NEXUS_CONTENT_SCHEMA_VERSION = "1.0"   # content 字段格式版本（已签名，防篡改）
 NEXUS_CERTIFICATION_VERSION = "1.0"    # certification 条目格式版本

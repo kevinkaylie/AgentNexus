@@ -5,7 +5,8 @@ Relay/Signaling Server - 种子节点信令服务器
   2. 根据 DID 查询目标 Agent 的地址（本地 + 1 跳联邦）
   3. 联邦管理：加入 peer relay 网络，接收公开 Agent 的跨 relay 公告
   4. 健康检查
-运行方式: python main.py relay start
+  5. 暴露自身 DID Document（did:web 方法）
+运行方式: python main.py relay start [--host <domain>]
 存储：Redis（注册表 TTL 到期自动清除，替代内存清理循环）
 """
 import json
@@ -15,19 +16,24 @@ import aiohttp
 import redis.asyncio as aioredis
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+
+from nacl.signing import SigningKey
 
 from agent_net.common.constants import (
     RELAY_TTL, FEDERATION_PROXY_TIMEOUT, REDIS_URL,
     ANNOUNCE_CLOCK_SKEW, ANNOUNCE_RATE_WINDOW, ANNOUNCE_RATE_MAX,
     RELAY_JOIN_VERIFY_TIMEOUT, ANNOUNCE_PUBKEY_PREFIX,
+    RELAY_HOST, RELAY_IDENTITY_FILE,
 )
 from agent_net.common.profile import (
     NexusProfile, verify_signed_payload, canonical_announce,
 )
 from agent_net.common.did import DIDResolver, DIDError, build_services_from_profile
+from agent_net.common import crypto
 
 # ── Redis 客户端 ─────────────────────────────────────────────
 _redis: aioredis.Redis | None = None
@@ -42,6 +48,108 @@ _PEERS_KEY  = "relay:peers"
 _DIR_PREFIX = "relay:peerdir:"
 
 
+# ── Relay 身份管理 ──────────────────────────────────────────
+
+_relay_signing_key: SigningKey | None = None
+_relay_did: str = ""
+_relay_did_document: dict = {}
+_relay_host: str = ""  # 实际使用的域名
+
+
+def _load_or_create_relay_identity() -> tuple[SigningKey, str]:
+    """
+    加载或创建 Relay 身份
+
+    Returns: (SigningKey, did_string)
+    """
+    identity_file = Path(RELAY_IDENTITY_FILE)
+
+    if identity_file.exists():
+        # 加载现有身份
+        data = json.loads(identity_file.read_text(encoding="utf-8"))
+        sk = SigningKey(bytes.fromhex(data["private_key_hex"]))
+        did = data["did"]
+        return sk, did
+
+    # 生成新身份
+    sk = SigningKey.generate()
+    pk_bytes = sk.verify_key.encode()
+    did = f"did:web:{RELAY_HOST}"
+
+    # 持久化
+    identity_file.parent.mkdir(parents=True, exist_ok=True)
+    identity_file.write_text(json.dumps({
+        "private_key_hex": sk.encode().hex(),
+        "public_key_hex": pk_bytes.hex(),
+        "did": did,
+        "created_at": time.time(),
+    }, indent=2), encoding="utf-8")
+
+    return sk, did
+
+
+def _build_relay_did_document(did: str, pubkey_bytes: bytes) -> dict:
+    """构建 Relay 的 DID Document"""
+    multikey = crypto.encode_multikey_ed25519(pubkey_bytes)
+
+    # X25519 for keyAgreement
+    try:
+        x25519_bytes = crypto.ed25519_pub_to_x25519(pubkey_bytes)
+        x_multikey = crypto.encode_multikey_x25519(x25519_bytes)
+    except Exception:
+        x_multikey = None
+
+    # 从 did 提取域名
+    domain = did.replace("did:web:", "")
+
+    doc = {
+        "@context": [
+            "https://www.w3.org/ns/did/v1",
+            "https://w3id.org/security/suites/ed25519-2020/v1",
+        ],
+        "id": did,
+        "verificationMethod": [{
+            "id": f"{did}#relay-key-1",
+            "type": "Ed25519VerificationKey2018",
+            "controller": did,
+            "publicKeyMultibase": multikey,
+        }],
+        "authentication": [f"{did}#relay-key-1"],
+        "assertionMethod": [f"{did}#relay-key-1"],
+        "service": [{
+            "id": "#relay-service",
+            "type": "AgentRelayService",
+            "serviceEndpoint": f"https://{domain}",
+        }],
+    }
+
+    if x_multikey:
+        doc["keyAgreement"] = [{
+            "id": f"{did}#key-agreement-1",
+            "type": "X25519KeyAgreementKey2019",
+            "controller": did,
+            "publicKeyMultibase": x_multikey,
+        }]
+
+    return doc
+
+
+def init_relay_identity():
+    """
+    初始化 Relay 身份（在 uvicorn 启动前调用）
+
+    从 main.py 的 relay_start() 调用
+    """
+    global _relay_signing_key, _relay_did, _relay_did_document, _relay_host
+
+    _relay_signing_key, _relay_did = _load_or_create_relay_identity()
+    pk_bytes = _relay_signing_key.verify_key.encode()
+    _relay_did_document = _build_relay_did_document(_relay_did, pk_bytes)
+    _relay_host = _relay_did.replace("did:web:", "")
+
+    print(f"[AgentNet Relay] Identity initialized: {_relay_did}")
+
+
 def _create_redis() -> aioredis.Redis:
     """Factory — monkeypatch this in tests to inject fakeredis."""
     return aioredis.from_url(REDIS_URL, decode_responses=True)
@@ -50,6 +158,11 @@ def _create_redis() -> aioredis.Redis:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _redis
+
+    # 确保身份已初始化
+    if _relay_signing_key is None:
+        init_relay_identity()
+
     _redis = _create_redis()
     await _redis.ping()
     yield
@@ -331,6 +444,20 @@ async def relay_message(payload: dict):
         raise HTTPException(status_code=502, detail=str(e))
 
 
+# ── Relay 身份端点 ───────────────────────────────────────────
+
+@app.get("/.well-known/did.json")
+async def get_relay_did_json():
+    """
+    返回 Relay 自身的 DID Document（did:web 方法标准路径）
+
+    外部可通过 did:web:relay.agentnexus.top 解析此 Relay 的身份
+    """
+    if not _relay_did_document:
+        raise HTTPException(status_code=500, detail="Relay identity not initialized")
+    return _relay_did_document
+
+
 # ── 调试 / 健康 ───────────────────────────────────────────────
 
 @app.get("/resolve/{did:path}")
@@ -410,6 +537,8 @@ async def health():
         dir_count += 1
     return {
         "status": "ok",
+        "relay_did": _relay_did,
+        "relay_host": _relay_host,
         "registered": reg_count,
         "peers": peer_count,
         "peer_directory": dir_count,

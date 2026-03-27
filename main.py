@@ -27,7 +27,8 @@ AgentNexus CLI
   agent-nexus node relay remove <url>         移除种子 relay
   agent-nexus node relay set-local <url>      设置本地 relay 地址
 
-  agent-nexus relay start               启动公网信令/中转服务器 (:9000)
+  agent-nexus relay start [--host <domain>]    启动公网信令/中转服务器 (:9000)
+                                                 --host: 设置 Relay 域名（用于 did:web）
 
   agent-nexus agent list                列出所有本地 Agent
   agent-nexus agent get   <did>         查看指定 Agent 详情
@@ -548,9 +549,24 @@ async def agent_cmd(sub: str, args: list[str]):
 
 # ── relay 子命令 ──────────────────────────────────────────
 
-def relay_start():
+def relay_start(host: str | None = None):
+    """
+    启动 Relay Server
+
+    Args:
+        host: Relay 域名（用于生成 did:web），优先级高于环境变量
+    """
     import uvicorn
-    from agent_net.relay.server import app
+    from agent_net.relay.server import app, init_relay_identity
+
+    # 设置 Relay 域名（优先级: --host > RELAY_HOST 环境变量 > 默认值）
+    if host:
+        import os
+        os.environ["RELAY_HOST"] = host
+
+    # 初始化 Relay 身份（在 uvicorn 启动前）
+    init_relay_identity()
+
     print("[AgentNet] Starting Relay Server on :9000 ...")
     uvicorn.run(app, host="0.0.0.0", port=9000, log_level="info")
 
@@ -711,7 +727,13 @@ def main():
     elif args[0] == "relay":
         sub = args[1] if len(args) > 1 else ""
         if sub == "start":
-            relay_start()
+            # 解析 --host 参数
+            relay_host = None
+            it = iter(args[2:])
+            for tok in it:
+                if tok == "--host":
+                    relay_host = next(it, None)
+            relay_start(host=relay_host)
         else:
             print(f"Unknown relay subcommand: '{sub}'")
             _usage()

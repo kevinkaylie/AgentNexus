@@ -353,7 +353,7 @@ class DIDResolver:
         从 DID Document 提取 Ed25519 公钥
 
         按优先级检查:
-        1. publicKeyMultibase (Ed25519VerificationKey2020) - 去掉 'z' 前缀和 multicodec 前缀
+        1. publicKeyMultibase (Ed25519VerificationKey2020/2018) - 去掉 'z' 前缀和 multicodec 前缀
         2. publicKeyBase58 (Ed25519VerificationKey2018) - base58 解码
         3. publicKeyJwk (OKP, crv: Ed25519) - base64url 解码 x 字段
 
@@ -364,8 +364,8 @@ class DIDResolver:
         for vm in verification_methods:
             vm_type = vm.get("type", "")
 
-            # 优先级 1: publicKeyMultibase + Ed25519VerificationKey2020
-            if vm_type == "Ed25519VerificationKey2020" and "publicKeyMultibase" in vm:
+            # 优先级 1: publicKeyMultibase (支持 2020 和 2018 类型)
+            if "publicKeyMultibase" in vm and "Ed25519" in vm_type:
                 try:
                     multikey = vm["publicKeyMultibase"]
                     # multikey 格式: z + base58(multicodec || pubkey)
