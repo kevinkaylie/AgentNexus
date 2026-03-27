@@ -399,7 +399,10 @@ def test_tf12_patch_card_updates_and_resigns(daemon_client):
         headers=headers,
     )
     assert resp2.status_code == 200
-    new_card = resp2.json()
+    resp_data = resp2.json()
+    # 新格式：{"status": "ok", "profile": {...}}
+    # 旧格式：直接返回 profile
+    new_card = resp_data.get("profile", resp_data)
     # 签名应已更新
     assert new_card["signature"] != old_sig
     # 新签名可验签
@@ -497,7 +500,10 @@ def test_tf15_patch_card_old_sig_invalid_on_new_content(daemon_client):
         headers=headers,
     )
     assert resp2.status_code == 200
-    new_np = NexusProfile.from_dict(resp2.json())
+    resp_data = resp2.json()
+    # 新格式：{"status": "ok", "profile": {...}}
+    new_card = resp_data.get("profile", resp_data)
+    new_np = NexusProfile.from_dict(new_card)
 
     # 新签名与旧签名不同
     assert new_np.signature != old_sig
@@ -538,7 +544,10 @@ def test_tf16_patch_card_updated_at_advances(daemon_client):
         headers=headers,
     )
     assert resp2.status_code == 200
-    new_np = NexusProfile.from_dict(resp2.json())
+    resp_data = resp2.json()
+    # 新格式：{"status": "ok", "profile": {...}}
+    new_card = resp_data.get("profile", resp_data)
+    new_np = NexusProfile.from_dict(new_card)
     assert new_np.content["updated_at"] >= old_at
     assert new_np.verify() is True
 

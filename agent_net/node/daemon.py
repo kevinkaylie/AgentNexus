@@ -222,6 +222,13 @@ class CertifyRequest(BaseModel):
     evidence: str = ""
 
 
+class RuntimeVerifyRequest(BaseModel):
+    """RuntimeVerifier 验证请求"""
+    agent_did: str
+    agent_public_key: str                        # hex 或 multibase z...
+    trusted_cas: Optional[dict] = None           # {ca_did: pubkey_hex}，覆盖默认配置
+
+
 # ── Agent 管理 API ────────────────────────────────────────────
 
 @app.post("/agents/register")
@@ -305,7 +312,7 @@ async def api_list_local_agents():
 @app.get("/agents/search/{keyword}")
 async def api_search_agents(keyword: str):
     results = await search_agents_by_capability(keyword)
-    return {"results": results, "count": len(results)}
+    return {"agents": results, "count": len(results)}
 
 
 @app.get("/resolve/{did:path}")
@@ -462,7 +469,7 @@ async def api_update_card(did: str, req: UpdateCardRequest, _=Depends(_require_t
     if p.get("is_public"):
         asyncio.create_task(_federation_announce(did, RELAY_URL, nexus.to_dict()))
 
-    return nexus.to_dict()
+    return {"status": "ok", "profile": nexus.to_dict()}
 
 
 @app.post("/agents/{did}/certify")
@@ -610,6 +617,33 @@ async def api_stun_endpoint():
 @app.get("/health")
 async def health():
     return {"status": "ok", "timestamp": time.time()}
+
+
+# ── RuntimeVerifier ───────────────────────────────────────────
+
+@app.post("/runtime/verify")
+async def api_runtime_verify(req: RuntimeVerifyRequest):
+    """
+    RuntimeVerifier.verify() HTTP 入口。
+
+    供 8-step agent identity pipeline 调用（step 1 身份验证）。
+    返回 RuntimeVerification 完整字段。
+
+    trusted_cas 可由调用方按需传入（覆盖 daemon 默认配置）；
+    不传则使用空 CA 列表（trust_level 最高 L2）。
+    """
+    from agent_net.common.runtime_verifier import (
+        AgentNexusRuntimeVerifier,
+        make_storage_cert_fetcher,
+    )
+
+    verifier = AgentNexusRuntimeVerifier(
+        resolver=DIDResolver(),
+        trusted_cas=req.trusted_cas,
+        cert_fetcher=make_storage_cert_fetcher(),
+    )
+    result = await verifier.verify(req.agent_did, req.agent_public_key)
+    return result.to_dict()
 
 
 # ── 握手入口（含 Gatekeeper 检查点）─────────────────────────

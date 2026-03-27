@@ -313,10 +313,14 @@ async def relay_message(payload: dict):
         raise HTTPException(status_code=404, detail=f"DID not found: {to_did}")
 
     info = json.loads(raw)
+    endpoint = info.get("endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=400, detail=f"Agent {to_did} has no endpoint")
+
     try:
         async with aiohttp.ClientSession() as s:
             async with s.post(
-                f"{info['endpoint']}/deliver",
+                f"{endpoint}/deliver",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
