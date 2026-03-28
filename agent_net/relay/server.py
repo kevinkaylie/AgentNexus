@@ -654,6 +654,7 @@ async def anpn_register(req: AnpnRegisterRequest):
     """
     注册 Agent 的协议端点（ANPN）
     TTL=86400秒，同时维护索引 relay:anpn:idx:{did}
+    Protocol 统一转小写存储（semi-structured 规范化）
     """
     _check_rate_limit(req.did)
     await _verify_anpn_register(req)
@@ -661,25 +662,28 @@ async def anpn_register(req: AnpnRegisterRequest):
     now = time.time()
     expires_at = now + _ANPN_TTL
 
-    # 存储协议端点
+    # Protocol 规范化：统一转小写
+    normalized_protocol = req.protocol.lower()
+
+    # 存储协议端点（使用规范化后的 protocol）
     value = json.dumps({
         "did": req.did,
-        "protocol": req.protocol,
+        "protocol": normalized_protocol,
         "endpoint": req.endpoint,
         "updated_at": now,
     })
-    anpn_key = f"{_ANPN_PREFIX}{req.did}:{req.protocol}"
+    anpn_key = f"{_ANPN_PREFIX}{req.did}:{normalized_protocol}"
     await _redis.setex(anpn_key, _ANPN_TTL, value)
 
-    # 维护索引
+    # 维护索引（使用规范化后的 protocol）
     idx_key = f"{_ANPN_IDX_PREFIX}{req.did}"
-    await _redis.sadd(idx_key, req.protocol)
+    await _redis.sadd(idx_key, normalized_protocol)
     await _redis.expire(idx_key, _ANPN_TTL)
 
     return AnpnRegisterResponse(
         status="ok",
         did=req.did,
-        protocol=req.protocol,
+        protocol=normalized_protocol,
         expires_at=expires_at,
     )
 
@@ -703,9 +707,13 @@ async def _proxy_anpn_lookup(peer_relay_url: str, did: str, protocol: str) -> di
 async def anpn_lookup(did: str, protocol: str):
     """
     查询 Agent 的协议端点（本地 + 1跳联邦代理）
+    Protocol 统一转小写查询（semi-structured 规范化）
     """
-    # 本地查询
-    anpn_key = f"{_ANPN_PREFIX}{did}:{protocol}"
+    # Protocol 规范化：统一转小写
+    normalized_protocol = protocol.lower()
+
+    # 本地查询（使用规范化后的 protocol）
+    anpn_key = f"{_ANPN_PREFIX}{did}:{normalized_protocol}"
     raw = await _redis.get(anpn_key)
     if raw:
         info = json.loads(raw)
@@ -723,12 +731,12 @@ async def anpn_lookup(did: str, protocol: str):
         peer_entry = json.loads(peer_raw)
         peer_relay_url = peer_entry.get("relay_url")
         if peer_relay_url:
-            data = await _proxy_anpn_lookup(peer_relay_url, did, protocol)
+            data = await _proxy_anpn_lookup(peer_relay_url, did, normalized_protocol)
             if data is not None:
                 data["_via_relay"] = peer_relay_url
                 return data
 
-    raise HTTPException(status_code=404, detail=f"ANPN endpoint not found: {did}/{protocol}")
+    raise HTTPException(status_code=404, detail=f"ANPN endpoint not found: {did}/{normalized_protocol}")
 
 
 @app.get("/relay/anpn-discover/{did}")
