@@ -4,11 +4,15 @@ MCP stdio 接口 —— 代理所有工具调用至 Node Daemon (localhost:8765)
 """
 import asyncio
 import json
+import logging
 import os
+import uuid
 import aiohttp
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+
+logger = logging.getLogger(__name__)
 
 DAEMON_URL = "http://localhost:8765"
 app = Server("agent-net-node-mcp")
@@ -180,6 +184,117 @@ async def list_tools() -> list[Tool]:
                               "data": {"type": "string", "description": "The encrypted bundle (JSON string from export_agent)"},
                               "password": {"type": "string", "description": "Password to decrypt the bundle"},
                           }, "required": ["data", "password"]}),
+        # ========== v0.8 L7 协作层工具 ==========
+        # Action Layer (4)
+        Tool(name="propose_task",
+             description=f"Propose/delegate a task to another Agent. Returns generated task_id for tracking."
+                         f" Sender auto-filled as {_MY_DID}." if _MY_DID else "Propose/delegate a task to another Agent. Returns generated task_id for tracking.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Target Agent DID"},
+                              "title": {"type": "string", "description": "Task title"},
+                              "description": {"type": "string", "description": "Detailed task description"},
+                              "deadline": {"type": "string", "description": "Deadline (ISO date, e.g. 2026-04-10)"},
+                              "required_caps": {"type": "array", "items": {"type": "string"},
+                                                "description": "Required capabilities (e.g. ['Code', 'Review'])"},
+                          }, "required": ["to_did", "title"]}),
+        Tool(name="claim_task",
+             description="Claim a task proposed by another Agent.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Task proposer's DID"},
+                              "task_id": {"type": "string", "description": "Task ID to claim"},
+                              "eta": {"type": "string", "description": "Estimated completion time (e.g. '2h', '30min')"},
+                              "message": {"type": "string", "description": "Optional message to proposer"},
+                          }, "required": ["to_did", "task_id"]}),
+        Tool(name="sync_resource",
+             description="Share key-value data with another Agent (e.g. design docs, config, glossary).",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Target Agent DID"},
+                              "key": {"type": "string", "description": "Resource key identifier"},
+                              "value": {"type": "string", "description": "Resource value (use JSON string for complex data)"},
+                              "version": {"type": "string", "description": "Version identifier (e.g. 'v2', '2026-04-06')"},
+                          }, "required": ["to_did", "key", "value"]}),
+        Tool(name="notify_state",
+             description="Report task progress or status to another Agent.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Target Agent DID"},
+                              "status": {"type": "string",
+                                         "enum": ["pending", "in_progress", "completed", "failed", "blocked"],
+                                         "description": "Current status"},
+                              "task_id": {"type": "string", "description": "Associated task ID"},
+                              "progress": {"type": "number", "description": "Progress percentage 0.0-1.0"},
+                              "error": {"type": "string", "description": "Error message (when status is 'failed')"},
+                          }, "required": ["to_did", "status"]}),
+        # Discussion (4)
+        Tool(name="start_discussion",
+             description="Start a multi-agent discussion with optional voting. "
+                         "Sends invitation to all participants. Returns topic_id. "
+                         "Note: reply/vote/conclude tools should use initiator's DID as to_did.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "title": {"type": "string", "description": "Discussion title"},
+                              "participants": {"type": "array", "items": {"type": "string"},
+                                               "description": "List of participant DIDs to invite"},
+                              "context": {"type": "string", "description": "Background context for the discussion"},
+                              "consensus_mode": {"type": "string",
+                                                 "enum": ["majority", "unanimous", "leader_decides"],
+                                                 "description": "Voting mode (default: majority)"},
+                              "timeout_seconds": {"type": "integer",
+                                                  "description": "Voting timeout in seconds"},
+                          }, "required": ["title", "participants"]}),
+        Tool(name="reply_discussion",
+             description="Reply to an ongoing discussion. to_did should be the discussion initiator's DID.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Discussion initiator's DID"},
+                              "topic_id": {"type": "string", "description": "Discussion topic ID"},
+                              "content": {"type": "string", "description": "Reply content"},
+                          }, "required": ["to_did", "topic_id", "content"]}),
+        Tool(name="vote_discussion",
+             description="Vote on a discussion topic. to_did should be the discussion initiator's DID.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Discussion initiator's DID"},
+                              "topic_id": {"type": "string", "description": "Discussion topic ID"},
+                              "vote": {"type": "string", "enum": ["approve", "reject", "abstain"],
+                                       "description": "Vote choice"},
+                              "reason": {"type": "string", "description": "Reason for vote"},
+                          }, "required": ["to_did", "topic_id", "vote"]}),
+        Tool(name="conclude_discussion",
+             description="Conclude a discussion with a final decision. Sends conclusion to target participant. "
+                         "to_did should be a participant's DID (to notify them of the conclusion).",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Participant DID to send conclusion to"},
+                              "topic_id": {"type": "string", "description": "Discussion topic ID"},
+                              "conclusion": {"type": "string", "description": "Final conclusion text"},
+                              "conclusion_type": {"type": "string",
+                                                  "enum": ["consensus", "no_consensus", "escalated"],
+                                                  "description": "Type of conclusion (default: consensus)"},
+                          }, "required": ["to_did", "topic_id", "conclusion"]}),
+        # Emergency + Skill (2)
+        Tool(name="emergency_halt",
+             description="Broadcast emergency halt to target Agent(s). Only works for Agents with active sessions. "
+                         "Requires authorization via emergency_authorized_dids config.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Target Agent DID (required for scope='agent' or 'task')"},
+                              "scope": {"type": "string",
+                                        "enum": ["agent", "task", "all"],
+                                        "description": "agent: halt target DID; task: halt task-related agents; all: halt all active sessions"},
+                              "task_id": {"type": "string", "description": "Task ID when scope='task'"},
+                              "reason": {"type": "string", "description": "Reason for emergency halt"},
+                          }, "required": ["scope"]}),
+        Tool(name="list_skills",
+             description="List registered Skills on this node. Filter by Agent or capability.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "agent_did": {"type": "string", "description": "Filter by Agent DID"},
+                              "capability": {"type": "string", "description": "Filter by capability keyword"},
+                          }}),
     ]
 
 
@@ -295,6 +410,197 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 else:
                     result = await _call("post", "/agents/import",
                                          json={"data": data, "password": password})
+
+            # ========== v0.8 L7 协作层工具 ==========
+            # Action Layer (4)
+            case "propose_task":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    task_id = f"task_{uuid.uuid4().hex}"
+                    content = {"task_id": task_id, "title": arguments["title"]}
+                    for key in ("description", "deadline", "required_caps"):
+                        if arguments.get(key):
+                            content[key] = arguments[key]
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments["to_did"],
+                        "content": content,
+                        "message_type": "task_propose",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok", "task_id": task_id}
+
+            case "claim_task":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    content = {"task_id": arguments["task_id"]}
+                    for key in ("eta", "message"):
+                        if arguments.get(key):
+                            content[key] = arguments[key]
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments["to_did"],
+                        "content": content,
+                        "message_type": "task_claim",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok", "task_id": arguments["task_id"]}
+
+            case "sync_resource":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    content = {"key": arguments["key"], "value": arguments["value"]}
+                    if arguments.get("version"):
+                        content["version"] = arguments["version"]
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments["to_did"],
+                        "content": content,
+                        "message_type": "resource_sync",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok", "key": arguments["key"]}
+
+            case "notify_state":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    content = {"status": arguments["status"]}
+                    for key in ("task_id", "progress", "error"):
+                        if arguments.get(key):
+                            content[key] = arguments[key]
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments["to_did"],
+                        "content": content,
+                        "message_type": "state_notify",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok"}
+
+            # Discussion (4)
+            case "start_discussion":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    topic_id = f"topic_{uuid.uuid4().hex}"
+                    participants = arguments["participants"]
+                    content = {
+                        "topic_id": topic_id,
+                        "title": arguments["title"],
+                        "participants": participants,
+                        "seq": 1,
+                    }
+                    if arguments.get("context"):
+                        content["context"] = arguments["context"]
+                    if arguments.get("consensus_mode"):
+                        content["consensus"] = {"mode": arguments["consensus_mode"]}
+                        if arguments.get("timeout_seconds"):
+                            content["consensus"]["timeout_seconds"] = arguments["timeout_seconds"]
+                    # 向每个参与者发送
+                    notified = []
+                    for did in participants:
+                        try:
+                            await _call("post", "/messages/send", json={
+                                "from_did": _MY_DID,
+                                "to_did": did,
+                                "content": content,
+                                "message_type": "discussion_start",
+                                "protocol": "nexus_v1",
+                            })
+                            notified.append(did)
+                        except Exception as e:
+                            logger.warning(f"Failed to notify {did}: {e}")
+                    result = {"status": "ok", "topic_id": topic_id, "notified": notified}
+
+            case "reply_discussion":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    content = {
+                        "topic_id": arguments["topic_id"],
+                        "content": arguments["content"],
+                    }
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments["to_did"],
+                        "content": content,
+                        "message_type": "discussion_reply",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok", "topic_id": arguments["topic_id"]}
+
+            case "vote_discussion":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    content = {
+                        "topic_id": arguments["topic_id"],
+                        "vote": arguments["vote"],
+                    }
+                    if arguments.get("reason"):
+                        content["reason"] = arguments["reason"]
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments["to_did"],
+                        "content": content,
+                        "message_type": "discussion_vote",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok", "topic_id": arguments["topic_id"], "vote": arguments["vote"]}
+
+            case "conclude_discussion":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    content = {
+                        "topic_id": arguments["topic_id"],
+                        "conclusion": arguments["conclusion"],
+                    }
+                    if arguments.get("conclusion_type"):
+                        content["conclusion_type"] = arguments["conclusion_type"]
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments["to_did"],
+                        "content": content,
+                        "message_type": "discussion_conclude",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok", "topic_id": arguments["topic_id"]}
+
+            # Emergency + Skill (2)
+            case "emergency_halt":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    scope = arguments.get("scope", "agent")
+                    content = {
+                        "scope": scope,
+                        "reason": arguments.get("reason", ""),
+                    }
+                    if scope == "agent" and arguments.get("to_did"):
+                        content["target"] = arguments["to_did"]
+                    if scope == "task" and arguments.get("task_id"):
+                        content["task_id"] = arguments["task_id"]
+                    await _call("post", "/messages/send", json={
+                        "from_did": _MY_DID,
+                        "to_did": arguments.get("to_did", _MY_DID),  # scope=all 时发给自己
+                        "content": content,
+                        "message_type": "emergency_halt",
+                        "protocol": "nexus_v1",
+                    })
+                    result = {"status": "ok", "scope": scope}
+
+            case "list_skills":
+                params = {}
+                if arguments.get("agent_did"):
+                    params["agent_did"] = arguments["agent_did"]
+                if arguments.get("capability"):
+                    params["capability"] = arguments["capability"]
+                result = await _call("get", "/skills", params=params if params else None)
 
             case _:
                 result = {"error": f"Unknown tool: {name}"}

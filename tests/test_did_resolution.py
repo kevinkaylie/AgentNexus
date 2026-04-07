@@ -47,6 +47,21 @@ WG_TEST_VECTORS = {
 
 # ── 测试夹具 ──────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def setup_handlers():
+    """每个测试前注册默认 handlers，测试后清理"""
+    from agent_net.common.did_methods import (
+        reset_handlers,
+        AgentNexusHandler,
+        KeyHandler,
+    )
+    reset_handlers()
+    DIDResolver.register(AgentNexusHandler())
+    DIDResolver.register(KeyHandler())
+    yield
+    reset_handlers()
+
+
 @pytest.fixture
 def resolver():
     """创建 DIDResolver 实例"""
@@ -483,7 +498,9 @@ class TestDIDDocumentVerification:
         did = "did:agentnexus:testdid123"
         profile = {"endpoints": {"p2p": "http://localhost:8765", "relay": "http://relay.example.com"}}
         services = build_services_from_profile(profile)
-        doc = DIDResolver()._build_did_document(did, pubkey, services)
+        # 使用 utils 中的 build_did_document
+        from agent_net.common.did_methods.utils import build_did_document
+        doc = build_did_document(did, pubkey, services)
         assert "service" in doc
         types = [s["type"] for s in doc["service"]]
         assert "AgentRelay" in types
@@ -595,6 +612,116 @@ def test_td12_legacy_did_agent_still_works(tmp_path, monkeypatch):
 
         resp2 = client.get(f"/agents/{did}")
         assert resp2.status_code == 200
+
+
+# ── did:meeet 解析测试（B2 回归测试）───────────────────────────────
+
+@pytest.fixture
+def meeet_resolver(tmp_path, monkeypatch):
+    """提供带有 meeet handler 的 DIDResolver（使用 fakeredis）"""
+    import fakeredis.aioredis
+    import agent_net.common.did_methods.meeet as meeet_mod
+    from agent_net.common.did import DIDResolver
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+    # 注入 fakeredis 并重新加载
+    importlib.reload(meeet_mod)
+    DIDResolver.reset_handlers()
+    handler = meeet_mod.MeeetHandler(fake_redis)
+    DIDResolver.register(handler)
+
+    return DIDResolver(), fake_redis
+
+
+def test_td13_meeet_resolve_returns_correct_document(meeet_resolver):
+    """td13: did:meeet 解析返回正确 DID Document（含 alsoKnownAs、x402_score）"""
+    import agent_net.common.did_methods.meeet as meeet_mod
+    from agent_net.common import crypto
+
+    resolver, fake_redis = meeet_resolver
+    did = "did:meeet:agent_test-uuid-1234"
+    pubkey_hex = "aabbccdd" * 8  # 64 hex chars = 32 bytes
+
+    # 预期推导值
+    pubkey_bytes = bytes.fromhex(pubkey_hex)
+    expected_agentnexus_did = f"did:agentnexus:{crypto.encode_multikey_ed25519(pubkey_bytes)}"
+    expected_x402_score = min(100, 10 + int((500 / 850) * 82))  # reputation=500
+
+    # 预填 Redis 缓存（模拟已注册，走缓存路径）
+    asyncio.run(fake_redis.set(
+        f"meeet:mapping:{did}",
+        json.dumps({
+            "agentnexus_did": expected_agentnexus_did,
+            "pubkey_hex": pubkey_hex,
+            "meeet_reputation": 500,
+            "x402_score": expected_x402_score,
+            "registered_at": 0.0,
+            "last_verified": 0.0,
+        }),
+    ))
+
+    async def _run():
+        result = await resolver.resolve(did)
+        # 验证 DID Document 结构
+        doc = result.did_document
+        assert doc["id"] == expected_agentnexus_did, \
+            f"DID Document id 错误: {doc['id']}"
+        assert did in doc.get("alsoKnownAs", []), \
+            f"alsoKnownAs 未包含原始 did:meeet: {doc.get('alsoKnownAs')}"
+        assert len(doc.get("verificationMethod", [])) == 1, \
+            "verificationMethod 应有且仅有 1 个"
+        # 验证 metadata
+        assert result.metadata["x402_score"] == expected_x402_score, \
+            f"x402_score 错误: {result.metadata['x402_score']}"
+        assert result.metadata["agentnexus_did"] == expected_agentnexus_did, \
+            f"metadata.agentnexus_did 错误"
+        assert result.metadata["meeet_reputation_score"] == 500, \
+            f"meeet_reputation_score 错误: {result.metadata['meeet_reputation_score']}"
+
+    asyncio.run(_run())
+    print("  [td13 PASS] did:meeet 缓存路径解析正确，DID Document 结构和 metadata 验证通过")
+
+
+def test_td14_meeet_solana_unreachable_raises_did_not_found(monkeypatch):
+    """td14: Solana API 不可达时抛出 DIDNotFoundError（不回退到未验证密钥）"""
+    import agent_net.common.did_methods.meeet as meeet_mod
+    import fakeredis.aioredis
+    from agent_net.common.did import DIDResolver, DIDNotFoundError
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+    class MockGet:
+        async def __aenter__(self):
+            raise aiohttp.ClientConnectionError("Connection refused")
+        async def __aexit__(self, *args):
+            pass
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+        def get(self, *args, **kwargs):
+            return MockGet()
+
+    import aiohttp
+    monkeypatch.setattr(aiohttp, "ClientSession", lambda: FakeSession())
+
+    importlib.reload(meeet_mod)
+    DIDResolver.reset_handlers()
+    handler = meeet_mod.MeeetHandler(fake_redis)
+    DIDResolver.register(handler)
+
+    did = "did:meeet:agent_test-uuid-fail"
+
+    async def _run():
+        resolver = DIDResolver()
+        with pytest.raises(DIDNotFoundError):
+            await resolver.resolve(did)
+
+    asyncio.run(_run())
+    print("  [td14 PASS] Solana 不可达时抛出 DIDNotFoundError，未静默回退")
 
 
 # ── 运行所有测试的快速方法 ─────────────────────────────────

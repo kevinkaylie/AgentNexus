@@ -1,0 +1,54 @@
+{
+  "agent_id": "agent-agentnexus-pilot-mnjkxikr",
+  "public_key": "86d3ce25757a476358bcc6cb21297109471e74df55674c2d9cc8da39becf83de",
+  "did_aps": "did:aps:z6MkoXZzsdFPswEiBrP4AWJrpwgjD4ioPxhGyaw26PiwVqk1",
+  "nonce": "APS-VERIFICATION-1775261617238",
+  "nonce_signature": "02f5a0c0ac9647fec1a84566e60cc226355c9891ee37bad66b5850ca77602ee1e77ab797a5fe07240d3a13b2d73a1dc628a6d1c0dfe460350d5e7855026eeb0f",
+  "signature_valid": true,
+  "passport": {
+    "passport": {
+      "version": "1.0.0",
+      "agentId": "agent-agentnexus-pilot-mnjkxikr",
+      "agentName": "AgentNexus-pilot",
+      "ownerAlias": "kevinkaylie",
+      "publicKey": "86d3ce25757a476358bcc6cb21297109471e74df55674c2d9cc8da39becf83de",
+      "capabilities": [
+        "messaging",
+        "task_coordination",
+        "did_resolution"
+      ],
+      "runtime": {
+        "toolsCount": 3,
+        "memoryType": "persistent"
+      },
+      "createdAt": "2026-04-04T00:13:37.232Z",
+      "expiresAt": "2027-04-04T00:13:37.232Z",
+      "voteWeight": 1,
+      "reputation": {
+        "overall": 1,
+        "collaborationsCompleted": 0,
+        "proposalsSubmitted": 0,
+        "proposalsApproved": 0,
+        "tokensContributed": 0,
+        "tasksCompleted": 0,
+        "lastUpdated": "2026-04-04T00:13:37.234Z"
+      },
+      "delegations": [],
+      "metadata": {}
+    },
+    "signature": "f8d020a835a554900ba6cba3bdd64d6309066243332400686ee266c1cfc9ef7227eedafa7b5ce3ab463fb8f512a8e5f8dfe0f81b90c973e4c15bbd4d7ceca50a",
+    "signedAt": "2026-04-04T00:13:37.237Z"
+  },
+  "attestation": {
+    "attestationId": "att_98a44fc3-75a",
+    "agentId": "agent-agentnexus-pilot-mnjkxikr",
+    "publicKey": "86d3ce25757a476358bcc6cb21297109471e74df55674c2d9cc8da39becf83de",
+    "floorVersion": "1.0",
+    "extensions": [],
+    "attestedAt": "2026-04-04T00:13:37.237Z",
+    "expiresAt": "2027-04-04T00:13:37.237Z",
+    "commitment": "floor:1.0|ext:none|ts:2026-04-04T00:13:37.237Z",
+    "signature": "97e3ff8522e7c73d549c606e6f12292bf9a6ac93a1fb8fc653e7a2efdd530b5650fcdee405765857eba63df405f9e59915447340a4a08a43b4d1e82ae4072e0d"
+  },
+  "agentnexus_did": "did:agent:fec7e6caccf8e83c"
+}

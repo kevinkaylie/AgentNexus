@@ -203,6 +203,86 @@ python main.py node mcp \
 
 ---
 
+### 场景 5：跨平台 MCP 协作 — OpenClaw + Kiro + Claude Code
+
+不同 AI 平台上的 Agent 通过 MCP 工具协作完成任务。
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 人类在飞书 → "安排开发登录功能"                                │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ OpenClaw 秘书 Agent (MCP: nexus-secretary)                  │
+│   search_agents(keyword="Design") → 找到 Designer           │
+│   propose_task(to_did=Designer, title="设计登录功能方案")     │
+│   → task_id: "task_a1b2c3d4"                                │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼ 人类切换到 Kiro CLI
+┌─────────────────────────────────────────────────────────────┐
+│ Kiro 设计 Agent (MCP: nexus-designer)                       │
+│   fetch_inbox() → [{ message_type: "task_propose", ... }]   │
+│   claim_task(to_did=Secretary, task_id="task_a1b2c3d4")     │
+│   ... 完成设计 ...                                           │
+│   propose_task(to_did=Developer, title="实现登录功能")       │
+│   notify_state(to_did=Secretary, status="completed")        │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼ 人类切换到 Claude Code
+┌─────────────────────────────────────────────────────────────┐
+│ Claude Code 开发 Agent (MCP: nexus-developer)               │
+│   fetch_inbox() → [{ message_type: "task_propose", ... }]   │
+│   claim_task(...) → 写代码 → notify_state(status="completed")│
+└─────────────────────────────────────────────────────────────┘
+```
+
+**MCP 配置示例：**
+
+```json
+// OpenClaw - .kiro/settings/mcp.json 或 OpenClaw MCP 配置
+{
+  "mcpServers": {
+    "nexus-secretary": {
+      "command": "python",
+      "args": ["/path/to/main.py", "node", "mcp",
+               "--name", "Secretary", "--caps", "Planning,Coordination"]
+    }
+  }
+}
+
+// Kiro CLI - .kiro/settings/mcp.json
+{
+  "mcpServers": {
+    "nexus-designer": {
+      "command": "python",
+      "args": ["/path/to/main.py", "node", "mcp",
+               "--name", "Designer", "--caps", "Design,Architecture"]
+    }
+  }
+}
+
+// Claude Code - .mcp.json
+{
+  "mcpServers": {
+    "nexus-developer": {
+      "command": "python",
+      "args": ["/path/to/main.py", "node", "mcp",
+               "--name", "Developer", "--caps", "Code,Debug"]
+    }
+  }
+}
+```
+
+**关键点：**
+- 所有平台共享同一个 Daemon（信箱服务器）
+- 每个 MCP 进程绑定独立 DID（身份隔离）
+- 通过 `propose_task` / `claim_task` / `notify_state` 完成任务委派和状态同步
+- 人类在不同平台间切换，Agent 自动协作
+
+---
+
 ## 🇬🇧 English
 
 > **Core concept**: Each `node mcp --name <name>` process is an independent "identity instance" mapped to a DID.
@@ -321,3 +401,83 @@ python main.py node mcp \
   --tags "translate,multilingual,official"
 # → DID broadcast to federation, globally searchable
 ```
+
+---
+
+### Scenario 5: Cross-Platform MCP Collaboration — OpenClaw + Kiro + Claude Code
+
+Agents on different AI platforms collaborate through MCP tools.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Human in Feishu → "Schedule login feature development"      │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ OpenClaw Secretary Agent (MCP: nexus-secretary)             │
+│   search_agents(keyword="Design") → finds Designer          │
+│   propose_task(to_did=Designer, title="Design login flow")  │
+│   → task_id: "task_a1b2c3d4"                                │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼ Human switches to Kiro CLI
+┌─────────────────────────────────────────────────────────────┐
+│ Kiro Designer Agent (MCP: nexus-designer)                   │
+│   fetch_inbox() → [{ message_type: "task_propose", ... }]   │
+│   claim_task(to_did=Secretary, task_id="task_a1b2c3d4")     │
+│   ... design completed ...                                  │
+│   propose_task(to_did=Developer, title="Implement login")   │
+│   notify_state(to_did=Secretary, status="completed")        │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼ Human switches to Claude Code
+┌─────────────────────────────────────────────────────────────┐
+│ Claude Code Developer Agent (MCP: nexus-developer)          │
+│   fetch_inbox() → [{ message_type: "task_propose", ... }]   │
+│   claim_task(...) → write code → notify_state(status="completed")│
+└─────────────────────────────────────────────────────────────┘
+```
+
+**MCP Configuration Examples:**
+
+```json
+// OpenClaw - MCP config
+{
+  "mcpServers": {
+    "nexus-secretary": {
+      "command": "python",
+      "args": ["/path/to/main.py", "node", "mcp",
+               "--name", "Secretary", "--caps", "Planning,Coordination"]
+    }
+  }
+}
+
+// Kiro CLI - .kiro/settings/mcp.json
+{
+  "mcpServers": {
+    "nexus-designer": {
+      "command": "python",
+      "args": ["/path/to/main.py", "node", "mcp",
+               "--name", "Designer", "--caps", "Design,Architecture"]
+    }
+  }
+}
+
+// Claude Code - .mcp.json
+{
+  "mcpServers": {
+    "nexus-developer": {
+      "command": "python",
+      "args": ["/path/to/main.py", "node", "mcp",
+               "--name", "Developer", "--caps", "Code,Debug"]
+    }
+  }
+}
+```
+
+**Key Points:**
+- All platforms share the same Daemon (mailbox server)
+- Each MCP process binds to an independent DID (identity isolation)
+- Task delegation and status sync via `propose_task` / `claim_task` / `notify_state`
+- Human switches between platforms, Agents collaborate automatically

@@ -13,10 +13,10 @@
 │              你的 AI（Claude / GPT / 本地模型）           │
 │         "帮我找一个会翻译的 Agent 然后发消息给它"          │
 └──────────────────────┬──────────────────────────────────┘
-                       │ MCP stdio（12 个工具）
+                       │ MCP stdio（27 个工具）
 ┌──────────────────────▼──────────────────────────────────┐
 │              AgentNexus MCP Server (stdio)               │
-│   register / send / search / get_card / resolve / ...    │
+│   基础工具(17) + Action Layer(4) + Discussion(4) + ...   │
 └──────────────────────┬──────────────────────────────────┘
                        │ HTTP :8765（Bearer Token 鉴权）
 ┌──────────────────────▼──────────────────────────────────┐
@@ -33,6 +33,53 @@
 │   类比：WhatsApp/微信 的服务器，但可自部署、可联邦        │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### ACP 协议栈（v0.8）
+
+AgentNexus Communication Protocol (ACP) 是一个九层协议栈：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ L8  适配层   Platform Adapters                              │
+│     OpenClaw / Webhook / Dify / Coze 各平台对接桥梁         │
+├─────────────────────────────────────────────────────────────┤
+│ L7  协作层   Collaboration                                  │
+│     Action Layer（4 种）+ Discussion（4 种）+ Emergency      │
+├─────────────────────────────────────────────────────────────┤
+│ L6  消息层   Messaging                                      │
+│     信封模式：content + message_type + protocol + session_id │
+├─────────────────────────────────────────────────────────────┤
+│ L5  推送层   Push & Wake (v0.9)                             │
+│     消息到达 → 精准敲门 → 唤醒 Agent session                 │
+├─────────────────────────────────────────────────────────────┤
+│ L4  传输层   Transport & Routing                            │
+│     local → P2P → Relay → 离线存储，四级降级                 │
+├─────────────────────────────────────────────────────────────┤
+│ L3  注册层   Registration & Presence (v0.9)                 │
+│     Agent 报到 + 唤醒方式注册 + TTL 续约 + 在线状态          │
+├─────────────────────────────────────────────────────────────┤
+│ L2  访问层   Access Control                                 │
+│     Gatekeeper 三模式（Public / Ask / Private）              │
+├─────────────────────────────────────────────────────────────┤
+│ L1  安全层   Security                                       │
+│     AHP 四步握手 + X25519 ECDH + AES-256-GCM E2EE           │
+├─────────────────────────────────────────────────────────────┤
+│ L0  身份层   Identity                                       │
+│     DID（did:agentnexus / did:web / did:key / did:meeet）    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+v0.8 完整实现：L0-L2 + L4 + L6-L8
+v0.9 计划实现：L3 + L5
+
+### MCP 工具分类（27 个）
+
+| 类别 | 工具 | 说明 |
+|------|------|------|
+| **基础工具** | whoami, register, list, send, fetch, search, ... | 身份管理和消息收发 |
+| **Action Layer** | propose_task, claim_task, sync_resource, notify_state | 任务委派和状态同步 |
+| **Discussion** | start_discussion, reply, vote, conclude | 多方讨论和投票 |
+| **Emergency** | emergency_halt, list_skills | 紧急熔断和技能查询 |
 
 ### 联邦网络
 
@@ -140,7 +187,7 @@ AgentNexus/
     │   └── profile.py         # NexusProfile（sign/verify）
     ├── node/
     │   ├── daemon.py          # FastAPI :8765
-    │   ├── mcp_server.py      # MCP stdio（12 工具）
+    │   ├── mcp_server.py      # MCP stdio（27 工具）
     │   └── gatekeeper.py      # 访问控制
     ├── relay/
     │   └── server.py          # 联邦 Relay :9000
@@ -160,10 +207,10 @@ AgentNexus/
 │              Your AI (Claude / GPT / Local Model)        │
 │         "Find a translation Agent and send it a message" │
 └──────────────────────┬──────────────────────────────────┘
-                       │ MCP stdio (12 tools)
+                       │ MCP stdio (27 tools)
 ┌──────────────────────▼──────────────────────────────────┐
 │              AgentNexus MCP Server (stdio)               │
-│   register / send / search / get_card / resolve / ...    │
+│   Basic(17) + Action Layer(4) + Discussion(4) + ...      │
 └──────────────────────┬──────────────────────────────────┘
                        │ HTTP :8765 (Bearer Token auth)
 ┌──────────────────────▼──────────────────────────────────┐
@@ -180,6 +227,53 @@ AgentNexus/
 │   Like WhatsApp servers, but self-hostable & federated   │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### ACP Protocol Stack (v0.8)
+
+AgentNexus Communication Protocol (ACP) is a 9-layer stack:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ L8  Adapter   Platform Adapters                            │
+│     OpenClaw / Webhook / Dify / Coze bridges               │
+├─────────────────────────────────────────────────────────────┤
+│ L7  Collaboration                                           │
+│     Action Layer (4) + Discussion (4) + Emergency           │
+├─────────────────────────────────────────────────────────────┤
+│ L6  Messaging                                               │
+│     Envelope: content + message_type + protocol + session_id│
+├─────────────────────────────────────────────────────────────┤
+│ L5  Push & Wake (v0.9)                                      │
+│     Message arrival → precise knock → wake Agent session    │
+├─────────────────────────────────────────────────────────────┤
+│ L4  Transport & Routing                                     │
+│     local → P2P → Relay → offline, 4-tier fallback          │
+├─────────────────────────────────────────────────────────────┤
+│ L3  Registration & Presence (v0.9)                          │
+│     Agent check-in + wake method + TTL + online status      │
+├─────────────────────────────────────────────────────────────┤
+│ L2  Access Control                                          │
+│     Gatekeeper 3 modes (Public / Ask / Private)             │
+├─────────────────────────────────────────────────────────────┤
+│ L1  Security                                                │
+│     AHP 4-step handshake + X25519 ECDH + AES-256-GCM E2EE   │
+├─────────────────────────────────────────────────────────────┤
+│ L0  Identity                                                │
+│     DID (did:agentnexus / did:web / did:key / did:meeet)    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+v0.8 implements: L0-L2 + L4 + L6-L8
+v0.9 planned: L3 + L5
+
+### MCP Tools (27)
+
+| Category | Tools | Description |
+|----------|-------|-------------|
+| **Basic** | whoami, register, list, send, fetch, search, ... | Identity & messaging |
+| **Action Layer** | propose_task, claim_task, sync_resource, notify_state | Task delegation & status |
+| **Discussion** | start_discussion, reply, vote, conclude | Multi-party discussion |
+| **Emergency** | emergency_halt, list_skills | Emergency halt & skill query |
 
 ### Federated Network
 

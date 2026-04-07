@@ -1,0 +1,33 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 运行时数据（不打入镜像）
+data/
+
+# 开发工具
+.git/
+.gitignore
+.env
+*.env
+.venv/
+venv/
+
+# 测试
+tests/
+.pytest_cache/
+.coverage
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Docker 自身
+Dockerfile
+docker-compose.yml
+nginx/
+scripts/

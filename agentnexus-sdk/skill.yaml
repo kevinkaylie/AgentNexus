@@ -1,0 +1,109 @@
+# AgentNexus Skill
+#
+# 标准化能力描述文件，供 AI Agent 框架自动发现和安装 AgentNexus 通信能力。
+# 兼容 OpenClaw Skill 规范。
+
+name: agentnexus
+version: 0.1.0
+description: "给你的 AI Agent 接入去中心化通信网络 — DID 身份、加密消息、联邦发现、协作协议"
+description_en: "Connect your AI Agent to a decentralized communication network — DID identity, encrypted messaging, federated discovery, collaboration protocol"
+
+author: AgentNexus Team
+license: Apache-2.0
+homepage: https://github.com/kevinkaylie/AgentNexus
+repository: https://github.com/kevinkaylie/AgentNexus
+
+# 运行要求
+requirements:
+  python: ">=3.10"
+  packages:
+    - agentnexus-sdk>=0.1.0
+  services:
+    - name: agentnexus-daemon
+      description: "AgentNexus Node Daemon（本地通信节点）"
+      start_command: "python main.py node start"
+      health_check: "http://localhost:8765/health"
+
+# Skill 提供的能力
+capabilities:
+  - id: messaging
+    name: "Agent 消息收发"
+    description: "向任意 DID 地址发送加密消息，接收离线消息"
+    actions:
+      - send_message
+      - receive_message
+
+  - id: discovery
+    name: "Agent 发现"
+    description: "按能力关键词搜索其他 Agent，联邦 Relay 跨网查找"
+    actions:
+      - search_agents
+
+  - id: collaboration
+    name: "协作协议"
+    description: "四种基础协作动作：任务发布/认领/资源同步/状态汇报"
+    actions:
+      - propose_task
+      - claim_task
+      - sync_resource
+      - notify_state
+
+  - id: trust
+    name: "信任验证"
+    description: "L1-L4 信任等级验证，CA 认证签发与查询"
+    actions:
+      - verify_agent
+      - certify_agent
+
+# 快速接入（Agent 框架读取此段自动初始化）
+quickstart:
+  async: |
+    import agentnexus
+
+    nexus = await agentnexus.connect("${AGENT_NAME}", caps=${AGENT_CAPS})
+
+    # 发消息
+    await nexus.send(to_did="${TARGET_DID}", content="Hello from ${AGENT_NAME}!")
+
+    # 收消息
+    @nexus.on_message
+    async def handle(msg):
+        print(f"From {msg.from_did}: {msg.content}")
+
+    # 协作
+    task_id = await nexus.propose_task(to_did="${TARGET_DID}", title="协作任务")
+
+  sync: |
+    import agentnexus.sync
+
+    nexus = agentnexus.sync.connect("${AGENT_NAME}", caps=${AGENT_CAPS})
+    nexus.send(to_did="${TARGET_DID}", content="Hello!")
+    nexus.close()
+
+# 变量说明（框架在安装时提示用户填写或自动推断）
+variables:
+  AGENT_NAME:
+    description: "Agent 名称"
+    required: true
+    example: "MyAssistant"
+  AGENT_CAPS:
+    description: "Agent 能力列表"
+    required: false
+    default: '["Chat"]'
+    example: '["Chat", "Search", "Translation"]'
+  TARGET_DID:
+    description: "目标 Agent 的 DID 地址"
+    required: false
+    example: "did:agentnexus:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
+
+# MCP 集成（已有 MCP Server 的 Agent 可直接用 MCP 工具）
+mcp:
+  enabled: true
+  config:
+    command: "python"
+    args: ["main.py", "node", "mcp", "--name", "${AGENT_NAME}", "--caps", "${AGENT_CAPS}"]
+  tools_count: 15
+  compatible_clients:
+    - Claude Desktop
+    - Cursor
+    - Claude Code

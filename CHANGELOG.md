@@ -6,6 +6,84 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.8.1] - 2026-04-04
+
+### Changed
+
+#### DID Resolver 架构重构（ADR-009）
+- **DIDMethodHandler 注册表模式**：DIDResolver 改为注册表路由，不再硬编码 if/elif 链
+- **新增 `agent_net/common/did_methods/` 目录**：
+  - `base.py` — DIDMethodHandler 抽象基类
+  - `utils.py` — 共用工具方法（build_did_document、extract_ed25519_key_from_doc）
+  - `agentnexus.py` — AgentNexusHandler（纯密码学解析）
+  - `agent_legacy.py` — AgentLegacyHandler（需 db_path，仅 Daemon 注册）
+  - `key.py` — KeyHandler（纯密码学解析）
+  - `web.py` — WebHandler（HTTPS 端点获取）
+  - `meeet.py` — MeeetHandler（需 redis_client，仅 Relay 注册）
+- **注册函数**：
+  - `register_daemon_handlers(db_path)` — Daemon 侧注册
+  - `register_relay_handlers(redis_client)` — Relay 侧注册
+  - `reset_handlers()` — 测试隔离
+- **向后兼容**：所有调用方（Gatekeeper、RuntimeVerifier、SDK）零改动
+
+### Technical
+- 测试结果：144 passed, 3 skipped ✅
+
+---
+
+## [0.8.0] - 2026-04-04
+
+### Added
+
+#### SDK (agentnexus-sdk)
+- **Python SDK 包** — `agentnexus-sdk/` 独立包，3 行代码接入 AgentNexus 网络
+  - `pip install agentnexus-sdk` (PyPI 发布准备)
+  - 依赖：`aiohttp` + `pydantic`（最小依赖）
+- **核心 API**：
+  - `agentnexus.connect(name, caps)` — 注册新身份
+  - `agentnexus.connect(did=...)` — 复用已注册身份
+  - `nexus.send(to_did, content)` — 发送消息
+  - `nexus.verify(did)` — 信任查询
+  - `nexus.certify(target_did, claim, evidence)` — 签发认证
+  - `@nexus.on_message` — 消息回调
+- **Action Layer**（ADR-007）：
+  - `nexus.propose_task()` — 发布任务
+  - `nexus.claim_task()` — 认领任务
+  - `nexus.sync_resource()` — 同步资源
+  - `nexus.notify_state()` — 汇报状态
+  - 四种回调：`on_task_propose` / `on_task_claim` / `on_resource_sync` / `on_state_notify`
+- **同步包装器**：`agentnexus.sync.connect()` — 非异步场景支持
+- **自动发现**：
+  - Daemon URL 发现：显式参数 > 环境变量 > 默认 localhost:8765
+  - Token 发现：显式参数 > 环境变量 > 用户目录 > 项目目录
+  - Token 权限检查（非 0600 时警告）
+
+#### Daemon 扩展
+- **Token 写入用户目录**：`~/.agentnexus/daemon_token.txt`（跨项目共享）
+- **messages 表扩展**：新增 `message_type` / `protocol` 列
+- **`/messages/send` 支持 Action Layer**：`content: Union[str, dict]`
+- **`fetch_inbox()` 返回新字段**：`message_type` / `protocol`
+
+#### did:meeet 桥接（ADR-008）
+- **`POST /meeet/admin/register`**：平台管理员注册
+- **`POST /meeet/register`**：单个 MEEET Agent 注册
+- **`POST /meeet/batch-register`**：批量注册（最大 100 条）
+- **`GET /meeet/status`**：映射状态统计
+- **`GET /resolve/did:meeet:...`**：解析 MEEET DID → did:agentnexus
+- **x402 score 映射**：MEEET reputation → x402 score
+- **Mock Solana API**：`MEEET_SOLANA_RPC_URL` 环境变量
+
+### Changed
+- `agent_net/router.py`：路由支持 `message_type` / `protocol` 参数
+- `agent_net/storage.py`：`store_message()` 新增可选参数
+- `agent_net/relay/server.py`：`/resolve/{did}` 支持 `did:meeet` 方法
+
+### Technical
+- SDK 包结构：`src/agentnexus/{__init__,client,actions,models,discovery,exceptions,sync}.py`
+- 测试结果：144 passed, 3 skipped ✅
+
+---
+
 ## [0.6.0] - 2026-03-26
 
 ### Added

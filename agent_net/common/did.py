@@ -3,7 +3,7 @@ DID 生成与解析 —— node 和 relay 共用
 
 包含:
 - DIDGenerator: 生成新的 DID (did:agent, did:agentnexus)
-- DIDResolver: 解析 DID 到 DID Document (支持 did:agent, did:agentnexus, did:key, did:web)
+- DIDResolver: 解析 DID 到 DID Document（注册表路由模式）
 
 符合 WG DID Resolution v1.0 规范 (corpollc/qntm)
 """
@@ -11,14 +11,15 @@ import hashlib
 import json
 import time
 import uuid
-import aiosqlite
 from dataclasses import dataclass, field, asdict
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import httpx
 from nacl.signing import SigningKey, VerifyKey
 
 from agent_net.common import crypto
+
+if TYPE_CHECKING:
+    from agent_net.common.did_methods.base import DIDMethodHandler
 
 
 # ── DID 错误类型 ──────────────────────────────────────────
@@ -154,50 +155,43 @@ def _set_db_path(path):
 
 class DIDResolver:
     """
-    通用 DID 解析器
+    通用 DID 解析器（注册表路由模式）
 
-    支持的方法:
-    - did:agentnexus:<multikey>  (本地代理 + 本地存储)
-    - did:agent:<hex>           (本地存储，向后兼容)
-    - did:key:<multikey>        (多基算法)
-    - did:web:<domain>          (远程 HTTPS)
+    通过注册 DIDMethodHandler 来支持不同的 DID 方法。
+    默认不注册任何方法，需要调用 register_*_handlers() 来注册。
 
     符合 WG DID Resolution v1.0 规范 (corpollc/qntm)
     """
 
-    def __init__(self, db_path: str = None):
+    _handlers: dict[str, "DIDMethodHandler"] = {}  # 类级别共享
+
+    def __init__(self):
+        """初始化解析器"""
+        pass
+
+    @classmethod
+    def register(cls, handler: "DIDMethodHandler") -> None:
         """
-        初始化解析器
+        注册一个 DID 方法处理器。
 
         Args:
-            db_path: SQLite 数据库路径（用于本地代理查询）
+            handler: DIDMethodHandler 子类实例
         """
-        self.db_path = db_path
+        cls._handlers[handler.method] = handler
 
-    async def _get_local_agent_key(self, did: str) -> Optional[bytes]:
-        """从本地数据库查询代理的公钥"""
-        if not self.db_path:
-            return None
+    @classmethod
+    def reset_handlers(cls) -> None:
+        """
+        清空所有已注册的 handler。
 
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute(
-                "SELECT profile FROM agents WHERE did=?", (did,)
-            ) as cur:
-                row = await cur.fetchone()
+        仅用于测试：防止测试间状态污染。
+        """
+        cls._handlers.clear()
 
-        if not row:
-            return None
-
-        try:
-            profile = json.loads(row[0])
-            # 期望 profile 中包含 public_key_hex 字段
-            pubkey_hex = profile.get("public_key_hex")
-            if pubkey_hex:
-                return bytes.fromhex(pubkey_hex)
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        return None
+    @classmethod
+    def get_registered_methods(cls) -> list[str]:
+        """获取所有已注册的方法名"""
+        return list(cls._handlers.keys())
 
     async def resolve(self, did: str) -> DIDResolutionResult:
         """
@@ -220,233 +214,19 @@ class DIDResolver:
             raise DIDMethodUnsupportedError(f"Invalid DID: must start with 'did:', got '{did}'")
 
         # 解析 DID 方法
-        parts = did.split(":", 3)
+        parts = did.split(":", 2)
         if len(parts) < 3:
             raise DIDMethodUnsupportedError(f"Invalid DID format: '{did}'")
 
         method = parts[1]
+        method_specific_id = parts[2]
 
-        if method == "agentnexus":
-            return await self._resolve_agentnexus(did, parts[2])
-        elif method == "agent":
-            return await self._resolve_agent(did, parts[2])
-        elif method == "key":
-            return await self._resolve_key(did, parts[2])
-        elif method == "web":
-            return await self._resolve_web(did, parts[2])
-        else:
+        # 查找已注册的 handler
+        handler = self._handlers.get(method)
+        if not handler:
             raise DIDMethodUnsupportedError(f"Unsupported DID method: '{method}'")
 
-    async def _resolve_agentnexus(self, did: str, key_part: str) -> DIDResolutionResult:
-        """解析 did:agentnexus:<multikey>"""
-        try:
-            pubkey_bytes = crypto.decode_multikey_ed25519(key_part)
-        except ValueError as e:
-            raise DIDKeyExtractionError(f"Failed to decode did:agentnexus multikey: {e}")
-
-        # 构建 DID Document
-        did_document = self._build_did_document(did, pubkey_bytes)
-
-        return DIDResolutionResult(
-            did=did,
-            method="agentnexus",
-            public_key=pubkey_bytes,
-            did_document=did_document,
-            metadata={"version": "1.0", "created": time.strftime("%Y-%m-%dT%H:%M:%SZ")},
-        )
-
-    async def _resolve_agent(self, did: str, key_part: str) -> DIDResolutionResult:
-        """
-        解析 did:agent:<hex> —— 向后兼容现有代理
-        从本地数据库查找公钥
-        """
-        # 尝试从本地数据库获取
-        pubkey_bytes = await self._get_local_agent_key(did)
-
-        if not pubkey_bytes:
-            # 回退：从 hex 字符串解析（如果 key_part 是有效的 32 字节 hex）
-            if len(key_part) == 32:
-                try:
-                    pubkey_bytes = bytes.fromhex(key_part)
-                except ValueError:
-                    pass
-
-        if not pubkey_bytes:
-            # 尝试通过 generate_did 逻辑重建（基于哈希）
-            # 这不是一个可靠的回退，因为哈希不是可逆的
-            raise DIDNotFoundError(
-                f"Cannot resolve did:agent without local database entry: {did}"
-            )
-
-        did_document = self._build_did_document(did, pubkey_bytes)
-
-        return DIDResolutionResult(
-            did=did,
-            method="agent",
-            public_key=pubkey_bytes,
-            did_document=did_document,
-            metadata={"version": "legacy", "backward_compat": True},
-        )
-
-    async def _resolve_key(self, did: str, key_part: str) -> DIDResolutionResult:
-        """解析 did:key:<multikey>"""
-        try:
-            pubkey_bytes = crypto.decode_multikey_ed25519(key_part)
-        except ValueError as e:
-            raise DIDKeyTypeUnsupportedError(f"Failed to decode did:key: {e}")
-
-        did_document = self._build_did_document(did, pubkey_bytes)
-
-        return DIDResolutionResult(
-            did=did,
-            method="key",
-            public_key=pubkey_bytes,
-            did_document=did_document,
-            metadata={"version": "1.0"},
-        )
-
-    async def _resolve_web(self, did: str, domain: str) -> DIDResolutionResult:
-        """
-        解析 did:web:<domain> — 从 HTTPS 端点获取 DID Document
-        """
-        # URL 解码（处理转义的冒号等）
-        import urllib.parse
-        domain = urllib.parse.unquote(domain)
-
-        # 确定 DID Document URL
-        if "/" in domain:
-            # did:web:example.com/path -> https://example.com/path/did.json
-            doc_url = f"https://{domain}/did.json"
-        else:
-            # did:web:example.com -> https://example.com/.well-known/did.json
-            doc_url = f"https://{domain}/.well-known/did.json"
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    doc_url,
-                    headers={"User-Agent": "AgentNexus/1.0 DID Resolver"}
-                )
-                response.raise_for_status()
-                did_doc = response.json()
-        except httpx.HTTPError as e:
-            raise DIDNotFoundError(f"Failed to fetch did:web document from {doc_url}: {e}")
-        except json.JSONDecodeError as e:
-            raise DIDKeyExtractionError(f"Invalid JSON in did:web document from {doc_url}: {e}")
-
-        # 从 DID Document 提取 Ed25519 公钥
-        pubkey_bytes = self._extract_ed25519_key_from_doc(did_doc)
-
-        if not pubkey_bytes:
-            raise DIDKeyExtractionError(f"No Ed25519 key found in did:web document from {doc_url}")
-
-        return DIDResolutionResult(
-            did=did,
-            method="web",
-            public_key=pubkey_bytes,
-            did_document=did_doc,
-            metadata={"resolved_url": doc_url, "version": "1.0"},
-        )
-
-    def _extract_ed25519_key_from_doc(self, doc: dict) -> Optional[bytes]:
-        """
-        从 DID Document 提取 Ed25519 公钥
-
-        按优先级检查:
-        1. publicKeyMultibase (Ed25519VerificationKey2020/2018) - 去掉 'z' 前缀和 multicodec 前缀
-        2. publicKeyBase58 (Ed25519VerificationKey2018) - base58 解码
-        3. publicKeyJwk (OKP, crv: Ed25519) - base64url 解码 x 字段
-
-        参考: WG DID Resolution v1.0 §3.1.1
-        """
-        verification_methods = doc.get("verificationMethod", [])
-
-        for vm in verification_methods:
-            vm_type = vm.get("type", "")
-
-            # 优先级 1: publicKeyMultibase (支持 2020 和 2018 类型)
-            if "publicKeyMultibase" in vm and "Ed25519" in vm_type:
-                try:
-                    multikey = vm["publicKeyMultibase"]
-                    # multikey 格式: z + base58(multicodec || pubkey)
-                    # Ed25519 multicodec = 0xed01
-                    return crypto.decode_multikey_ed25519(multikey)
-                except (ValueError, KeyError):
-                    continue
-
-            # 优先级 2: publicKeyBase58 + Ed25519VerificationKey2018
-            if vm_type == "Ed25519VerificationKey2018" and "publicKeyBase58" in vm:
-                try:
-                    b58_key = vm["publicKeyBase58"]
-                    return crypto._base58_decode(b58_key)
-                except (ValueError, KeyError):
-                    continue
-
-            # 优先级 3: publicKeyJwk + OKP + Ed25519
-            if vm_type == "Ed25519VerificationKey2020" and "publicKeyJwk" in vm:
-                try:
-                    jwk = vm["publicKeyJwk"]
-                    if jwk.get("kty") == "OKP" and jwk.get("crv") == "Ed25519":
-                        import base64
-                        x_raw = jwk["x"]
-                        # base64url 解码
-                        x_raw = x_raw + "=" * (4 - len(x_raw) % 4)
-                        x_raw = x_raw.replace("-", "+").replace("_", "/")
-                        return base64.b64decode(x_raw)
-                except (ValueError, KeyError, Exception):
-                    continue
-
-        return None
-
-    def _build_did_document(self, did: str, pubkey_bytes: bytes,
-                            services: list[dict] | None = None) -> dict:
-        """
-        构建符合 W3C DID Core 和 did:agentnexus 规范的 DID Document
-
-        包含:
-        - Ed25519VerificationKey2018 (authentication, assertion)
-        - X25519KeyAgreementKey2019 (keyAgreement，用于 ECDH)
-        - service 数组（可选，由调用者传入）
-        """
-        # Ed25519 multikey
-        ed_multikey = crypto.encode_multikey_ed25519(pubkey_bytes)
-
-        # X25519 multikey (通过 Ed25519→X25519 推导)
-        try:
-            x25519_bytes = crypto.ed25519_pub_to_x25519(pubkey_bytes)
-            x_multikey = crypto.encode_multikey_x25519(x25519_bytes)
-        except Exception:
-            # 如果推导失败，跳过 keyAgreement
-            x_multikey = None
-
-        doc = {
-            "@context": [
-                "https://www.w3.org/ns/did/v1",
-                "https://w3id.org/security/suites/ed25519-2020/v1",
-            ],
-            "id": did,
-            "verificationMethod": [{
-                "id": f"{did}#agent-1",
-                "type": "Ed25519VerificationKey2018",
-                "controller": did,
-                "publicKeyMultibase": ed_multikey,
-            }],
-            "authentication": [f"{did}#agent-1"],
-            "assertionMethod": [f"{did}#agent-1"],
-        }
-
-        if x_multikey:
-            doc["keyAgreement"] = [{
-                "id": f"{did}#key-agreement-1",
-                "type": "X25519KeyAgreementKey2019",
-                "controller": did,
-                "publicKeyMultibase": x_multikey,
-            }]
-
-        if services:
-            doc["service"] = services
-
-        return doc
+        return await handler.resolve(did, method_specific_id)
 
     # ── WG 规范兼容方法 ─────────────────────────────────
 
@@ -557,8 +337,11 @@ def resolve_did_sync(did: str, db_path: str = None) -> DIDResolutionResult:
     同步版本的 DID 解析（用于不支持 async 的场景）
 
     内部使用 asyncio.run()
+
+    注意：db_path 参数已废弃，现在通过注册的 handler 来处理。
+    如果需要解析 did:agent，需要先调用 register_daemon_handlers(db_path)。
     """
     import asyncio
 
-    resolver = DIDResolver(db_path=db_path)
+    resolver = DIDResolver()
     return asyncio.run(resolver.resolve(did))

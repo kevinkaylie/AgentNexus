@@ -8,6 +8,7 @@ import json
 import sys
 import time
 import pytest
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, ".")
 
@@ -212,6 +213,63 @@ def test_tc07_inbox_multiple_senders():
     asyncio.run(_run())
 
 
+# ── tc08: /deliver 端点透传 message_type 和 protocol ──────────────────────
+
+def test_tc08_deliver_endpoint_preserves_message_type(tmp_path, monkeypatch):
+    """tc08 - /deliver 端点必须透传 message_type 和 protocol（Bug: B1 回归测试）"""
+    import importlib
+    import agent_net.storage as st
+    import agent_net.node.daemon as d
+
+    # 隔离 DB
+    monkeypatch.setattr(st, "DB_PATH", tmp_path / "test.db")
+    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", str(tmp_path / "token.txt"))
+    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+
+    importlib.reload(d)
+    from agent_net.node.daemon import router
+
+    with TestClient(d.app) as client:
+        token = d._daemon_token
+
+        sender_did = client.post(
+            "/agents/register",
+            json={"name": "sender"},
+            headers={"Authorization": f"Bearer {token}"},
+        ).json()["did"]
+        receiver_did = client.post(
+            "/agents/register",
+            json={"name": "receiver"},
+            headers={"Authorization": f"Bearer {token}"},
+        ).json()["did"]
+
+        # 重要：在发送前注册本地会话，否则 router 会认为 receiver 离线
+        router.register_local_session(receiver_did)
+
+        # 通过 /deliver 发送带 message_type 和 protocol 的 Action Layer 消息
+        deliver_payload = {
+            "from": sender_did,
+            "to": receiver_did,
+            "content": json.dumps({"title": "测试任务", "description": "验证 message_type 透传"}),
+            "session_id": "sess_tc08_test",
+            "message_type": "task_propose",
+            "protocol": "nexus_v1",
+        }
+        resp = client.post("/deliver", json=deliver_payload)
+        assert resp.status_code == 200, f"/deliver failed: {resp.text}"
+
+        # 接收方从本地队列取消息，验证 message_type 和 protocol 没有丢失
+        msg = asyncio.run(router.receive(receiver_did, timeout=2.0))
+        assert msg is not None, "receiver 未收到消息"
+        assert msg.get("message_type") == "task_propose", \
+            f"message_type 丢失，期望 'task_propose'，实际: {msg.get('message_type')}"
+        assert msg.get("protocol") == "nexus_v1", \
+            f"protocol 丢失，期望 'nexus_v1'，实际: {msg.get('protocol')}"
+
+        print(f"  [tc08 PASS] message_type={msg['message_type']}, protocol={msg['protocol']} — 透传正确")
+
+
 if __name__ == "__main__":
     print("=== AgentNexus 自测用例 ===\n")
     tests = [
@@ -220,6 +278,7 @@ if __name__ == "__main__":
         test_tc03_nat_traversal_fallback,
         test_tc04_offline_message_delivery,
         test_tc05_semantic_search,
+        test_tc08_deliver_endpoint_preserves_message_type,
     ]
     # 简单runner（不依赖pytest）
     import tempfile, os, pathlib

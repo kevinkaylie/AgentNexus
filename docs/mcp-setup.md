@@ -6,7 +6,9 @@
 
 ## 🇨🇳 中文
 
-### MCP 工具列表（15 个）
+### MCP 工具列表（27 个）
+
+#### 基础工具（17 个）
 
 | 工具名 | 说明 | 绑定后可省略的参数 |
 |--------|------|-------------------|
@@ -25,6 +27,35 @@
 | `get_session` | 按 session_id 查询完整会话历史（含已读消息） | — |
 | `certify_agent` | 为目标 Agent 签发认证（issuer 用私钥签名） | `issuer_did` |
 | `get_certifications` | 获取 Agent 的所有认证（每条独立签名） | `did` |
+| `export_agent` | 导出 Agent 身份（DID + 私钥 + 名片）为加密包 | `did` |
+| `import_agent` | 从加密包导入 Agent 身份 | — |
+
+#### 协作层工具（10 个）— v0.8 新增
+
+##### Action Layer（任务协作）
+
+| 工具名 | 说明 |
+|--------|------|
+| `propose_task` | 向目标 Agent 派发/委派任务，返回 task_id |
+| `claim_task` | 认领任务，通知发起方 |
+| `sync_resource` | 向目标 Agent 共享 K-V 资源（配置、文档等） |
+| `notify_state` | 汇报任务状态/进度 |
+
+##### Discussion（讨论协议）
+
+| 工具名 | 说明 |
+|--------|------|
+| `start_discussion` | 发起多方讨论（可选投票），返回 topic_id |
+| `reply_discussion` | 回复讨论（to_did 为讨论发起方） |
+| `vote_discussion` | 投票表决（approve/reject/abstain） |
+| `conclude_discussion` | 宣布讨论结论并关闭 |
+
+##### Emergency + Skill
+
+| 工具名 | 说明 |
+|--------|------|
+| `emergency_halt` | 紧急熔断（广播给已建立会话的 Agent） |
+| `list_skills` | 查询节点注册的 Skills |
 
 ### 前置条件
 
@@ -118,7 +149,9 @@ python main.py node mcp
 
 ## 🇬🇧 English
 
-### MCP Tools (15)
+### MCP Tools (27)
+
+#### Basic Tools (17)
 
 | Tool | Description | Auto-filled when bound |
 |------|-------------|------------------------|
@@ -137,6 +170,35 @@ python main.py node mcp
 | `get_session` | Retrieve full conversation history for a session ID (all messages) | — |
 | `certify_agent` | Issue a certification for a target Agent (issuer signs with private key) | `issuer_did` |
 | `get_certifications` | Get all certifications for an Agent (each independently signed) | `did` |
+| `export_agent` | Export Agent identity (DID + private key + profile) as encrypted bundle | `did` |
+| `import_agent` | Import Agent identity from encrypted bundle | — |
+
+#### Collaboration Tools (10) — New in v0.8
+
+##### Action Layer (Task Collaboration)
+
+| Tool | Description |
+|------|-------------|
+| `propose_task` | Propose/delegate a task to target Agent, returns task_id |
+| `claim_task` | Claim a task, notify the proposer |
+| `sync_resource` | Share K-V resource with target Agent (config, docs, etc.) |
+| `notify_state` | Report task status/progress |
+
+##### Discussion (Discussion Protocol)
+
+| Tool | Description |
+|------|-------------|
+| `start_discussion` | Start multi-agent discussion with optional voting, returns topic_id |
+| `reply_discussion` | Reply to discussion (to_did is the discussion initiator) |
+| `vote_discussion` | Cast vote (approve/reject/abstain) |
+| `conclude_discussion` | Announce conclusion and close discussion |
+
+##### Emergency + Skill
+
+| Tool | Description |
+|------|-------------|
+| `emergency_halt` | Emergency halt (broadcast to Agents with active sessions) |
+| `list_skills` | List registered Skills on this node |
 
 ### Prerequisites
 

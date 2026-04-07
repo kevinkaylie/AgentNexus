@@ -97,10 +97,10 @@
 
 ---
 
-### v0.8.0 — SDK & 降低门槛 + OATR Quick Path
+### v0.8.0 — SDK & 降低门槛 + OATR Quick Path ✅
 
 > 目标：让开发者 3 行代码接入 AgentNexus，C 端用户不需要理解 DID。
->
+> **2026-04-08 代码复审完成：全部阻塞性和建议性问题已修复，✅ 批准发版。详见 `docs/devlog.md`**
 > 核心理念：**我们不去调用外部平台的 API，而是外部 Agent 来调用我们。**
 > 类似 MCP 模式——我们提供工具/适配器，Agent 安装后自动接入。
 
@@ -115,15 +115,15 @@
 
 | # | 功能 | 状态 | 说明 |
 |---|------|------|------|
-| 0.8-01 | Python SDK 包（`agentnexus-sdk`） | ⬚ 未开始 | `pip install agentnexus-sdk`，封装所有 Daemon HTTP 调用 |
-| 0.8-02 | `AgentNexus.connect(name)` 一行接入 | ⬚ 未开始 | 自动发现本地 Daemon → 注册 DID → 返回连接对象 |
-| 0.8-03 | 本地 Agent 自动发现 | ⬚ 未开始 | Agent 启动时检测 localhost:8765，零配置注册 |
-| 0.8-04 | SDK 消息收发 API | ⬚ 未开始 | `nexus.send(to_did, msg)` / `nexus.on_message(callback)` |
-| 0.8-05 | SDK 信任查询 API | ⬚ 未开始 | `nexus.verify(did)` → RuntimeVerification |
-| 0.8-06 | SDK 认证管理 API | ⬚ 未开始 | `nexus.certify(target_did, claim, evidence)` |
-| 0.8-07 | 平台适配器：OpenClaw Skill | ⬚ 未开始 | OpenClaw Agent 安装此 Skill 即接入，消息转发到 Daemon |
-| 0.8-08 | 平台适配器：Webhook 通用桥接 | ⬚ 未开始 | Dify/Coze 等平台通过 Webhook 回调接收消息 |
-| 0.8-09 | SDK 文档 & 示例 | ⬚ 未开始 | quickstart、适配器安装指南、example agents |
+| 0.8-01 | Python SDK 包（`agentnexus-sdk`） | ✅ 完成 | `pip install agentnexus-sdk`，封装所有 Daemon HTTP 调用 |
+| 0.8-02 | `AgentNexus.connect(name)` 一行接入 | ✅ 完成 | 自动发现本地 Daemon → 注册 DID → 返回连接对象 |
+| 0.8-03 | 本地 Agent 自动发现 | ✅ 完成 | Agent 启动时检测 localhost:8765，零配置注册 |
+| 0.8-04 | SDK 消息收发 API | ✅ 完成 | `nexus.send(to_did, msg)` / `nexus.on_message(callback)` |
+| 0.8-05 | SDK 信任查询 API | ✅ 完成 | `nexus.verify(did)` → RuntimeVerification |
+| 0.8-06 | SDK 认证管理 API | ✅ 完成 | `nexus.certify(target_did, claim, evidence)` |
+| 0.8-07 | 平台适配器：OpenClaw Skill | ✅ 完成 | OpenClaw Agent 安装此 Skill 即接入，消息转发到 Daemon |
+| 0.8-08 | 平台适配器：Webhook 通用桥接 | ✅ 完成 | Dify/Coze 等平台通过 Webhook 回调接收消息 |
+| 0.8-09 | SDK 文档 & 示例 | ✅ 完成 | quickstart、适配器安装指南、example agents |
 | 0.8-10 | PyPI 发布 | ⬚ 未开始 | `pip install agentnexus-sdk` 可用 |
 | 0.8-11 | Relay `/.well-known/did.json` 端点 | ✅ v0.7.1 | relay.agentnexus.top 暴露 DID Document，支持 `did:web` 解析 |
 | 0.8-12 | DID 互操作测试（OATR） | ⬚ 未开始 | 验证对方 did:key 解析我们 Ed25519，我们解析对方 attestation 基本格式 |

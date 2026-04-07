@@ -18,6 +18,7 @@ import time
 import uuid
 import uvicorn
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -37,10 +38,14 @@ from agent_net.storage import (
     list_pending, get_pending, resolve_pending,
     store_private_key, get_private_key, update_agent_profile,
     add_certification, get_certifications,
+    register_skill, unregister_skill, list_skills, get_skill,
 )
 from agent_net.router import router
 from agent_net.stun import get_public_endpoint
 from agent_net.node.gatekeeper import gatekeeper, GateDecision
+from agent_net.adapters import AdapterRegistry, register_adapter
+from agent_net.adapters.openclaw import OpenClawAdapter
+from agent_net.adapters.webhook import WebhookAdapter
 
 NODE_PORT = 8765
 _public_endpoint: dict | None = None
@@ -53,22 +58,71 @@ _handshake_waiters: dict[str, asyncio.Future] = {}
 
 # ── Token 管理 ────────────────────────────────────────────────
 
+# 用户级 Token 路径（供 SDK 和 MCP 使用）
+USER_TOKEN_DIR = Path.home() / ".agentnexus"
+USER_TOKEN_FILE = USER_TOKEN_DIR / "daemon_token.txt"
+
+
 def _init_daemon_token() -> str:
-    """首次启动生成 token 并写入文件；后续读取已有 token。"""
+    """首次启动生成 token 并写入文件；后续读取已有 token。
+
+    Token 同时写入两个位置：
+    - 项目目录 data/daemon_token.txt（本地开发）
+    - 用户目录 ~/.agentnexus/daemon_token.txt（SDK 全局使用）
+    """
     os.makedirs(DATA_DIR, exist_ok=True)
+
+    # 优先从用户目录读取（跨项目共享）
+    if USER_TOKEN_FILE.exists():
+        with open(USER_TOKEN_FILE, "r") as f:
+            t = f.read().strip()
+        if t:
+            # 同步到项目目录（确保一致）
+            with open(DAEMON_TOKEN_FILE, "w") as f:
+                f.write(t)
+            try:
+                os.chmod(DAEMON_TOKEN_FILE, 0o600)
+            except Exception:
+                pass
+            return t
+
+    # 其次从项目目录读取
     if os.path.exists(DAEMON_TOKEN_FILE):
         with open(DAEMON_TOKEN_FILE, "r") as f:
             t = f.read().strip()
         if t:
+            # 同步到用户目录
+            USER_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+            with open(USER_TOKEN_FILE, "w") as f:
+                f.write(t)
+            try:
+                os.chmod(USER_TOKEN_FILE, 0o600)
+            except Exception:
+                pass
             return t
+
+    # 生成新 token
     token = secrets.token_hex(32)
+
+    # 写入项目目录
     with open(DAEMON_TOKEN_FILE, "w") as f:
         f.write(token)
     try:
-        os.chmod(DAEMON_TOKEN_FILE, 0o600)   # Unix：仅 owner 可读
+        os.chmod(DAEMON_TOKEN_FILE, 0o600)
     except Exception:
         pass
+
+    # 写入用户目录
+    USER_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+    with open(USER_TOKEN_FILE, "w") as f:
+        f.write(token)
+    try:
+        os.chmod(USER_TOKEN_FILE, 0o600)
+    except Exception:
+        pass
+
     print(f"[Node] Token generated → {DAEMON_TOKEN_FILE}")
+    print(f"[Node] Token (user)    → {USER_TOKEN_FILE}")
     return token
 
 
@@ -165,6 +219,12 @@ async def lifespan(app: FastAPI):
     _node_cfg = _load_node_config()
     RELAY_URL = _node_cfg["local_relay"]
     _public_endpoint = await get_public_endpoint()
+
+    # 注册 DID 方法 handlers（ADR-009）
+    from agent_net.common.did_methods import register_daemon_handlers
+    from agent_net.storage import DB_PATH
+    register_daemon_handlers(str(DB_PATH))
+
     print(f"[Node] Started. Public endpoint: {_public_endpoint}")
     print(f"[Node] Local relay: {RELAY_URL}")
     yield
@@ -192,9 +252,11 @@ class RegisterRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     from_did: str
     to_did: str
-    content: str
+    content: str | dict  # str for free text, dict for Action Layer
     session_id: str = ""
     reply_to: int | None = None
+    message_type: Optional[str] = None  # Action Layer: task_propose, task_claim, resource_sync, state_notify
+    protocol: Optional[str] = None      # e.g., "nexus_v1"
 
 
 class AddContactRequest(BaseModel):
@@ -359,7 +421,9 @@ async def api_resolve_did(did: str):
             node_config = _load_node_config()
             relay_url = node_config.get("local_relay", "")
             services = build_services_from_profile(profile, relay_url)
-            doc = resolver._build_did_document(did, pubkey_bytes, services)
+            # 使用 utils 中的 build_did_document
+            from agent_net.common.did_methods.utils import build_did_document
+            doc = build_did_document(did, pubkey_bytes, services)
             return {"didDocument": doc, "source": "local_db"}
 
     # 3. did:agentnexus 纯密码学解析
@@ -583,14 +647,66 @@ async def api_import_agent(req: ImportRequest, _=Depends(_require_token)):
 async def api_send_message(req: SendMessageRequest):
     if not router.is_local(req.to_did):
         await _resolve_from_relay(req.to_did)
+
+    # Convert content to string for storage (dict -> json string)
+    # Mark content_encoding when content is serialized from dict
+    content_encoding = None
+    if isinstance(req.content, str):
+        content_str = req.content
+    else:
+        content_str = json.dumps(req.content)
+        content_encoding = "json"
+
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:16]}"
-    return await router.route_message(req.from_did, req.to_did, req.content,
-                                      session_id, req.reply_to)
+
+    return await router.route_message(
+        req.from_did,
+        req.to_did,
+        content_str,
+        session_id,
+        req.reply_to,
+        message_type=req.message_type,
+        protocol=req.protocol,
+        content_encoding=content_encoding,
+    )
 
 
 @app.get("/messages/inbox/{did}")
 async def api_fetch_inbox(did: str):
     messages = await fetch_inbox(did)
+    return {"messages": messages, "count": len(messages)}
+
+
+@app.get("/messages/all/{did}")
+async def api_all_messages(did: str, limit: int = 100):
+    """
+    获取 Agent 的所有消息（含已投递）。
+
+    用于 Discussion Protocol 的历史查询。
+    """
+    from agent_net.storage import DB_PATH
+    import aiosqlite
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id, from_did, content, timestamp, session_id, reply_to, message_type, protocol, content_encoding "
+            "FROM messages WHERE to_did=? ORDER BY timestamp DESC LIMIT ?",
+            (did, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    messages = [{
+        "id": r[0],
+        "from": r[1],
+        "content": r[2],
+        "timestamp": r[3],
+        "session_id": r[4] or "",
+        "reply_to": r[5],
+        "message_type": r[6],
+        "protocol": r[7],
+        "content_encoding": r[8],
+    } for r in rows]
+
     return {"messages": messages, "count": len(messages)}
 
 
@@ -819,7 +935,140 @@ async def api_deliver(payload: dict):
         raise HTTPException(400, "Missing fields")
     session_id = payload.get("session_id", "")
     reply_to = payload.get("reply_to")
-    return await router.route_message(from_did, to_did, content, session_id, reply_to)
+    message_type = payload.get("message_type")
+    protocol = payload.get("protocol")
+    return await router.route_message(from_did, to_did, content, session_id, reply_to,
+                                      message_type=message_type, protocol=protocol)
+
+
+# ── Platform Adapters (ADR-010) ─────────────────────────────────────
+
+@app.post("/adapters/{platform}/invoke")
+async def api_adapter_invoke(platform: str, payload: dict, authorization: str = Header(None)):
+    """
+    External platform → AgentNexus via adapter.
+
+    Args:
+        platform: Platform name (openclaw, webhook, etc.)
+        payload: Platform-specific request
+    """
+    _require_token(authorization)
+
+    adapter = AdapterRegistry.get(platform)
+    if not adapter:
+        raise HTTPException(404, f"Unknown platform: {platform}")
+
+    result = await adapter.inbound(payload)
+    if "error" in result:
+        status = result.pop("status", 500)
+        raise HTTPException(status, result["error"])
+
+    return result
+
+
+@app.post("/adapters/{platform}/register")
+async def api_adapter_register(platform: str, payload: dict, authorization: str = Header(None)):
+    """
+    Register a platform adapter for an Agent.
+
+    Args:
+        platform: Platform name
+        payload: {"agent_did": "...", "webhook_secret": "..." (for webhook)}
+    """
+    _require_token(authorization)
+
+    agent_did = payload.get("agent_did")
+    if not agent_did:
+        raise HTTPException(400, "Missing agent_did")
+
+    # Verify agent exists
+    agent = await get_agent(agent_did)
+    if not agent:
+        raise HTTPException(404, f"Agent not found: {agent_did}")
+
+    # Create and register adapter
+    if platform == "openclaw":
+        adapter = OpenClawAdapter(agent_did, router, __import__("agent_net.storage", fromlist=[""]))
+    elif platform == "webhook":
+        webhook_secret = payload.get("webhook_secret", secrets.token_hex(16))
+        callback_url = payload.get("callback_url")
+        adapter = WebhookAdapter(agent_did, router, __import__("agent_net.storage", fromlist=[""]),
+                                 webhook_secret, callback_url)
+    else:
+        raise HTTPException(400, f"Unknown platform: {platform}")
+
+    register_adapter(adapter)
+
+    return {
+        "status": "ok",
+        "platform": platform,
+        "agent_did": agent_did,
+        "manifest": adapter.skill_manifest(),
+    }
+
+
+# ── Skill Registry (ADR-010) ─────────────────────────────────────────
+
+@app.get("/skills")
+async def api_list_skills(agent_did: Optional[str] = None, capability: Optional[str] = None):
+    """List registered Skills, optionally filtered by Agent or capability."""
+    skills = await list_skills(agent_did, capability)
+    return {"skills": skills}
+
+
+@app.get("/skills/{skill_id}")
+async def api_get_skill(skill_id: str):
+    """Get Skill details."""
+    skill = await get_skill(skill_id)
+    if not skill:
+        raise HTTPException(404, f"Skill not found: {skill_id}")
+    return skill
+
+
+@app.post("/skills/register")
+async def api_register_skill(payload: dict, authorization: str = Header(None)):
+    """
+    Register a Skill for an Agent.
+
+    Args:
+        payload: {
+            "agent_did": "...",
+            "name": "translate",
+            "capabilities": ["Translation"],
+            "actions": ["translate_text", "detect_language"]
+        }
+    """
+    _require_token(authorization)
+
+    agent_did = payload.get("agent_did")
+    name = payload.get("name")
+    capabilities = payload.get("capabilities", [])
+    actions = payload.get("actions", [])
+
+    if not agent_did or not name or not actions:
+        raise HTTPException(400, "Missing required fields: agent_did, name, actions")
+
+    # Verify agent exists
+    agent = await get_agent(agent_did)
+    if not agent:
+        raise HTTPException(404, f"Agent not found: {agent_did}")
+
+    skill_id = f"skill_{uuid.uuid4().hex[:8]}_{name}"
+    await register_skill(skill_id, agent_did, name, capabilities, actions)
+
+    return {"status": "ok", "skill_id": skill_id}
+
+
+@app.delete("/skills/{skill_id}")
+async def api_unregister_skill(skill_id: str, authorization: str = Header(None)):
+    """Unregister a Skill."""
+    _require_token(authorization)
+
+    success = await unregister_skill(skill_id)
+    if not success:
+        raise HTTPException(404, f"Skill not found: {skill_id}")
+
+    return {"status": "ok"}
 
 
 async def _resolve_from_relay(did: str):
