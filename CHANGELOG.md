@@ -6,6 +6,80 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.8.0] - 2026-04-08
+
+**发布地址：**
+- GitHub Release: https://github.com/kevinkaylie/AgentNexus/releases/tag/v0.8.0
+- PyPI: https://pypi.org/project/agentnexus-sdk/0.8.0/
+
+### Added
+
+#### ACP 协议栈完整实现
+- **L0-L2 + L4 + L6-L8 全部就位**，形成完整的 Agent 通信协议
+- **九层协议栈**：Identity → Security → Access → Transport → Messaging → Collaboration → Adapters
+
+#### ADR-009: DID Method Handler 注册表架构重构
+- **DIDMethodHandler 抽象基类**：可插拔的 DID 方法处理器
+- **5 个 Handler 实现**：AgentNexus / AgentLegacy / Key / Web / Meeet
+- **注册函数**：`register_daemon_handlers()` / `register_relay_handlers()` / `reset_handlers()`
+
+#### ADR-010: 平台适配器架构
+- **PlatformAdapter 抽象基类**：`inbound()` / `outbound()` / `skill_manifest()`
+- **AdapterRegistry**：`register()` / `unregister()` / `get()` / `list()`
+- **OpenClawAdapter**：4 种 action（invoke_skill / query_status / send_message / get_profile）
+- **WebhookAdapter**：HMAC-SHA256 签名验证
+- **Skill 注册端点**：`GET/POST/DELETE /skills`
+
+#### ADR-011: Discussion Protocol
+- **四种消息类型**：discussion_start / discussion_reply / discussion_vote / discussion_conclude
+- **DiscussionStateMachine**：open → voting → concluded 状态机
+- **投票模式**：majority / unanimous / leader_decides
+- **EmergencyController**：紧急熔断 + callback 机制
+
+#### ADR-012: MCP 协作层工具（27 个工具）
+- **Action Layer（4 个）**：propose_task / claim_task / sync_resource / notify_state
+- **Discussion（4 个）**：start_discussion / reply_discussion / vote_discussion / conclude_discussion
+- **Emergency + Skill（2 个）**：emergency_halt / list_skills
+
+#### Python SDK (agentnexus-sdk) — PyPI 发布
+```bash
+pip install agentnexus-sdk
+```
+- **核心 API**：`connect()` / `send()` / `verify()` / `certify()`
+- **Action Layer**：`propose_task()` / `claim_task()` / `sync_resource()` / `notify_state()`
+- **Discussion**：`start_discussion()` / `reply()` / `vote()` / `conclude()`
+- **同步包装器**：`agentnexus.sync.connect()`
+
+#### did:meeet 桥接（ADR-008）
+- **管理员注册**：`POST /meeet/admin/register`（Bootstrap + 已注册 admin 验证）
+- **Agent 注册**：`POST /meeet/register` / `POST /meeet/batch-register`
+- **x402 score 映射**：MEEET reputation → x402 score（已提取到 utils.py 共享）
+
+#### 跨平台 MCP 配置文档
+- Kiro CLI / Claude Code / OpenClaw / Claude Desktop / Cursor 配置示例
+- 多 Agent 协作流程示例
+
+### Fixed
+
+#### 阻塞性问题
+- **B1**: `/meeet/admin/register` 签名验证漏洞 — Bootstrap 模式 + 已注册 admin 验证
+- **B2**: DID Document 缺少 `assertionMethod` 字段 — 补全 W3C 规范字段
+
+#### 建议性问题
+- **S1**: `_compute_x402_score()` 重复代码 — 提取到 `utils.py` 共享
+- **S2**: `TaskStatus.EXPIRED` 写法混乱 — 明确定义 enum
+- **S3**: `@context` 顺序错误 — DID Core 在前
+- **S4**: dict content 序列化后无标记 — 新增 `content_encoding` 字段
+- **CP1**: `start_discussion` 广播失败无日志 — 添加 `logger.warning`
+- **CP2**: scenarios.md 缺少场景 5 — 补充跨平台协作场景
+- **CP3**: 缺少测试覆盖 — 新增 `tests/test_mcp_collaboration.py`（10 个测试）
+
+### Technical
+- 测试结果：157 passed, 3 skipped ✅
+- 版本号：agentnexus 0.8.0, agentnexus-sdk 0.8.0
+
+---
+
 ## [0.8.1] - 2026-04-04
 
 ### Changed
