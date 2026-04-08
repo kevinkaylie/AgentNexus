@@ -1,37 +1,59 @@
-# --- Python 基础 ---
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.venv/
-venv/
-env/
+*.so
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# --- 操作系统与 IDE ---
-.DS_Store
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
 .idea/
 .vscode/
 *.swp
+*.swo
 
-# --- AgentNexus 运行时数据 ---
-data/                            # 运行时生成：DB、token、白/黑名单、配置
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
-# --- AgentNexus 核心安全 (非常重要！) ---
-# 绝不要上传任何包含私钥的文件
-*.key
-*.pem
-identity/*.json
-!identity/profile.example.json  # 允许上传示例模板
-*.db                             # 排除本地 SQLite 数据库
-*.log                            # 排除运行日志
+# Project specific - runtime data
+data/*.db
+data/*.json
+data/*.txt
 
-# --- AI 助手上下文 ---
-claude.md
-trae.md
-.claudecode/
+# Project specific - local only docs (NOT for GitHub)
+docs/roadmap.md
+docs/wip.md
+docs/devlog.md
+docs/giskard-*.md
+docs/contracts/giskard-ca-certification.md
+docs/contracts/oatr-jwt-attestation.md
 
-# --- 配置文件 ---
-.env
-config.local.yaml
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
