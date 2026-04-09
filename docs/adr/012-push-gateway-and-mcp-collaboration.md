@@ -786,6 +786,8 @@ AgentNexus 的各模块（DID、握手、路由、消息、协作）不是独立
 | 2026-04-06 | 设计 Agent | **全部修复** | S5 命名约定 ✅ S6 L5描述修正 ✅ S7 PK已改 ✅ S8 SSE三要素 ✅ S1 日志已改 ✅ S3 返回值格式 ✅ C1 seq自动维护 ✅；S2/S4 延后处理 |
 | 2026-04-07 | 设计 Agent（代码评审） | **通过** | v0.8 MCP 协作工具代码实现评审：10 个工具与 ADR-012 §6 设计高度一致，核心逻辑无问题。3 个建议性问题（详见 §7.3） |
 | 2026-04-08 | 设计 Agent（代码复审） | **全部通过** | CP1-CP3 全部修复：日志 ✅ scenarios.md 场景 5 ✅ test_mcp_collaboration.py 10 tests passed ✅ |
+| 2026-04-09 | 设计 Agent（v0.9 代码评审） | **有条件通过** | L3 注册层 + L5 推送层实现评审：设计一致性 ⭐⭐⭐⭐⭐，功能完整性 ⭐⭐⭐⭐。🔴 P1 DID-Token 绑定 TODO 未实现、P2 SSRF 防护 pass 空实现；🟡 S1 MCP 续约硬编码、S2 测试 10/10 ERROR。详见 §7.4 |
+| 2026-04-09 | 设计 Agent（v0.9 复审） | **全部通过** | P1 DID-Token 绑定 ✅ P2 SSRF 防护 ✅ S1 expires//2 ✅ S2 测试 10/10 passed ✅ |
 
 ### 评审问题详情
 
@@ -868,6 +870,52 @@ AgentNexus 的各模块（DID、握手、路由、消息、协作）不是独立
 | CP1 | `mcp_server.py` | `start_discussion` 广播失败时 `except Exception: pass` 无日志，调试困难 | 加 `logger.warning(f"Failed to notify {did}: {e}")` | ✅ 已修复 |
 | CP2 | `docs/scenarios.md` | wip.md 0.8-17 标记完成且待同步 scenarios.md，但实际未新增跨平台组队场景 | 补充场景 5：OpenClaw + Kiro + Claude Code 跨平台 MCP 协作 | ✅ 已修复 |
 | CP3 | `tests/` | ADR-012 影响范围要求 `tests/test_mcp_collaboration.py`，但未新增测试文件 | 参考 `test_mcp_bind.py` mock 模式，补充 10 个工具的测试覆盖 | ✅ 已修复（10 tests passed） |
+
+### §7.4 v0.9 代码评审（2026-04-09）
+
+评审对象：L3 注册层（ADR-012 §3）+ L5 推送层（ADR-012 §4）实现。
+
+涉及文件：`agent_net/storage.py`、`agent_net/node/daemon.py`、`agent_net/router.py`、`agent_net/node/mcp_server.py`、`agentnexus-sdk/src/agentnexus/client.py`、`tests/test_push.py`
+
+#### ✅ 通过项
+
+| # | 检查项 | 文件 |
+|---|--------|------|
+| 1 | `push_registrations` 表结构与 §3 数据模型完全一致 | storage.py |
+| 2 | Storage CRUD 完整（create/get_active/get_single/refresh/delete/cleanup） | storage.py |
+| 3 | Daemon 4 个端点与 §3 一致（register/refresh/delete/status） | daemon.py |
+| 4 | register/refresh/delete 需 Bearer Token，GET 公开 | daemon.py |
+| 5 | `callback_secret` 仅注册时返回，GET 状态查询已过滤 | daemon.py |
+| 6 | TTL 清理后台任务（每 5 分钟），lifespan 中启动 | daemon.py |
+| 7 | 推送在 `route_message()` 离线存储后 `asyncio.create_task` 触发 | router.py |
+| 8 | HMAC 签名：`X-Nexus-Signature: sha256=<HMAC>` + `X-Nexus-Timestamp`，与 §4 一致 | router.py |
+| 9 | 推送超时 5s（`aiohttp.ClientTimeout(total=5)`） | router.py |
+| 10 | 推送失败 `logger.warning`（HTTP ≥400 和 Exception） | router.py |
+| 11 | MCP 启动自动注册 + finally 注销 + 后台续约 | mcp_server.py |
+| 12 | SDK register_push / close 自动 unregister / 动态 expires//2 续约 | client.py |
+
+#### 🔴 阻塞性问题
+
+| # | 文件 | 问题 | 建议 |
+|---|------|------|------|
+| P1 | daemon.py:1135 | `# TODO: 验证 did 是否与 token 绑定的 DID 一致` — DID-Token 绑定未实现，任何持有 Daemon Token 的进程可为任意 DID 注册回调 | 短期：验证 `did` 是否为本节点已注册 Agent（`SELECT 1 FROM agents WHERE did=?`）；长期：per-DID token | ✅ 已修复（`_bind_token_to_did` + `_verify_token_did_binding`） |
+| P2 | daemon.py:1142 | SSRF 防护 `pass` 空实现 — 外部 URL 不受限制 | 改为默认拒绝：`raise HTTPException(403, "External callback_url not allowed")`，配置机制就绪后再开放 | ✅ 已修复（严格模式 localhost-only + 白名单配置） |
+
+#### 🟡 建议性问题
+
+| # | 文件 | 问题 | 建议 |
+|---|------|------|------|
+| S1 | mcp_server.py:660 | 续约间隔硬编码 `1800`（30min），不随 expires 参数变化 | 改为 `expires // 2`，与 SDK 实现和 §3 注册模型一致 | ✅ 已修复 |
+| S2 | tests/test_push.py | 10 个测试全部 ERROR（async fixture + pytest-asyncio strict mode 兼容性） | 修复 fixture 兼容性 | ✅ 已修复（10 passed） |
+
+#### 评分
+
+| 维度 | 评分 |
+|------|------|
+| 设计一致性 | ⭐⭐⭐⭐⭐ |
+| 功能完整性 | ⭐⭐⭐⭐ |
+| 安全性 | ⭐⭐ |
+| 测试 | ⭐ |
 
 ## 答疑记录
 

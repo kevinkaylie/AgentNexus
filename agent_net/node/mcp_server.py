@@ -20,6 +20,10 @@ app = Server("agent-net-node-mcp")
 # 启动时从环境变量读取绑定 DID（由 node mcp --name/--did 注入）
 _MY_DID: str = os.environ.get("AGENTNEXUS_MY_DID", "")
 
+# Push registration state
+_push_registration: dict = {}
+_push_refresh_task: asyncio.Task | None = None
+
 
 def _read_token() -> str:
     """从 data/daemon_token.txt 读取鉴权 Token（若文件不存在返回空串）"""
@@ -295,6 +299,98 @@ async def list_tools() -> list[Tool]:
                               "agent_did": {"type": "string", "description": "Filter by Agent DID"},
                               "capability": {"type": "string", "description": "Filter by capability keyword"},
                           }}),
+        # Enclave (ADR-013) - 6 tools
+        Tool(name="create_enclave",
+             description="Create an Enclave (project team) with members, roles, and shared Vault.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "name": {"type": "string", "description": "Enclave name (e.g. 'Login Feature Dev')"},
+                              "members": {
+                                  "type": "object",
+                                  "description": "Role-to-DID mapping. Key=role name, value=object with did and optional handbook",
+                                  "additionalProperties": {
+                                      "type": "object",
+                                      "properties": {
+                                          "did": {"type": "string", "description": "Agent DID for this role"},
+                                          "handbook": {"type": "string", "description": "Role responsibilities"},
+                                          "permissions": {"type": "string", "enum": ["r", "rw", "admin"],
+                                                          "description": "Default: rw"},
+                                      },
+                                      "required": ["did"],
+                                  },
+                              },
+                              "vault_backend": {"type": "string", "enum": ["git", "local"],
+                                                "description": "Vault storage backend (default: local)"},
+                              "vault_config": {"type": "object",
+                                               "description": "Backend-specific config. git: {repo_path, branch}. local: {}"},
+                          }, "required": ["name", "members"]}),
+        Tool(name="vault_get",
+             description="Read a document from Enclave Vault. Returns content and version.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "enclave_id": {"type": "string", "description": "Enclave ID"},
+                              "key": {"type": "string", "description": "Document key (e.g. 'requirements', 'design_doc')"},
+                              "version": {"type": "string", "description": "Specific version (omit for latest)"},
+                              "author_did": {"type": "string", "description": "Requester DID (for permission check)"},
+                          }, "required": ["enclave_id", "key"]}),
+        Tool(name="vault_put",
+             description="Write a document to Enclave Vault. Creates new or updates existing.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "enclave_id": {"type": "string", "description": "Enclave ID"},
+                              "key": {"type": "string", "description": "Document key"},
+                              "value": {"type": "string", "description": "Document content (text or JSON string)"},
+                              "message": {"type": "string",
+                                          "description": "Change description (used as commit message for git backend)"},
+                          }, "required": ["enclave_id", "key", "value"]}),
+        Tool(name="vault_list",
+             description="List documents in Enclave Vault.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "enclave_id": {"type": "string", "description": "Enclave ID"},
+                              "prefix": {"type": "string", "description": "Filter by key prefix (e.g. 'design_')"},
+                              "author_did": {"type": "string", "description": "Requester DID (for permission check)"},
+                          }, "required": ["enclave_id"]}),
+        Tool(name="run_playbook",
+             description="Start a Playbook in an Enclave. Automatically assigns tasks to role-bound Agents.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "enclave_id": {"type": "string", "description": "Enclave ID"},
+                              "playbook": {
+                                  "type": "object",
+                                  "description": "Playbook definition (inline) or playbook_id reference",
+                                  "properties": {
+                                      "playbook_id": {"type": "string",
+                                                      "description": "Existing playbook ID (mutually exclusive with stages)"},
+                                      "name": {"type": "string", "description": "Playbook name (for inline definition)"},
+                                      "stages": {
+                                          "type": "array",
+                                          "description": "Stage definitions (for inline definition)",
+                                          "items": {
+                                              "type": "object",
+                                              "properties": {
+                                                  "name": {"type": "string"},
+                                                  "role": {"type": "string"},
+                                                  "description": {"type": "string"},
+                                                  "input_keys": {"type": "array", "items": {"type": "string"}},
+                                                  "output_key": {"type": "string"},
+                                                  "next": {"type": "string"},
+                                                  "on_reject": {"type": "string"},
+                                                  "timeout_seconds": {"type": "integer"},
+                                              },
+                                              "required": ["name", "role"],
+                                          },
+                                      },
+                                  },
+                              },
+                          }, "required": ["enclave_id", "playbook"]}),
+        Tool(name="get_run_status",
+             description="Get Playbook execution status for an Enclave.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "enclave_id": {"type": "string", "description": "Enclave ID"},
+                              "run_id": {"type": "string", "description": "Run ID (omit to get latest run)"},
+                          }, "required": ["enclave_id"]}),
     ]
 
 
@@ -602,6 +698,69 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     params["capability"] = arguments["capability"]
                 result = await _call("get", "/skills", params=params if params else None)
 
+            # Enclave (ADR-013) - 6 tools
+            case "create_enclave":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    result = await _call("post", "/enclaves", json={
+                        "owner_did": _MY_DID,
+                        **arguments,
+                    })
+
+            case "vault_get":
+                enclave_id = arguments["enclave_id"]
+                key = arguments["key"]
+                params = {}
+                if arguments.get("version"):
+                    params["version"] = arguments["version"]
+                if arguments.get("author_did"):
+                    params["author_did"] = arguments["author_did"]
+                elif _MY_DID:
+                    params["author_did"] = _MY_DID
+                result = await _call("get", f"/enclaves/{enclave_id}/vault/{key}",
+                                     params=params if params else None)
+
+            case "vault_put":
+                if not _MY_DID:
+                    result = {"error": "No DID bound — start with --name"}
+                else:
+                    enclave_id = arguments["enclave_id"]
+                    key = arguments["key"]
+                    result = await _call("put", f"/enclaves/{enclave_id}/vault/{key}", json={
+                        "value": arguments["value"],
+                        "author_did": _MY_DID,
+                        "message": arguments.get("message", ""),
+                    })
+
+            case "vault_list":
+                enclave_id = arguments["enclave_id"]
+                params = {}
+                if arguments.get("prefix"):
+                    params["prefix"] = arguments["prefix"]
+                if arguments.get("author_did"):
+                    params["author_did"] = arguments["author_did"]
+                elif _MY_DID:
+                    params["author_did"] = _MY_DID
+                result = await _call("get", f"/enclaves/{enclave_id}/vault",
+                                     params=params if params else None)
+
+            case "run_playbook":
+                enclave_id = arguments["enclave_id"]
+                result = await _call("post", f"/enclaves/{enclave_id}/runs", json={
+                    "playbook": arguments.get("playbook"),
+                    "playbook_id": arguments.get("playbook_id"),
+                })
+
+            case "get_run_status":
+                enclave_id = arguments["enclave_id"]
+                run_id = arguments.get("run_id")
+                if run_id:
+                    result = await _call("get", f"/enclaves/{enclave_id}/runs/{run_id}")
+                else:
+                    # 省略 run_id 时获取最新 run
+                    result = await _call("get", f"/enclaves/{enclave_id}/runs")
+
             case _:
                 result = {"error": f"Unknown tool: {name}"}
 
@@ -610,9 +769,94 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
+# ── Push Registration (v0.9) ─────────────────────────────────────
+
+async def _register_push():
+    """Register push callback for this MCP instance."""
+    global _push_registration, _push_refresh_task
+
+    if not _MY_DID:
+        logger.warning("No DID bound, skipping push registration")
+        return
+
+    try:
+        # Use a local callback URL (MCP process can listen on this port)
+        callback_url = "http://127.0.0.1:18765/push/callback"
+
+        result = await _call("post", "/push/register", json={
+            "did": _MY_DID,
+            "callback_url": callback_url,
+            "callback_type": "webhook",
+            "expires": 3600,
+        })
+
+        if result.get("status") == "ok":
+            _push_registration = {
+                "registration_id": result["registration_id"],
+                "callback_secret": result["callback_secret"],
+                "expires_at": result["expires_at"],
+            }
+            logger.info(f"Push registered: {result['registration_id']}")
+
+            # Start refresh task (refresh every 30 minutes)
+            if _push_refresh_task:
+                _push_refresh_task.cancel()
+            _push_refresh_task = asyncio.create_task(_push_refresh_loop())
+    except Exception as e:
+        logger.warning(f"Push registration failed: {e}")
+
+
+async def _push_refresh_loop():
+    """Background task to refresh push registration."""
+    # 续约间隔 = expires // 2（推荐做法）
+    expires_seconds = 3600
+    refresh_interval = expires_seconds // 2  # 1800 秒 = 30 分钟
+
+    while _MY_DID:
+        await asyncio.sleep(refresh_interval)
+        try:
+            result = await _call("post", "/push/refresh", json={
+                "did": _MY_DID,
+                "callback_url": "http://127.0.0.1:18765/push/callback",
+                "callback_type": "webhook",
+                "expires": expires_seconds,
+            })
+            if result.get("status") == "ok":
+                logger.debug("Push registration refreshed")
+        except Exception as e:
+            logger.warning(f"Push refresh failed: {e}")
+
+
+async def _unregister_push():
+    """Unregister push callback."""
+    global _push_registration, _push_refresh_task
+
+    if _push_refresh_task:
+        _push_refresh_task.cancel()
+        _push_refresh_task = None
+
+    if _MY_DID:
+        try:
+            await _call("delete", f"/push/{_MY_DID}")
+            logger.info("Push unregistered")
+        except Exception as e:
+            logger.warning(f"Push unregister failed: {e}")
+
+    _push_registration = {}
+
+
 async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+    # Register push on startup if DID is bound
+    if _MY_DID:
+        asyncio.create_task(_register_push())
+
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(read_stream, write_stream, app.create_initialization_options())
+    finally:
+        # Cleanup on exit
+        if _MY_DID:
+            await _unregister_push()
 
 
 if __name__ == "__main__":

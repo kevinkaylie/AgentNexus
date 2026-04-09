@@ -2,9 +2,16 @@
 路由模块 - 判断目标DID是本地还是远程，选择传输路径
 """
 import asyncio
+import json
+import hmac
+import hashlib
+import time
+import logging
 import aiohttp
 from typing import Optional
 from . import storage
+
+logger = logging.getLogger(__name__)
 
 RELAY_URL = "https://relay.agent-net.io"  # 可配置
 
@@ -67,7 +74,109 @@ class Router:
         # 4. 离线存储
         await storage.store_message(from_did, to_did, content, session_id, reply_to,
                                     message_type, protocol, content_encoding)
+
+        # 5. Playbook 消息拦截（ADR-013 §4）
+        if message_type == "state_notify":
+            asyncio.create_task(self._intercept_playbook_state(from_did, content))
+
+        # 6. 触发 Push 通知（ADR-012 L5）
+        asyncio.create_task(self._push_notify(to_did, from_did, session_id, message_type, content))
+
         return {"status": "queued", "method": "offline", "session_id": session_id}
+
+    async def _push_notify(self, to_did: str, from_did: str, session_id: str,
+                           message_type: str | None, content: str):
+        """消息到达后触发 Push 通知（ADR-012 §4）"""
+        try:
+            registrations = await storage.get_active_push_registrations(to_did)
+            if not registrations:
+                return  # 无注册，静默（消息已存储）
+
+            # 构建通知 body
+            preview = content[:200] if isinstance(content, str) else json.dumps(content)[:200]
+            timestamp = time.time()
+
+            for reg in registrations:
+                try:
+                    body = {
+                        "event": "new_message",
+                        "to_did": to_did,
+                        "from_did": from_did,
+                        "session_id": session_id,
+                        "message_type": message_type,
+                        "preview": preview,
+                        "timestamp": timestamp,
+                    }
+                    body_json = json.dumps(body, separators=(',', ':'))
+                    signature = hmac.new(
+                        reg["callback_secret"].encode(),
+                        body_json.encode(),
+                        hashlib.sha256
+                    ).hexdigest()
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            reg["callback_url"],
+                            json=body,
+                            headers={
+                                "Content-Type": "application/json",
+                                "X-Nexus-Signature": f"sha256={signature}",
+                                "X-Nexus-Timestamp": str(timestamp),
+                            },
+                            timeout=aiohttp.ClientTimeout(total=5)
+                        ) as resp:
+                            if resp.status >= 400:
+                                logger.warning(f"Push notify failed for {reg['registration_id']}: HTTP {resp.status}")
+                except Exception as e:
+                    logger.warning(f"Push notify failed for {reg['registration_id']}: {e}")
+        except Exception as e:
+            logger.warning(f"Push notify error for {to_did}: {e}")
+
+    async def _intercept_playbook_state(self, from_did: str, content: str):
+        """
+        拦截 state_notify 消息，检查是否关联 Playbook 并推进流程（ADR-013 §4）。
+        """
+        try:
+            # 解析消息内容
+            if not content:
+                return
+            try:
+                msg = json.loads(content)
+            except json.JSONDecodeError:
+                return
+
+            task_id = msg.get("task_id")
+            if not task_id:
+                return  # 普通状态通知，不是 Playbook 驱动的
+
+            # 查找关联的 stage_execution
+            from agent_net.storage import get_stage_execution_by_task
+            execution = await get_stage_execution_by_task(task_id)
+            if not execution:
+                return  # 普通任务，不是 Playbook 驱动的
+
+            status = msg.get("status")
+            run_id = execution["run_id"]
+            stage_name = execution["stage_name"]
+
+            # 导入 PlaybookEngine
+            from agent_net.enclave.playbook import get_playbook_engine
+            engine = get_playbook_engine()
+
+            if status == "completed":
+                await engine.on_stage_completed(
+                    run_id, stage_name,
+                    output_ref=msg.get("output_ref", "")
+                )
+            elif status == "rejected":
+                await engine.on_stage_rejected(
+                    run_id, stage_name,
+                    reason=msg.get("reason", "")
+                )
+            # 其他状态（in_progress 等）不需要处理
+
+        except Exception as e:
+            logger.warning(f"Playbook intercept error: {e}")
 
     async def _send_remote(self, from_did: str, to_did: str, content: str, endpoint: str,
                            session_id: str = "", reply_to: int | None = None,

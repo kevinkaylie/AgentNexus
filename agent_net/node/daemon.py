@@ -39,6 +39,15 @@ from agent_net.storage import (
     store_private_key, get_private_key, update_agent_profile,
     add_certification, get_certifications,
     register_skill, unregister_skill, list_skills, get_skill,
+    # Enclave (ADR-013)
+    create_enclave, get_enclave, list_enclaves, update_enclave, delete_enclave,
+    add_enclave_member, get_enclave_member, list_enclave_members,
+    update_enclave_member, remove_enclave_member,
+    vault_get, vault_put, vault_list, vault_history, vault_delete,
+    create_playbook, get_playbook,
+    create_playbook_run, get_playbook_run, get_latest_playbook_run, update_playbook_run,
+    create_stage_execution, get_stage_execution, get_stage_execution_by_task,
+    update_stage_execution, list_stage_executions,
 )
 from agent_net.router import router
 from agent_net.stun import get_public_endpoint
@@ -134,6 +143,30 @@ def _require_token(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing token")
 
 
+# Token-DID 绑定存储（用于 Push 回调安全验证）
+# {token_hash: [did1, did2, ...]}
+_TOKEN_DID_BINDINGS: dict[str, list[str]] = {}
+
+
+def _bind_token_to_did(did: str) -> None:
+    """将当前 Token 绑定到指定 DID"""
+    import hashlib
+    token_hash = hashlib.sha256(_daemon_token.encode()).hexdigest()
+    if token_hash not in _TOKEN_DID_BINDINGS:
+        _TOKEN_DID_BINDINGS[token_hash] = []
+    if did not in _TOKEN_DID_BINDINGS[token_hash]:
+        _TOKEN_DID_BINDINGS[token_hash].append(did)
+
+
+def _verify_token_did_binding(did: str) -> bool:
+    """验证 Token 是否绑定到指定 DID"""
+    import hashlib
+    if not _daemon_token:
+        return True  # 无 Token 时放行（测试模式）
+    token_hash = hashlib.sha256(_daemon_token.encode()).hexdigest()
+    return did in _TOKEN_DID_BINDINGS.get(token_hash, [])
+
+
 # ── 节点配置（node_config.json） ─────────────────────────────
 
 def _load_node_config() -> dict:
@@ -211,9 +244,25 @@ async def _heartbeat_loop(did: str, endpoint: str, interval: int = RELAY_HEARTBE
         await asyncio.sleep(interval)
 
 
+async def _cleanup_expired_push_registrations():
+    """定时清理过期的 Push 注册（每 5 分钟）"""
+    while True:
+        await asyncio.sleep(300)  # 5 分钟
+        try:
+            from agent_net.storage import cleanup_expired_push_registrations
+            deleted = await cleanup_expired_push_registrations()
+            if deleted > 0:
+                print(f"[Node] Cleaned up {deleted} expired push registrations")
+        except Exception as e:
+            print(f"[Node] Push cleanup error: {e}")
+
+
+_cleanup_push_task: asyncio.Task | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _public_endpoint, _heartbeat_task, RELAY_URL, _node_cfg, _daemon_token
+    global _public_endpoint, _heartbeat_task, _cleanup_push_task, RELAY_URL, _node_cfg, _daemon_token
     await init_db()
     _daemon_token = _init_daemon_token()
     _node_cfg = _load_node_config()
@@ -225,11 +274,20 @@ async def lifespan(app: FastAPI):
     from agent_net.storage import DB_PATH
     register_daemon_handlers(str(DB_PATH))
 
+    # 初始化 PlaybookEngine（ADR-013 §4）
+    from agent_net.enclave.playbook import init_playbook_engine
+    init_playbook_engine(daemon_url=f"http://localhost:{NODE_PORT}", token=_daemon_token)
+
+    # 启动 Push 注册过期清理任务（v0.9）
+    _cleanup_push_task = asyncio.create_task(_cleanup_expired_push_registrations())
+
     print(f"[Node] Started. Public endpoint: {_public_endpoint}")
     print(f"[Node] Local relay: {RELAY_URL}")
     yield
     if _heartbeat_task:
         _heartbeat_task.cancel()
+    if _cleanup_push_task:
+        _cleanup_push_task.cancel()
 
 
 app = FastAPI(title="AgentNet Node Daemon", version="0.6.0", lifespan=lifespan)
@@ -331,6 +389,10 @@ async def api_register_agent(req: RegisterRequest, _=Depends(_require_token)):
     from nacl.encoding import HexEncoder
     pk_hex = signing_key.encode(HexEncoder).decode()
     await register_agent(did, profile_dict, is_local=True, private_key_hex=pk_hex)
+
+    # 绑定 Token 到 DID（用于 Push 回调安全验证）
+    _bind_token_to_did(did)
+
     # 不注册 local session：daemon 注册 ≠ 有活跃 MCP 消费者。
     # 消息应落 DB（offline），由 MCP 轮询 fetch_inbox 取出。
 
@@ -1084,6 +1146,549 @@ async def _resolve_from_relay(did: str):
                     await upsert_contact(did, data["endpoint"], RELAY_URL)
     except Exception:
         pass
+
+
+# ── Push Registration API (ADR-012 L3/L5) ───────────────────────────
+
+class PushRegisterRequest(BaseModel):
+    did: str
+    callback_url: str
+    callback_type: str = "webhook"  # webhook / sse / platform
+    push_key: Optional[str] = None   # 平台侧标识符
+    expires: int = 3600              # TTL 秒数
+
+
+class PushRefreshRequest(BaseModel):
+    did: str
+    callback_url: str
+    callback_type: str = "webhook"
+    expires: int = 3600
+
+
+@app.post("/push/register")
+async def api_push_register(req: PushRegisterRequest, _=Depends(_require_token)):
+    """
+    注册 Push 唤醒方式（ADR-012 §3）
+
+    安全约束：
+    1. did 参数必须与 Bearer Token 绑定的 DID 一致
+    2. callback_url 默认仅允许 localhost（SSRF 防护），可配置白名单
+    """
+    # 安全检查 1：验证 did 是否与 token 绑定的 DID 一致
+    if not _verify_token_did_binding(req.did):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Token not bound to DID: {req.did}. Register the agent first."
+        )
+
+    # 安全检查 2：SSRF 防护
+    from urllib.parse import urlparse
+    parsed = urlparse(req.callback_url)
+
+    # 从配置读取 SSRF 白名单
+    ssrf_allow_localhost_only = _node_cfg.get("ssrf_allow_localhost_only", True)
+    ssrf_allowed_hosts = _node_cfg.get("ssrf_allowed_hosts", [])
+
+    is_localhost = parsed.hostname in ("127.0.0.1", "localhost", "::1")
+    is_allowed_host = parsed.hostname in ssrf_allowed_hosts
+
+    if ssrf_allow_localhost_only and not is_localhost:
+        # 严格模式：仅允许 localhost
+        raise HTTPException(
+            status_code=400,
+            detail=f"SSRF protection: callback_url must be localhost. Got: {parsed.hostname}"
+        )
+    elif not is_localhost and not is_allowed_host:
+        # 宽松模式：检查白名单
+        raise HTTPException(
+            status_code=400,
+            detail=f"SSRF protection: hostname '{parsed.hostname}' not in allowed list"
+        )
+
+    from agent_net.storage import create_push_registration
+    result = await create_push_registration(
+        did=req.did,
+        callback_url=req.callback_url,
+        callback_type=req.callback_type,
+        push_key=req.push_key,
+        expires_seconds=req.expires,
+    )
+
+    return {
+        "status": "ok",
+        "registration_id": result["registration_id"],
+        "expires_at": result["expires_at"],
+        "callback_secret": result["callback_secret"],  # 仅注册时返回一次
+    }
+
+
+@app.post("/push/refresh")
+async def api_push_refresh(req: PushRefreshRequest, _=Depends(_require_token)):
+    """续约 Push 注册 TTL"""
+    from agent_net.storage import refresh_push_registration
+    new_expires = await refresh_push_registration(
+        did=req.did,
+        callback_url=req.callback_url,
+        callback_type=req.callback_type,
+        expires_seconds=req.expires,
+    )
+    if new_expires is None:
+        raise HTTPException(404, "Registration not found or expired")
+    return {"status": "ok", "expires_at": new_expires}
+
+
+@app.delete("/push/{did}")
+async def api_push_unregister(did: str, _=Depends(_require_token)):
+    """主动注销 Push 注册"""
+    from agent_net.storage import delete_push_registration
+    deleted = await delete_push_registration(did)
+    return {"status": "ok", "deleted": deleted}
+
+
+@app.get("/push/{did}")
+async def api_push_status(did: str):
+    """查询 Push 注册状态（公开）"""
+    from agent_net.storage import get_active_push_registrations
+    regs = await get_active_push_registrations(did)
+    # 不返回 callback_secret
+    return {
+        "status": "ok",
+        "registrations": [{
+            "registration_id": r["registration_id"],
+            "callback_url": r["callback_url"],
+            "callback_type": r["callback_type"],
+            "expires_at": r["expires_at"],
+        } for r in regs],
+        "count": len(regs),
+    }
+
+
+# ── Enclave API (ADR-013) ───────────────────────────────────────────────
+
+class CreateEnclaveRequest(BaseModel):
+    name: str
+    owner_did: str
+    vault_backend: str = "local"
+    vault_config: dict = {}
+    members: dict = {}  # {role: {did, handbook, permissions}}
+
+
+class UpdateEnclaveRequest(BaseModel):
+    name: str | None = None
+    status: str | None = None
+    vault_backend: str | None = None
+    vault_config: dict | None = None
+
+
+class AddMemberRequest(BaseModel):
+    did: str
+    role: str
+    permissions: str = "rw"
+    handbook: str = ""
+
+
+class UpdateMemberRequest(BaseModel):
+    role: str | None = None
+    permissions: str | None = None
+    handbook: str | None = None
+
+
+class VaultPutRequest(BaseModel):
+    value: str
+    author_did: str
+    message: str = ""
+
+
+class CreatePlaybookRunRequest(BaseModel):
+    playbook_id: str | None = None
+    playbook: dict | None = None  # 内联定义
+
+
+def _check_vault_permission(member: dict, required: str) -> None:
+    """检查 Vault 权限"""
+    if not member:
+        raise HTTPException(403, "Not a member of this enclave")
+    perms = member.get("permissions", "rw")
+    if required == "rw" and perms == "r":
+        raise HTTPException(403, "Read-only access")
+    if required == "admin" and perms != "admin":
+        raise HTTPException(403, "Admin access required")
+
+
+# Enclave CRUD
+
+@app.post("/enclaves")
+async def api_create_enclave(req: CreateEnclaveRequest, _=Depends(_require_token)):
+    """创建 Enclave"""
+    from agent_net.enclave.models import Enclave
+    enclave_id = Enclave.gen_id()
+
+    # 创建 Enclave
+    await create_enclave(
+        enclave_id=enclave_id,
+        name=req.name,
+        owner_did=req.owner_did,
+        vault_backend=req.vault_backend,
+        vault_config=req.vault_config,
+    )
+
+    # 添加成员
+    for role, member_data in req.members.items():
+        await add_enclave_member(
+            enclave_id=enclave_id,
+            did=member_data["did"],
+            role=role,
+            permissions=member_data.get("permissions", "rw"),
+            handbook=member_data.get("handbook", ""),
+        )
+
+    # Owner 默认是 admin
+    owner_member = await get_enclave_member(enclave_id, req.owner_did)
+    if not owner_member:
+        await add_enclave_member(
+            enclave_id=enclave_id,
+            did=req.owner_did,
+            role="owner",
+            permissions="admin",
+            handbook="Enclave owner",
+        )
+
+    return {"status": "ok", "enclave_id": enclave_id}
+
+
+@app.get("/enclaves")
+async def api_list_enclaves(did: str = None, status: str = None):
+    """列出 Enclave（按成员 DID 过滤）"""
+    enclaves = await list_enclaves(did=did, status=status)
+    # 补充成员信息
+    result = []
+    for enc in enclaves:
+        members = await list_enclave_members(enc["enclave_id"])
+        enc["members"] = members
+        result.append(enc)
+    return {"status": "ok", "enclaves": result, "count": len(result)}
+
+
+@app.get("/enclaves/{enclave_id}")
+async def api_get_enclave(enclave_id: str):
+    """获取 Enclave 详情"""
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+    members = await list_enclave_members(enclave_id)
+    enc["members"] = members
+    return {"status": "ok", **enc}
+
+
+@app.patch("/enclaves/{enclave_id}")
+async def api_update_enclave(enclave_id: str, req: UpdateEnclaveRequest, _=Depends(_require_token)):
+    """更新 Enclave"""
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    ok = await update_enclave(enclave_id, **updates)
+    if not ok:
+        raise HTTPException(404, "Enclave not found")
+    return {"status": "ok"}
+
+
+@app.delete("/enclaves/{enclave_id}")
+async def api_delete_enclave(enclave_id: str, _=Depends(_require_token)):
+    """归档 Enclave"""
+    ok = await delete_enclave(enclave_id)
+    if not ok:
+        raise HTTPException(404, "Enclave not found")
+    return {"status": "ok", "archived": True}
+
+
+# Member Management
+
+@app.post("/enclaves/{enclave_id}/members")
+async def api_add_member(enclave_id: str, req: AddMemberRequest, _=Depends(_require_token)):
+    """添加成员"""
+    # 检查 Enclave 存在
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+
+    ok = await add_enclave_member(
+        enclave_id=enclave_id,
+        did=req.did,
+        role=req.role,
+        permissions=req.permissions,
+        handbook=req.handbook,
+    )
+    if not ok:
+        raise HTTPException(409, "Member already exists")
+    return {"status": "ok"}
+
+
+@app.delete("/enclaves/{enclave_id}/members/{did}")
+async def api_remove_member(enclave_id: str, did: str, _=Depends(_require_token)):
+    """移除成员"""
+    ok = await remove_enclave_member(enclave_id, did)
+    if not ok:
+        raise HTTPException(404, "Member not found")
+    return {"status": "ok"}
+
+
+@app.patch("/enclaves/{enclave_id}/members/{did}")
+async def api_update_member(enclave_id: str, did: str, req: UpdateMemberRequest, _=Depends(_require_token)):
+    """更新成员属性"""
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    ok = await update_enclave_member(enclave_id, did, **updates)
+    if not ok:
+        raise HTTPException(404, "Member not found")
+    return {"status": "ok"}
+
+
+# Vault Operations
+
+@app.get("/enclaves/{enclave_id}/vault")
+async def api_vault_list(enclave_id: str, prefix: str = "", author_did: str = None):
+    """列出 Vault 文档"""
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+
+    # 权限检查（需要是成员）
+    if author_did:
+        member = await get_enclave_member(enclave_id, author_did)
+        if not member:
+            raise HTTPException(403, "Not a member of this enclave")
+
+    entries = await vault_list(enclave_id, prefix)
+    return {"status": "ok", "entries": entries, "count": len(entries)}
+
+
+@app.get("/enclaves/{enclave_id}/vault/{key:path}")
+async def api_vault_get(enclave_id: str, key: str, version: str = None, author_did: str = None):
+    """读取 Vault 文档"""
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+
+    # 权限检查（需要是成员）
+    if author_did:
+        member = await get_enclave_member(enclave_id, author_did)
+        if not member:
+            raise HTTPException(403, "Not a member of this enclave")
+
+    entry = await vault_get(enclave_id, key, version=int(version) if version else None)
+    if not entry:
+        raise HTTPException(404, f"Key not found: {key}")
+    return {"status": "ok", **entry}
+
+
+@app.put("/enclaves/{enclave_id}/vault/{key:path}")
+async def api_vault_put(enclave_id: str, key: str, req: VaultPutRequest, _=Depends(_require_token)):
+    """写入 Vault 文档"""
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+
+    # 权限检查（需要写权限）
+    member = await get_enclave_member(enclave_id, req.author_did)
+    _check_vault_permission(member, "rw")
+
+    result = await vault_put(
+        enclave_id=enclave_id,
+        key=key,
+        value=req.value,
+        author_did=req.author_did,
+        message=req.message,
+    )
+    return {"status": "ok", **result}
+
+
+@app.delete("/enclaves/{enclave_id}/vault/{key:path}")
+async def api_vault_delete(enclave_id: str, key: str, author_did: str, _=Depends(_require_token)):
+    """删除 Vault 文档"""
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+
+    # 权限检查（需要写权限）
+    member = await get_enclave_member(enclave_id, author_did)
+    _check_vault_permission(member, "rw")
+
+    ok = await vault_delete(enclave_id, key, author_did)
+    if not ok:
+        raise HTTPException(404, f"Key not found: {key}")
+    return {"status": "ok", "deleted": True}
+
+
+@app.get("/enclaves/{enclave_id}/vault/{key:path}/history")
+async def api_vault_history(enclave_id: str, key: str, limit: int = 10, author_did: str = None):
+    """查看文档历史"""
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+
+    # 权限检查（需要是成员）
+    if author_did:
+        member = await get_enclave_member(enclave_id, author_did)
+        if not member:
+            raise HTTPException(403, "Not a member of this enclave")
+
+    history = await vault_history(enclave_id, key, limit)
+    return {"status": "ok", "history": history}
+
+
+# Playbook Execution
+
+@app.post("/enclaves/{enclave_id}/runs")
+async def api_create_playbook_run(enclave_id: str, req: CreatePlaybookRunRequest, _=Depends(_require_token)):
+    """启动 Playbook"""
+    from agent_net.enclave.models import Playbook, PlaybookRun, Stage
+
+    enc = await get_enclave(enclave_id)
+    if not enc:
+        raise HTTPException(404, "Enclave not found")
+
+    # 获取或创建 Playbook
+    if req.playbook_id:
+        playbook = await get_playbook(req.playbook_id)
+        if not playbook:
+            raise HTTPException(404, "Playbook not found")
+    elif req.playbook:
+        # 内联定义
+        playbook_id = Playbook.gen_id()
+        stages = [Stage.from_dict(s) for s in req.playbook.get("stages", [])]
+        await create_playbook(
+            playbook_id=playbook_id,
+            name=req.playbook.get("name", "inline"),
+            stages=[s.to_dict() for s in stages],
+            description=req.playbook.get("description", ""),
+            created_by="",  # TODO: 从 token 获取
+        )
+        playbook = await get_playbook(playbook_id)
+    else:
+        raise HTTPException(400, "Either playbook_id or playbook is required")
+
+    # 创建 Run
+    run_id = PlaybookRun.gen_id()
+    await create_playbook_run(
+        run_id=run_id,
+        enclave_id=enclave_id,
+        playbook_id=playbook["playbook_id"],
+        playbook_name=playbook["name"],
+    )
+
+    # 启动第一个阶段
+    stages = playbook["stages"]
+    if stages:
+        first_stage = stages[0]
+        # 找到该角色对应的成员
+        members = await list_enclave_members(enclave_id)
+        assigned_did = None
+        for m in members:
+            if m["role"] == first_stage["role"]:
+                assigned_did = m["did"]
+                break
+
+        if assigned_did:
+            # 创建阶段执行记录
+            await create_stage_execution(
+                run_id=run_id,
+                stage_name=first_stage["name"],
+                assigned_did=assigned_did,
+            )
+            # 更新 Run 的 current_stage
+            await update_playbook_run(run_id, current_stage=first_stage["name"])
+
+    return {
+        "status": "ok",
+        "run_id": run_id,
+        "current_stage": stages[0]["name"] if stages else None,
+        "assigned_did": assigned_did if stages else None,
+    }
+
+
+@app.get("/enclaves/{enclave_id}/runs")
+async def api_get_latest_playbook_run(enclave_id: str):
+    """查询 Enclave 最新的 Playbook 执行状态"""
+    run = await get_latest_playbook_run(enclave_id)
+    if not run:
+        raise HTTPException(404, "No playbook runs found for this enclave")
+
+    # 获取阶段执行记录
+    stage_executions = await list_stage_executions(run["run_id"])
+
+    # 获取 Playbook 定义
+    playbook = await get_playbook(run["playbook_id"])
+
+    # 构建阶段状态映射
+    stages_status = {}
+    if playbook:
+        for stage in playbook["stages"]:
+            stage_name = stage["name"]
+            exec_record = next(
+                (e for e in stage_executions if e["stage_name"] == stage_name),
+                None
+            )
+            stages_status[stage_name] = {
+                "status": exec_record["status"] if exec_record else "pending",
+                "assigned_did": exec_record["assigned_did"] if exec_record else "",
+                "task_id": exec_record["task_id"] if exec_record else "",
+                "output_ref": exec_record["output_ref"] if exec_record else "",
+            }
+
+    return {
+        "status": "ok",
+        "run_id": run["run_id"],
+        "playbook_name": run["playbook_name"],
+        "current_stage": run["current_stage"],
+        "run_status": run["status"],
+        "stages": stages_status,
+        "started_at": run["started_at"],
+        "completed_at": run.get("completed_at"),
+    }
+
+
+@app.get("/enclaves/{enclave_id}/runs/{run_id}")
+async def api_get_playbook_run(enclave_id: str, run_id: str):
+    """查询 Playbook 执行状态"""
+    run = await get_playbook_run(run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    if run["enclave_id"] != enclave_id:
+        raise HTTPException(404, "Run not found in this enclave")
+
+    # 获取阶段执行记录
+    stage_executions = await list_stage_executions(run_id)
+
+    # 获取 Playbook 定义
+    playbook = await get_playbook(run["playbook_id"])
+
+    # 构建阶段状态映射
+    stages_status = {}
+    if playbook:
+        for stage in playbook["stages"]:
+            stage_name = stage["name"]
+            exec_record = next(
+                (e for e in stage_executions if e["stage_name"] == stage_name),
+                None
+            )
+            stages_status[stage_name] = {
+                "status": exec_record["status"] if exec_record else "pending",
+                "assigned_did": exec_record["assigned_did"] if exec_record else "",
+                "task_id": exec_record["task_id"] if exec_record else "",
+                "output_ref": exec_record["output_ref"] if exec_record else "",
+            }
+
+    return {
+        "status": "ok",
+        "run_id": run["run_id"],
+        "playbook_name": run["playbook_name"],
+        "current_stage": run["current_stage"],
+        "run_status": run["status"],
+        "stages": stages_status,
+        "started_at": run["started_at"],
+        "completed_at": run.get("completed_at"),
+    }
 
 
 def run(host: str = "0.0.0.0", port: int = NODE_PORT):

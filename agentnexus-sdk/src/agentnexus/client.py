@@ -47,12 +47,24 @@ from .discussion import (
 from .emergency import EmergencyController, EmergencyConfig
 
 
+# Default Push callback URL for SDK (local webhook server)
+DEFAULT_PUSH_CALLBACK_URL = "http://127.0.0.1:18765/push/callback"
+
+
 @dataclass
 class AgentInfo:
     """Information about the connected Agent."""
     did: str
     name: str
     capabilities: list[str]
+
+
+@dataclass
+class PushRegistration:
+    """Push registration info."""
+    registration_id: str
+    callback_secret: str
+    expires_at: float
 
 
 class AgentNexusClient:
@@ -91,6 +103,12 @@ class AgentNexusClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._poll_task: Optional[asyncio.Task] = None
         self._running = False
+
+        # Push registration (v0.9)
+        self._push_registration: Optional[PushRegistration] = None
+        self._push_refresh_task: Optional[asyncio.Task] = None
+        self._push_callback_url: Optional[str] = None
+        self._push_expires: int = 3600  # Remember original TTL for refresh
 
         # Callbacks
         self._message_callbacks: list[Callable] = []
@@ -256,9 +274,137 @@ class AgentNexusClient:
         # Initialize discussion manager
         self._discussion_manager = DiscussionManager(self)
 
+    async def register_push(
+        self,
+        callback_url: Optional[str] = None,
+        callback_type: str = "webhook",
+        expires: int = 3600,
+    ) -> PushRegistration:
+        """
+        Register push notification callback (ADR-012 L3).
+
+        Args:
+            callback_url: Callback URL (default: local webhook server)
+            callback_type: webhook / sse / platform
+            expires: TTL in seconds
+
+        Returns:
+            PushRegistration with registration_id and callback_secret
+        """
+        if not self._session:
+            raise RuntimeError("Client not connected")
+
+        url = callback_url or DEFAULT_PUSH_CALLBACK_URL
+        self._push_callback_url = url
+
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        async with self._session.post(
+            f"{self.daemon_url}/push/register",
+            headers=headers,
+            json={
+                "did": self.agent_info.did,
+                "callback_url": url,
+                "callback_type": callback_type,
+                "expires": expires,
+            },
+        ) as resp:
+            if resp.status != 200:
+                raise AgentNexusError(f"Push registration failed: {await resp.text()}")
+
+            data = await resp.json()
+            self._push_registration = PushRegistration(
+                registration_id=data["registration_id"],
+                callback_secret=data["callback_secret"],
+                expires_at=data["expires_at"],
+            )
+            self._push_expires = expires  # Remember for refresh
+
+            # Start background refresh task (refresh at expires/2)
+            if self._push_refresh_task:
+                self._push_refresh_task.cancel()
+            self._push_refresh_task = asyncio.create_task(
+                self._push_refresh_loop(expires // 2)
+            )
+
+            return self._push_registration
+
+    async def _push_refresh_loop(self, interval: int) -> None:
+        """Background task to refresh push registration."""
+        while self._running and self._push_callback_url:
+            await asyncio.sleep(interval)
+            try:
+                await self._refresh_push_registration()
+            except Exception as e:
+                print(f"[SDK] Push refresh error: {e}")
+
+    async def _refresh_push_registration(self) -> None:
+        """Refresh push registration TTL."""
+        if not self._session or not self._push_callback_url:
+            return
+
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        async with self._session.post(
+            f"{self.daemon_url}/push/refresh",
+            headers=headers,
+            json={
+                "did": self.agent_info.did,
+                "callback_url": self._push_callback_url,
+                "callback_type": "webhook",
+                "expires": self._push_expires,  # Use original TTL
+            },
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if self._push_registration:
+                    self._push_registration.expires_at = data["expires_at"]
+
+    async def unregister_push(self) -> bool:
+        """Unregister push notification."""
+        if not self._session:
+            return False
+
+        if self._push_refresh_task:
+            self._push_refresh_task.cancel()
+            self._push_refresh_task = None
+
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        async with self._session.delete(
+            f"{self.daemon_url}/push/{self.agent_info.did}",
+            headers=headers,
+        ) as resp:
+            self._push_registration = None
+            return resp.status == 200
+
     async def close(self) -> None:
         """Close the client connection."""
         self._running = False
+
+        # Cancel push refresh task
+        if self._push_refresh_task:
+            self._push_refresh_task.cancel()
+            try:
+                await asyncio.wait_for(self._push_refresh_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            finally:
+                self._push_refresh_task = None
+
+        # Unregister push on close
+        if self._push_registration:
+            try:
+                await self.unregister_push()
+            except Exception:
+                pass
+
         if self._poll_task:
             self._poll_task.cancel()
             try:
