@@ -45,6 +45,7 @@ from .discussion import (
     DiscussionManager,
 )
 from .emergency import EmergencyController, EmergencyConfig
+from .enclave import EnclaveManager, EnclaveProxy, EnclaveInfo, VaultEntry
 
 
 # Default Push callback URL for SDK (local webhook server)
@@ -130,6 +131,9 @@ class AgentNexusClient:
 
         # Emergency Controller
         self._emergency_controller: Optional[EmergencyController] = None
+
+        # Enclave Manager
+        self._enclave_manager: Optional[EnclaveManager] = None
 
         # Polling state
         self._poll_interval = 2.0  # seconds
@@ -731,6 +735,54 @@ class AgentNexusClient:
         if not self._discussion_manager:
             self._discussion_manager = DiscussionManager(self)
         return self._discussion_manager
+
+    # ── Enclave API ─────────────────────────────────────────────────
+
+    @property
+    def enclaves(self) -> EnclaveManager:
+        """Access the Enclave Manager for creating/managing Enclaves."""
+        if not self._enclave_manager:
+            self._enclave_manager = EnclaveManager(self)
+        return self._enclave_manager
+
+    async def create_enclave(
+        self,
+        name: str,
+        members: dict[str, dict],
+        vault_backend: str = "local",
+        vault_config: Optional[dict] = None,
+    ) -> EnclaveProxy:
+        """
+        Create an Enclave (project team).
+
+        Args:
+            name: Enclave name
+            members: Member mapping {"role": {"did": "...", "handbook": "..."}}
+            vault_backend: Vault backend type (local / git)
+            vault_config: Vault config (git needs repo_path)
+
+        Returns:
+            EnclaveProxy
+        """
+        return await self.enclaves.create(name, members, vault_backend, vault_config)
+
+    async def vault_get(self, enclave_id: str, key: str) -> VaultEntry:
+        """Direct access to read from a Vault."""
+        from .enclave import VaultProxy
+        proxy = VaultProxy(self, enclave_id)
+        return await proxy.get(key)
+
+    async def vault_put(
+        self,
+        enclave_id: str,
+        key: str,
+        value: str,
+        message: str = "",
+    ):
+        """Direct access to write to a Vault."""
+        from .enclave import VaultProxy
+        proxy = VaultProxy(self, enclave_id)
+        return await proxy.put(key, value, message)
 
     # ── Polling ──────────────────────────────────────────────────
 

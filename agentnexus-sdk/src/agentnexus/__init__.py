@@ -20,6 +20,19 @@ Usage:
     async def handle(msg):
         print(f"From {msg.from_did}: {msg.content}")
 
+    # Create Enclave (project team)
+    enclave = await nexus.create_enclave(
+        name="Login Feature Dev",
+        members={
+            "architect": {"did": "did:agentnexus:...", "handbook": "Design"},
+            "developer": {"did": "did:agentnexus:...", "handbook": "Code"},
+        },
+    )
+
+    # Vault operations
+    await enclave.vault.put("requirements", "...")
+    doc = await enclave.vault.get("requirements")
+
     # Close connection
     await nexus.close()
 """
@@ -59,6 +72,15 @@ from .emergency import (
     EmergencyController,
     create_emergency_controller,
 )
+from .enclave import (
+    VaultEntry,
+    EnclaveInfo,
+    PlaybookRunInfo,
+    VaultProxy,
+    PlaybookRunProxy,
+    EnclaveProxy,
+    EnclaveManager,
+)
 
 __all__ = [
     # Core
@@ -97,6 +119,14 @@ __all__ = [
     "EmergencyConfig",
     "EmergencyController",
     "create_emergency_controller",
+    # Enclave
+    "VaultEntry",
+    "EnclaveInfo",
+    "PlaybookRunInfo",
+    "VaultProxy",
+    "PlaybookRunProxy",
+    "EnclaveProxy",
+    "EnclaveManager",
 ]
 
 __version__ = "0.1.0"
