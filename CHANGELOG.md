@@ -6,6 +6,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.9.5] - 2026-04-09
+
+### Added
+
+#### Enclave 协作架构（ADR-013）
+- **Enclave 项目组**：创建/管理多 Agent 团队，绑定角色（architect/developer/reviewer）和权限（r/rw/admin）
+- **VaultBackend 抽象接口**：可插拔文档存储，支持 `get/put/list/history/delete`
+- **LocalVaultBackend**：基于 SQLite 的零配置 Vault，版本自增，历史 append-only，`action` 字段区分 create/update/delete
+- **GitVaultBackend**：基于 Git 仓库的 Vault，commit hash 作为版本号，支持 `git push/pull` 跨机器同步，路径遍历防护
+- **Playbook 引擎**：`PlaybookEngine` 自动推进阶段（start → _start_stage → on_stage_completed/on_stage_rejected）
+- **Playbook 消息拦截**：`router._intercept_playbook_state()` 拦截 `state_notify`，按 `task_id` 反查 stage_execution，自动推进或回退
+- **Daemon 端点（15 个）**：Enclave CRUD + Member 管理 + Vault 操作（`{key:path}` 多级 key）+ Playbook Run
+- **MCP 工具（6 个，27→33）**：`create_enclave` / `vault_get` / `vault_put` / `vault_list` / `run_playbook` / `get_run_status`
+- **权限检查**：`_check_vault_permission`（r/rw/admin 三级）
+- **Storage 表（7 张）**：enclaves / enclave_members / playbooks / playbook_runs / stage_executions / enclave_vault / enclave_vault_history + 7 个索引
+
+#### SDK Enclave API
+- `nexus.create_enclave(name, members)` — 创建 Enclave
+- `nexus.enclaves.list()` — 列出参与的 Enclave
+- `enclave.vault.put/get/list/history/delete` — Vault 操作
+- `enclave.run_playbook(playbook)` — 启动 Playbook
+- `enclave.get_run(run_id)` — 获取运行状态
+- `nexus.vault_get/vault_put` — 直接访问 Vault
+- 新增模块：`agentnexus/enclave.py`（EnclaveManager, VaultProxy, PlaybookRunProxy）
+
+### Tests
+- 299 passed（新增 34 Enclave + 8 GitVaultBackend + SDK 测试）
+
+---
+
+## [0.9.0-dev] - 2026-04-09
+
+> ⚠️ 开发中：代码评审有条件通过，2 个安全阻塞项待修复。
+
+### Added
+
+#### L3 注册层（SIP REGISTER 风格）
+- **Push 注册端点**：`POST /push/register`（callback_url + callback_type + TTL）
+- **TTL 续约**：`POST /push/refresh`
+- **主动注销**：`DELETE /push/{did}`
+- **状态查询**：`GET /push/{did}`（公开，不返回 callback_secret）
+- **callback_secret**：注册时 Daemon 生成 HMAC 签名密钥，仅返回一次
+- **TTL 自动清理**：后台任务每 5 分钟清理过期注册
+- **多 callback 支持**：同一 DID 可注册多个回调（多平台 session）
+
+#### L5 推送层（APNs 风格精准推送）
+- **消息到达即推送**：`route_message()` 存储后 `asyncio.create_task(_push_notify(...))`
+- **HMAC-SHA256 签名**：`X-Nexus-Signature: sha256=<HMAC>` + `X-Nexus-Timestamp` 防重放
+- **推送超时 5s**：失败静默，消息已安全存储
+- **通知 preview**：body 包含消息前 200 字符预览
+
+#### MCP/SDK 自动注册
+- **MCP**：`main()` 启动自动注册 → 后台续约 → `finally` 注销
+- **SDK**：`register_push()` → `expires//2` 动态续约 → `close()` 自动注销
+
+### Known Issues
+- 🔴 DID-Token 绑定未实现（daemon.py:1135 TODO）
+- 🔴 SSRF 防护空实现（daemon.py:1142 pass）
+- 🟡 MCP 续约间隔硬编码 30min（应为 expires//2）
+- 🟡 test_push.py 10 个测试全部 ERROR（async fixture 兼容性）
+
+---
+
 ## [0.8.0] - 2026-04-08
 
 **发布地址：**
