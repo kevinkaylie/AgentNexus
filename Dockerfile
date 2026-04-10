@@ -15,4 +15,6 @@ USER appuser
 
 EXPOSE 9000
 
-CMD ["python", "main.py", "relay", "start"]
+# RELAY_HOST 环境变量用于 did:web 身份
+# docker run -e RELAY_HOST=relay.example.com ...
+CMD ["sh", "-c", "python main.py relay start --host $RELAY_HOST"]

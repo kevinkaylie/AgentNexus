@@ -30,6 +30,9 @@ services:
     restart: always
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - RELAY_HOST=relay.agentnexus.top  # did:web 身份域名
+    volumes:
+      - relay_data:/app/data  # 持久化 relay_identity.json
     depends_on:
       - redis
     networks:
@@ -69,3 +72,4 @@ networks:
 
 volumes:
   redis_data:
+  relay_data:
