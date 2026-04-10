@@ -222,6 +222,40 @@ The `did:agentnexus` method is designed to integrate with the Agent Identity Wor
 | AgentNexus | `did:web:example.com` | ✅ Supported |
 | AgentNexus | `did:agent:...` | ✅ Supported (legacy) |
 
+### 7.3 Third-Party Verification Services
+
+#### AgentID (getagentid.dev)
+
+[AgentID](https://getagentid.dev) provides external DID verification for `did:agentnexus` identifiers. Their `/api/v1/agents/verify` endpoint can resolve and verify any `did:agentnexus` DID without requiring registration:
+
+```bash
+curl -X POST https://www.getagentid.dev/api/v1/agents/verify \
+  -H "Content-Type: application/json" \
+  -d '{"did": "did:agentnexus:z6Mk..."}'
+```
+
+**Response:**
+```json
+{
+  "verified": true,
+  "identity_gate": "passed",
+  "did": "did:agentnexus:z6Mk...",
+  "resolution_source": "external",
+  "resolution_method": "did:agentnexus",
+  "public_key": {
+    "type": "Ed25519VerificationKey2020",
+    "publicKeyHex": "..."
+  }
+}
+```
+
+This interoperability enables:
+- Third-party verification without AgentNexus infrastructure
+- Cross-platform agent identity validation
+- Integration with AgentID's trust ecosystem (optional registration)
+
+**Note:** Trust levels, behavioral signals, and receipts require AgentID registration, but basic DID resolution works for all `did:agentnexus` identifiers.
+
 ## 8. Test Vectors
 
 ### 8.1 Ed25519 Key Generation
