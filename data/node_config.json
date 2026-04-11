@@ -1,5 +1,5 @@
 {
-  "local_relay": "https://relay.agentnexus.top",
+  "local_relay": "http://localhost:9000",
   "seed_relays": [
     "https://relay.agentnexus.top"
   ]

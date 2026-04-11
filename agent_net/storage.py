@@ -92,6 +92,9 @@ async def init_db():
     # 初始化 Enclave 相关表
     await init_enclave_tables()
 
+    # 初始化信任网络相关表
+    await init_trust_tables()
+
 
 async def add_pending(did: str, init_packet: dict):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -645,6 +648,248 @@ async def init_enclave_tables():
             CREATE INDEX IF NOT EXISTS idx_vault_history_enclave_key ON enclave_vault_history(enclave_id, key);
         """)
         await db.commit()
+
+
+# ── Trust & Governance Tables (ADR-014) ───────────────────────────────────
+
+async def init_trust_tables():
+    """初始化信任网络和治理认证相关表"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # 检查表是否已存在，避免重复创建
+        existing = await db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='trust_edges'"
+        )
+        row = await existing.fetchone()
+        if row is not None:
+            # 表已存在，跳过
+            await db.commit()
+            return
+        await db.executescript("""
+            -- 信任边（Web of Trust）
+            CREATE TABLE IF NOT EXISTS trust_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_did TEXT NOT NULL,
+                to_did TEXT NOT NULL,
+                score REAL NOT NULL,
+                timestamp REAL NOT NULL,
+                evidence TEXT,
+                UNIQUE(from_did, to_did)
+            );
+            CREATE INDEX IF NOT EXISTS idx_trust_edges_from ON trust_edges(from_did);
+            CREATE INDEX IF NOT EXISTS idx_trust_edges_to ON trust_edges(to_did);
+
+            -- 交互记录
+            CREATE TABLE IF NOT EXISTS interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_did TEXT NOT NULL,
+                to_did TEXT NOT NULL,
+                interaction_type TEXT NOT NULL,
+                success INTEGER NOT NULL,
+                response_time_ms REAL,
+                timestamp REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_interactions_to_did ON interactions(to_did, timestamp);
+
+            -- 声誉缓存
+            CREATE TABLE IF NOT EXISTS reputation_cache (
+                agent_did TEXT PRIMARY KEY,
+                base_score REAL NOT NULL,
+                behavior_delta REAL NOT NULL,
+                attestation_bonus REAL NOT NULL,
+                trust_level INTEGER NOT NULL,
+                updated_at REAL NOT NULL
+            );
+
+            -- 治理认证缓存
+            CREATE TABLE IF NOT EXISTS governance_attestations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_did TEXT NOT NULL,
+                issuer TEXT NOT NULL,
+                attestation_json TEXT NOT NULL,
+                expires_at REAL NOT NULL,
+                created_at REAL NOT NULL,
+                UNIQUE(agent_did, issuer)
+            );
+            CREATE INDEX IF NOT EXISTS idx_governance_attestations_did ON governance_attestations(agent_did);
+            CREATE INDEX IF NOT EXISTS idx_governance_attestations_expires ON governance_attestations(expires_at);
+        """)
+        await db.commit()
+
+
+# ── Trust Edges CRUD ─────────────────────────────────────────────────────
+
+async def add_trust_edge(
+    from_did: str,
+    to_did: str,
+    score: float,
+    evidence: Optional[str] = None,
+):
+    """添加信任边"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO trust_edges
+               (from_did, to_did, score, timestamp, evidence)
+               VALUES (?, ?, ?, ?, ?)""",
+            (from_did, to_did, score, time.time(), evidence)
+        )
+        await db.commit()
+
+
+async def get_trust_edge(from_did: str, to_did: str) -> Optional[dict]:
+    """获取信任边"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM trust_edges WHERE from_did = ? AND to_did = ?",
+            (from_did, to_did)
+        ) as cursor:
+            row = await cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "from_did": row["from_did"],
+        "to_did": row["to_did"],
+        "score": row["score"],
+        "timestamp": row["timestamp"],
+        "evidence": row["evidence"],
+    }
+
+
+async def list_trust_edges_from(from_did: str) -> list[dict]:
+    """列出从某 DID 发出的信任边"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM trust_edges WHERE from_did = ?",
+            (from_did,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def remove_trust_edge(from_did: str, to_did: str) -> bool:
+    """删除信任边"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute(
+            "DELETE FROM trust_edges WHERE from_did = ? AND to_did = ?",
+            (from_did, to_did)
+        )
+        await db.commit()
+        return result.rowcount > 0
+
+
+# ── Interactions CRUD ────────────────────────────────────────────────────
+
+async def record_interaction(
+    from_did: str,
+    to_did: str,
+    interaction_type: str,
+    success: bool,
+    response_time_ms: Optional[float] = None,
+) -> int:
+    """记录交互"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """INSERT INTO interactions
+               (from_did, to_did, interaction_type, success, response_time_ms, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (from_did, to_did, interaction_type, int(success), response_time_ms, time.time())
+        )
+        await db.commit()
+        return cursor.lastrowid or 0
+
+
+async def get_interactions(
+    agent_did: str,
+    time_window_days: int = 30,
+) -> list[dict]:
+    """获取交互历史"""
+    now = time.time()
+    window_start = now - time_window_days * 86400
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM interactions
+               WHERE to_did = ? AND timestamp >= ?
+               ORDER BY timestamp DESC""",
+            (agent_did, window_start)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Governance Attestations CRUD ─────────────────────────────────────────
+
+async def save_governance_attestation(
+    agent_did: str,
+    issuer: str,
+    attestation: dict,
+    expires_at: float,
+):
+    """缓存治理认证"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO governance_attestations
+               (agent_did, issuer, attestation_json, expires_at, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (agent_did, issuer, json.dumps(attestation), expires_at, time.time())
+        )
+        await db.commit()
+
+
+async def get_governance_attestation(
+    agent_did: str,
+    issuer: str,
+) -> Optional[dict]:
+    """获取缓存的治理认证"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM governance_attestations
+               WHERE agent_did = ? AND issuer = ? AND expires_at > ?""",
+            (agent_did, issuer, time.time())
+        ) as cursor:
+            row = await cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "agent_did": row["agent_did"],
+        "issuer": row["issuer"],
+        "attestation": json.loads(row["attestation_json"]),
+        "expires_at": row["expires_at"],
+    }
+
+
+async def get_all_governance_attestations(agent_did: str) -> list[dict]:
+    """获取 Agent 的所有有效治理认证"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM governance_attestations
+               WHERE agent_did = ? AND expires_at > ?""",
+            (agent_did, time.time())
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [
+        {
+            "agent_did": row["agent_did"],
+            "issuer": row["issuer"],
+            "attestation": json.loads(row["attestation_json"]),
+            "expires_at": row["expires_at"],
+        }
+        for row in rows
+    ]
+
+
+async def cleanup_expired_attestations() -> int:
+    """清理过期的治理认证"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute(
+            "DELETE FROM governance_attestations WHERE expires_at < ?",
+            (time.time(),)
+        )
+        await db.commit()
+        return result.rowcount
 
 
 # ── Enclave CRUD ─────────────────────────────────────────────────────

@@ -391,6 +391,57 @@ async def list_tools() -> list[Tool]:
                               "enclave_id": {"type": "string", "description": "Enclave ID"},
                               "run_id": {"type": "string", "description": "Run ID (omit to get latest run)"},
                           }, "required": ["enclave_id"]}),
+        # Governance & Trust (ADR-014) - 4 tools
+        Tool(name="validate_governance",
+             description="Validate Agent capabilities through external governance services (MolTrust, APS). "
+                         "Returns governance attestation with decision (permit/conditional/deny), trust_score, and passport_grade.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "agent_did": {"type": "string", "description": "Agent DID to validate"},
+                              "requested_capabilities": {
+                                  "type": "array",
+                                  "description": "Requested capabilities",
+                                  "items": {
+                                      "type": "object",
+                                      "properties": {
+                                          "scope": {"type": "string", "description": "Capability scope (e.g. 'data:read')"},
+                                          "resource": {"type": "string", "description": "Target resource"},
+                                          "max_amount_usd": {"type": "integer", "description": "Max spend amount"},
+                                      },
+                                      "required": ["scope"],
+                                  },
+                              },
+                              "context": {"type": "object", "description": "Additional context (task_class, etc.)"},
+                              "clients": {"type": "array", "items": {"type": "string"},
+                                          "description": "Specific clients to call (e.g. ['moltrust', 'aps']). Omit for all."},
+                          }, "required": ["agent_did"]}),
+        Tool(name="find_trust_path",
+             description="Find trust paths between two Agents via Web of Trust. "
+                         "Returns paths with derived trust scores (BFS search with decay).",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "source": {"type": "string", "description": "Source Agent DID"},
+                              "target": {"type": "string", "description": "Target Agent DID"},
+                              "max_depth": {"type": "integer", "description": "Max search depth (default: 4)"},
+                          }, "required": ["source", "target"]}),
+        Tool(name="add_trust",
+             description="Add a direct trust edge from one Agent to another. "
+                         "Score range: 0.0-1.0. Used for Web of Trust trust propagation.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "to_did": {"type": "string", "description": "Target Agent DID"},
+                              "score": {"type": "number", "description": "Trust score (0.0-1.0)"},
+                              "evidence": {"type": "string", "description": "Evidence for trust (e.g. cert ID)"},
+                          }, "required": ["to_did", "score"]}),
+        Tool(name="get_reputation",
+             description="Get Agent reputation score. "
+                         "trust_score = base_score(L级) + behavior_delta + attestation_bonus. "
+                         "Returns OATR-compatible format.",
+             inputSchema={"type": "object",
+                          "properties": {
+                              "did": {"type": "string", "description": "Agent DID"},
+                              "trust_level": {"type": "integer", "description": "L1-L4 level (default: 1)"},
+                          }, "required": ["did"]}),
     ]
 
 
@@ -760,6 +811,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 else:
                     # 省略 run_id 时获取最新 run
                     result = await _call("get", f"/enclaves/{enclave_id}/runs")
+
+            # Governance & Trust (ADR-014)
+            case "validate_governance":
+                result = await _call("post", "/governance/validate", json=arguments)
+
+            case "find_trust_path":
+                result = await _call("get", "/trust/paths", params=arguments)
+
+            case "add_trust":
+                if "from_did" not in arguments and _MY_DID:
+                    arguments["from_did"] = _MY_DID
+                result = await _call("post", "/trust/edge", json=arguments)
+
+            case "get_reputation":
+                did = arguments.get("did") or _MY_DID
+                if not did:
+                    result = {"error": "No DID provided and not bound"}
+                else:
+                    trust_level = arguments.get("trust_level", 1)
+                    result = await _call("get", f"/reputation/{did}", params={"trust_level": trust_level})
 
             case _:
                 result = {"error": f"Unknown tool: {name}"}
