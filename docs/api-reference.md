@@ -45,6 +45,11 @@
 | `/gate/resolve` | POST | 审批请求（需 Token） |
 | `/gate/mode` | GET/POST | 获取/设置访问控制模式 |
 | `/node/config/*` | GET/POST | Relay 配置管理 |
+| `/skills` | GET | 查询注册的 Skills（?agent_did=&capability=） |
+| `/push/register` | POST | 注册 Push 唤醒方式（需 Token）⚡ *v0.9* |
+| `/push/refresh` | POST | 续约 Push 注册 TTL（需 Token）⚡ *v0.9* |
+| `/push/{did}` | DELETE | 主动注销 Push 注册（需 Token）⚡ *v0.9* |
+| `/push/{did}` | GET | 查询 Push 注册状态（公开，不返回 secret）⚡ *v0.9* |
 | `/health` | GET | 健康检查 |
 
 ### 密码学实现

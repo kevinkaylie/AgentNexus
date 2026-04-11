@@ -543,12 +543,10 @@ def test_td08_daemon_resolve_endpoint(tmp_path, monkeypatch):
 
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "test.db")
     importlib.reload(d)
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", str(tmp_path / "token.txt"))
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    import agent_net.node._auth as _auth; monkeypatch.setattr(_auth, "USER_TOKEN_FILE", tmp_path / "token.txt")
 
     with TestClient(d.app) as client:
-        token = d._daemon_token
+        from agent_net.node._auth import get_token as _get_token; token = _get_token()
         resp = client.post(
             "/agents/register",
             json={"name": "DaemonResolveTest"},
@@ -572,12 +570,10 @@ def test_td11_register_creates_agentnexus_did(tmp_path, monkeypatch):
 
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "test.db")
     importlib.reload(d)
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", str(tmp_path / "token.txt"))
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    import agent_net.node._auth as _auth; monkeypatch.setattr(_auth, "USER_TOKEN_FILE", tmp_path / "token.txt")
 
     with TestClient(d.app) as client:
-        token = d._daemon_token
+        from agent_net.node._auth import get_token as _get_token; token = _get_token()
         resp = client.post(
             "/agents/register",
             json={"name": "NewFormatAgent"},
@@ -595,12 +591,10 @@ def test_td12_legacy_did_agent_still_works(tmp_path, monkeypatch):
 
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "test.db")
     importlib.reload(d)
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", str(tmp_path / "token.txt"))
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    import agent_net.node._auth as _auth; monkeypatch.setattr(_auth, "USER_TOKEN_FILE", tmp_path / "token.txt")
 
     with TestClient(d.app) as client:
-        token = d._daemon_token
+        from agent_net.node._auth import get_token as _get_token; token = _get_token()
         resp = client.post(
             "/agents/register",
             json={"name": "LegacyFmtAgent", "did_format": "agent"},

@@ -344,6 +344,70 @@ trust_score = base_score(L级) + behavior_delta + attestation_bonus
 - [OATR JWT Attestation](../contracts/oatr-jwt-attestation.md)
 - [ADR-004: Multi-CA Certification](./004-multi-ca-certification.md)
 
+## 与 A2A Capability Token Envelope 的关系
+
+> 背景：A2A RFC 讨论中，APS 方提出 skill-level 的 Capability Token Envelope 标准化方案。
+> Enclave、SINT、AIP、APS 四方实现有大量重叠，差异仅在约束词汇和签名格式。
+> 本节说明 ADR-014 治理架构如何与该 envelope 组合。
+
+### Envelope 五要素与 Enclave 映射
+
+| Envelope 要素 | 说明 | Enclave 映射 |
+|--------------|------|-------------|
+| 签名信封 | Ed25519 + JCS 规范化 | Enclave owner 的 DID 密钥签名，与现有 Ed25519 体系一致 |
+| Skill binding | `{ skill_id, version_binding }` | Playbook stage 的 `{ stage_name, role }`，默认 capability binding |
+| 约束集 | 不透明对象，承载 issuer 的约束词汇 | `{ permissions: 'rw', input_keys: [...], output_key: '...' }` — Playbook stage 定义 |
+| 委托链引用 | 预计算 resolved_scope 的 hash | `owner_did → role → member_did → stage_assignment` 链的 hash |
+| 过期 + 撤销 | TTL + revocation endpoint | Enclave `status`（active/archived）+ Playbook run `status` + 显式 TTL（待新增） |
+
+### 双层组合原则
+
+Capability token 和 gateway 检查是互补关系，不是替代关系：
+
+```
+Capability Token = 凭证（证明调用方持有特定权限）
+Gateway / Playbook Engine = 评估器（验证凭证 AND 检查当前会话约束）
+```
+
+在 Enclave 中：
+- **Token 层**：成员持有的 capability token 证明其 role + permissions
+- **Engine 层**：Playbook 引擎检查 token 有效性 + 当前 stage 状态 + Vault 权限
+
+只做 token 验证会漏掉 stage 状态约束（如"设计阶段已完成，不能再写 design_doc"）。
+只做 engine 检查会漏掉跨 Enclave 场景（对方 Enclave 无法访问本地 engine）。
+
+### governance_attestation 作为约束集条目
+
+ADR-014 的 `GovernanceAttestation`（MolTrust/APS 签发）可直接作为 envelope 的约束集条目：
+
+```json
+{
+  "envelope": {
+    "signature": "Ed25519 over JCS",
+    "skill_binding": { "skill_id": "data:read", "version_binding": "capability" },
+    "constraint_set": {
+      "enclave_permissions": { "permissions": "rw", "input_keys": ["requirements"] },
+      "governance_attestation": {
+        "issuer": "api.moltrust.ch",
+        "decision": "permit",
+        "trust_score": 75,
+        "passport_grade": 2
+      }
+    },
+    "delegation_chain_hash": "sha256:abc...",
+    "expires_at": "2026-05-01T00:00:00Z",
+    "revocation_endpoint": "https://node.example/capability/revoke/{token_id}"
+  }
+}
+```
+
+这使得 Enclave 签发的 token 和 APS delegation 可被任何消费方互验，无需共享网关。
+
+### 实现计划
+
+- **v1.0**：实现 envelope 签发/验证（R-1001）、skill 版本绑定（R-1002）、跨 Enclave 互验（R-1003）
+- **待 A2A RFC 收敛后**：写独立 ADR 定义完整 token 格式和约束词汇规范
+
 ## 评审记录
 
 | 日期 | 评审者 | 结果 | 备注 |

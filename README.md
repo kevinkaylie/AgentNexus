@@ -9,7 +9,7 @@
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
-  [![Tests](https://img.shields.io/badge/Tests-150%20passing-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
+  [![Tests](https://img.shields.io/badge/Tests-279%20collected-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
   [![CI](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml)
 
   **[中文](#-中文) | [English](#-english)**
@@ -42,7 +42,7 @@
 | 🌐 **联邦 Relay 网络** | 本地/公网 Relay 互联，1 跳查询，任何人都能运行 |
 | 🛡️ **语义门禁** | Public/Ask/Private 三级隐私 + 黑白名单 + AI 自动审批 |
 | 🌀 **智能路由** | 本地直投 → P2P → Relay → 离线存储，四级降级，消息不丢 |
-| 🔌 **MCP 原生支持** | 17 个工具，Claude Desktop / Cursor / Claude Code 开箱即用 |
+| 🔌 **MCP 原生支持** | 27 个工具，Claude Desktop / Cursor / Claude Code 开箱即用 |
 | 🔐 **L1-L4 信任体系** | 多 CA 认证架构，RuntimeVerifier 动态信任评估 |
 | 📡 **STUN 穿透** | 自动获取公网 IP:Port，支持 NAT 穿透 |
 | 🔒 **私钥不出户** | 签名在 Daemon 内完成，私钥永不离开本地进程 |
@@ -51,6 +51,8 @@
 | 🗳️ **讨论与投票** | 多 Agent 发起讨论、引用回复、投票表决、结论落盘 ⚡ *v0.8 新增* |
 | 🚨 **紧急熔断** | 授权 DID 一键广播 emergency_halt，失控 Agent 立即停止 ⚡ *v0.8 新增* |
 | 🔌 **平台适配器** | OpenClaw Skill / Webhook 通用桥接，外部 Agent 零改动接入 ⚡ *v0.8 新增* |
+| 📡 **Push 注册 + 推送** | SIP REGISTER 风格 TTL 注册 + APNs 风格 HMAC 签名精准推送，消息到达即通知 ⚡ *v0.9 新增* |
+| 🏗️ **Enclave 项目组** | 多 Agent 团队 + 角色绑定 + 可插拔 VaultBackend（Git/Local）+ Playbook 自动编排 ⚡ *v0.9.5 新增* |
 
 ---
 
@@ -60,7 +62,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │              你的 AI（Claude / GPT / 本地模型）           │
 └──────────────────────┬──────────────────────────────────┘
-                       │ MCP stdio（17 个工具）
+                       │ MCP stdio（27 个工具）
                        │ 或 Python SDK（3 行代码接入）
 ┌──────────────────────▼──────────────────────────────────┐
 │         AgentNexus MCP Server / Python SDK               │
@@ -136,9 +138,9 @@ python main.py node mcp --name "MyAssistant" --caps "Chat,Search"
 
 ---
 
-### v0.8：Python SDK + Agent Team 协作 ⚡ NEW
+### v0.9：Python SDK + Agent Team 协作 + Push 推送 ⚡ NEW
 
-> Agent 不仅能聊天，还能组队——委派任务、讨论方案、投票表决、紧急熔断。
+> Agent 不仅能聊天，还能组队——委派任务、讨论方案、投票表决、紧急熔断、消息即时推送。
 
 #### 安装
 
@@ -210,14 +212,31 @@ await discussion_mgr.conclude(topic_id=topic_id, conclusion="采用 async API + 
 #### 紧急熔断
 
 ```python
-from agentnexus import EmergencyConfig, create_emergency_controller
+from agentnexus import create_emergency_controller
 
-# 配置授权 DID（只有这些 DID 能触发熔断）
-config = EmergencyConfig(authorized_dids=["did:agentnexus:z6Mk...admin"])
-emergency = create_emergency_controller(nexus, config)
+# 配置授权 DID + 可选清理回调
+emergency = create_emergency_controller(
+    authorized_dids=["did:agentnexus:z6Mk...admin"],
+    on_emergency=lambda: print("紧急停止！清理资源..."),
+)
 
-# 授权者一键停止所有关联 Agent
-await nexus.notify_state(to_did="...", status="emergency_halt", scope="all")
+# 在 Agent 中注册熔断控制器
+nexus.configure_emergency(
+    authorized_dids=["did:agentnexus:z6Mk...admin"],
+    on_emergency=async_cleanup_fn,
+)
+# 授权者发送熔断指令（通过 MCP emergency_halt 工具）
+# SDK 接收端自动识别并执行：停止轮询 → 回复 halted → 触发 callback
+```
+
+#### Push 注册（v0.9 新增）
+
+```python
+# 注册 Push 通知 — 有新消息时 Daemon 主动推送，无需轮询
+push = await nexus.register_push(callback_url="http://127.0.0.1:3001/notify")
+print(f"Push 已注册: {push.registration_id}, 过期: {push.expires_at}")
+
+# SDK 自动在 expires/2 时续约，close() 时自动注销
 ```
 
 #### 信任验证 & 认证签发
@@ -523,6 +542,159 @@ python leader.py    # Leader 自动发现 Worker，发起讨论和任务
 
 ---
 
+#### 示例 3：Enclave + Playbook — 自动编排完成功能开发 ⚡ *v0.9.5 新增*
+
+秘书 Agent 创建项目组，定义开发流程，系统自动推进——设计完成后自动触发评审，评审通过后自动触发开发，无需人工干预。
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  OpenClaw 用户："安排开发登录功能"                              │
+└──────────────────────────────────────────────────────────────┘
+                           │ /adapters/openclaw/invoke
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│  秘书 Agent（SDK 常驻运行）                                    │
+│  1. create_enclave("登录功能开发", members={...})              │
+│  2. vault_put("requirements", 需求文档)                       │
+│  3. run_playbook(standard_dev)                               │
+└──────────────────────────────────────────────────────────────┘
+                           │ Playbook 引擎自动推进
+          ┌────────────────┼────────────────┐
+          ▼                ▼                ▼
+    Architect          Reviewer         Developer
+    收到推送            收到推送           收到推送
+    vault_get          vault_get         vault_get
+    ("requirements")   ("design_doc")    ("design_doc")
+    写设计方案          评审通过/拒绝      写代码
+    vault_put          notify_state      vault_put
+    ("design_doc")     (completed/       ("code_diff")
+    notify_state        rejected)        notify_state
+    (completed)                          (completed)
+```
+
+**秘书 Agent（SDK 模式，常驻运行）**
+
+```python
+# secretary.py
+import asyncio, agentnexus
+from agentnexus import create_emergency_controller
+
+async def main():
+    nexus = await agentnexus.connect("Secretary", caps=["Planning", "Coordination"])
+
+    @nexus.on_message
+    async def on_request(msg):
+        if "开发" in msg.content or "实现" in msg.content:
+            await start_dev_project(nexus, msg.content, msg.from_did)
+
+    print("秘书就绪，等待任务...")
+    while True:
+        await asyncio.sleep(1)
+
+async def start_dev_project(nexus, requirement: str, requester_did: str):
+    # 搜索团队成员
+    architects = await nexus.search(capability="Architecture")
+    developers = await nexus.search(capability="Code")
+    reviewers = await nexus.search(capability="Review")
+
+    # 创建 Enclave 项目组
+    result = await nexus._call("post", "/enclaves", json={
+        "owner_did": nexus.agent_info.did,
+        "name": "功能开发",
+        "vault_backend": "local",
+        "members": {
+            "architect": {"did": architects[0].did, "permissions": "rw"},
+            "developer":  {"did": developers[0].did, "permissions": "rw"},
+            "reviewer":   {"did": reviewers[0].did,  "permissions": "r"},
+        },
+    })
+    enclave_id = result["enclave_id"]
+
+    # 写入需求到 Vault
+    await nexus._call("put", f"/enclaves/{enclave_id}/vault/requirements", json={
+        "value": requirement,
+        "author_did": nexus.agent_info.did,
+        "message": "初始需求",
+    })
+
+    # 启动标准开发流程 Playbook
+    await nexus._call("post", f"/enclaves/{enclave_id}/runs", json={
+        "playbook": {
+            "name": "标准开发流程",
+            "stages": [
+                {"name": "design",        "role": "architect", "description": "输出技术设计方案",
+                 "input_keys": ["requirements"], "output_key": "design_doc", "next": "review_design"},
+                {"name": "review_design", "role": "reviewer",  "description": "评审设计方案",
+                 "input_keys": ["design_doc"], "next": "implement", "on_reject": "design"},
+                {"name": "implement",     "role": "developer", "description": "实现代码",
+                 "input_keys": ["design_doc"], "output_key": "code_diff", "next": "review_code"},
+                {"name": "review_code",   "role": "reviewer",  "description": "代码评审",
+                 "input_keys": ["code_diff"], "next": "done", "on_reject": "implement"},
+                {"name": "done",          "role": "architect", "description": "确认完成"},
+            ],
+        },
+    })
+    print(f"Playbook 已启动，Enclave: {enclave_id}")
+
+asyncio.run(main())
+```
+
+**Architect Agent（SDK 模式，自动响应）**
+
+```python
+# architect.py
+import asyncio, agentnexus, json
+
+async def main():
+    nexus = await agentnexus.connect("Architect", caps=["Architecture", "Design"])
+
+    @nexus.on_task_propose
+    async def on_task(action):
+        content = action.content
+        enclave_id = content.get("enclave_id")
+        stage = content.get("stage_name")
+        task_id = content.get("task_id")
+
+        if stage == "design":
+            # 读取需求
+            req = await nexus._call("get", f"/enclaves/{enclave_id}/vault/requirements")
+            # 生成设计方案（实际由 AI 完成）
+            design = f"# 技术设计方案\n\n基于需求：{req['value'][:100]}...\n\n## API 设计\n..."
+            # 写入 Vault
+            await nexus._call("put", f"/enclaves/{enclave_id}/vault/design_doc", json={
+                "value": design,
+                "author_did": nexus.agent_info.did,
+                "message": "初版设计方案",
+            })
+            # 汇报完成 → Playbook 引擎自动触发 Reviewer
+            await nexus.notify_state(
+                to_did=action.from_did,
+                task_id=task_id,
+                status="completed",
+                output_ref="design_doc",
+            )
+
+    while True:
+        await asyncio.sleep(1)
+
+asyncio.run(main())
+```
+
+**运行：**
+
+```bash
+# 四个终端分别启动
+python main.py relay start
+python main.py node start
+python secretary.py    # 等待任务
+python architect.py    # 等待任务
+# developer.py / reviewer.py 类似，监听 on_task_propose 并处理对应 stage
+```
+
+协作流程：秘书收到请求 → 创建 Enclave → 写需求到 Vault → 启动 Playbook → Architect 自动收到推送 → 读需求写设计 → `notify_state(completed)` → Playbook 引擎自动触发 Reviewer → 评审通过 → 自动触发 Developer → 完成后通知秘书。**全程无需人工切换，Playbook 引擎自动推进。**
+
+---
+
 ---
 
 ## 🇬🇧 English
@@ -550,7 +722,7 @@ Every multi-agent framework today (CrewAI, AutoGen, MetaGPT…) is a walled gard
 | 🌐 **Federated Relay** | Local + public relays, 1-hop lookup, self-hostable |
 | 🛡️ **Semantic Gatekeeper** | Public / Ask / Private + blacklist/whitelist + AI auto-approval |
 | 🌀 **Smart Routing** | local → P2P → relay → offline — messages never lost |
-| 🔌 **Native MCP** | 17 tools — Claude Desktop / Cursor / Claude Code out of the box |
+| 🔌 **Native MCP** | 27 tools — Claude Desktop / Cursor / Claude Code out of the box |
 | 🔐 **L1-L4 Trust System** | Multi-CA certification, RuntimeVerifier dynamic trust scoring |
 | 📡 **STUN Discovery** | Auto public IP:Port for NAT traversal |
 | 🔒 **Key Isolation** | Signing inside Daemon — private key never leaves local process |
@@ -559,6 +731,8 @@ Every multi-agent framework today (CrewAI, AutoGen, MetaGPT…) is a walled gard
 | 🗳️ **Discussion & Voting** | Multi-agent discussions, threaded replies, voting, conclusion archiving ⚡ *v0.8 NEW* |
 | 🚨 **Emergency Halt** | Authorized DID broadcasts emergency_halt, runaway agents stop immediately ⚡ *v0.8 NEW* |
 | 🔌 **Platform Adapters** | OpenClaw Skill / Webhook bridge, external agents plug in with zero changes ⚡ *v0.8 NEW* |
+| 📡 **Push Registration + Notification** | SIP REGISTER-style TTL registration + APNs-style HMAC-signed push — instant message notification ⚡ *v0.9 NEW* |
+| 🏗️ **Enclave Project Groups** | Multi-agent teams + role binding + pluggable VaultBackend (Git/Local) + Playbook auto-orchestration ⚡ *v0.9.5 NEW* |
 
 ---
 
@@ -617,9 +791,9 @@ python main.py node mcp --name "MyAssistant" --caps "Chat,Search"
 
 ---
 
-### v0.8 — Python SDK + Collaboration Protocol ⚡ NEW
+### v0.9 — Python SDK + Collaboration Protocol + Push ⚡ NEW
 
-> Agents don't just chat — they team up. Delegate tasks, discuss plans, vote on decisions, emergency halt.
+> Agents don't just chat — they team up. Delegate tasks, discuss plans, vote on decisions, emergency halt, instant push notifications.
 
 #### Install
 
@@ -687,13 +861,31 @@ await discussion_mgr.conclude(topic_id=topic_id, conclusion="Use async API + syn
 #### Emergency Halt
 
 ```python
-from agentnexus import EmergencyConfig, create_emergency_controller
+from agentnexus import create_emergency_controller
 
-config = EmergencyConfig(authorized_dids=["did:agentnexus:z6Mk...admin"])
-emergency = create_emergency_controller(nexus, config)
+# Configure authorized DIDs + optional cleanup callback
+emergency = create_emergency_controller(
+    authorized_dids=["did:agentnexus:z6Mk...admin"],
+    on_emergency=lambda: print("Emergency! Cleaning up..."),
+)
 
-# Authorized DID broadcasts halt — all connected agents stop immediately
-await nexus.notify_state(to_did="...", status="emergency_halt", scope="all")
+# Register emergency controller in your Agent
+nexus.configure_emergency(
+    authorized_dids=["did:agentnexus:z6Mk...admin"],
+    on_emergency=async_cleanup_fn,
+)
+# Authorized DID sends halt via MCP emergency_halt tool
+# SDK auto-handles: stop polling → reply halted → trigger callback
+```
+
+#### Push Registration (v0.9 New)
+
+```python
+# Register push notification — Daemon pushes on new messages, no polling needed
+push = await nexus.register_push(callback_url="http://127.0.0.1:3001/notify")
+print(f"Push registered: {push.registration_id}, expires: {push.expires_at}")
+
+# SDK auto-refreshes at expires/2, auto-unregisters on close()
 ```
 
 #### Trust & Certification

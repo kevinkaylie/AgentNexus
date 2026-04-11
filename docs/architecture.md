@@ -70,7 +70,7 @@ AgentNexus Communication Protocol (ACP) 是一个九层协议栈：
 ```
 
 v0.8 完整实现：L0-L2 + L4 + L6-L8
-v0.9 计划实现：L3 + L5
+v0.9 已实现：L3（注册层）+ L5（推送层）— 评审有条件通过，2 个安全阻塞项待修复
 
 ### MCP 工具分类（27 个）
 
@@ -98,6 +98,29 @@ v0.9 计划实现：L3 + L5
 Node Daemon（每台机器一个）
 └── 读 data/node_config.json → { local_relay, seed_relays[] }
 ```
+
+### Relay 运行模式
+
+Relay 代码库只有一份，通过 `--mode` 参数区分两种运行模式：
+
+```bash
+python main.py relay start --mode seed   # 公网种子模式（默认）
+python main.py relay start --mode local  # 本地完整模式
+```
+
+| 功能 | seed 模式 | local 模式 |
+|------|----------|-----------|
+| 联邦目录（announce/lookup/relay） | ✅ | ✅ |
+| 离线消息队列 | ✅ | ✅ |
+| `/.well-known/did.json` | ✅ | ✅ |
+| 多租户隔离 | ✅ | — |
+| TLS + 域名（推荐） | ✅ | 可选 |
+| Vault 跨机器同步（v1.0+） | ❌ 禁用 | ✅ |
+| Enclave 元数据同步（v1.0+） | ❌ 禁用 | ✅ |
+
+**设计原则**：Vault 和 Enclave 数据不经过公网种子 Relay——那会变成中心化存储，违背联邦架构。这些数据只在本地 Relay 或 Daemon 之间直接同步。
+
+> 当前版本（v0.9.5）两种模式功能完全一致，`--mode` 参数预留但尚未实现差异化。待 v1.0+ 引入 Vault 跨机器同步时再做区分。
 
 ### Agent 发现流程
 
@@ -264,7 +287,7 @@ AgentNexus Communication Protocol (ACP) is a 9-layer stack:
 ```
 
 v0.8 implements: L0-L2 + L4 + L6-L8
-v0.9 planned: L3 + L5
+v0.9 implemented: L3 (Registration) + L5 (Push) — conditional approval, 2 security blockers pending
 
 ### MCP Tools (27)
 
@@ -292,6 +315,28 @@ Local Relay (your own server)
 Node Daemon (one per machine)
 └── Reads data/node_config.json → { local_relay, seed_relays[] }
 ```
+
+### Relay Modes
+
+One codebase, two modes via `--mode` flag:
+
+```bash
+python main.py relay start --mode seed   # Public seed mode (default)
+python main.py relay start --mode local  # Local full mode
+```
+
+| Feature | seed | local |
+|---------|------|-------|
+| Federation directory | ✅ | ✅ |
+| Offline message queue | ✅ | ✅ |
+| `/.well-known/did.json` | ✅ | ✅ |
+| Multi-tenant isolation | ✅ | — |
+| Vault cross-machine sync (v1.0+) | ❌ disabled | ✅ |
+| Enclave metadata sync (v1.0+) | ❌ disabled | ✅ |
+
+Vault and Enclave data never flows through public seed Relays — that would create centralized storage. These sync only between local Relays or directly between Daemons.
+
+> Current version (v0.9.5): both modes are identical. The `--mode` flag is reserved; differentiation happens when v1.0+ introduces Vault cross-machine sync.
 
 ### Agent Discovery Flow
 

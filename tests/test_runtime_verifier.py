@@ -453,9 +453,7 @@ def daemon_client(tmp_path, monkeypatch):
     import agent_net.node.daemon as d
     importlib.reload(d)
 
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", str(tmp_path / "daemon_token.txt"))
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    import agent_net.node._auth as _auth; monkeypatch.setattr(_auth, "USER_TOKEN_FILE", tmp_path / "daemon_token.txt")
 
     with TestClient(d.app) as client:
         yield client, d
@@ -466,7 +464,7 @@ def test_tr_rt_daemon_01_runtime_verify_endpoint(daemon_client, tmp_path):
     client, d = daemon_client
 
     # 注册一个本地 agent，获取其 DID 和公钥
-    token = d._daemon_token
+    from agent_net.node._auth import get_token as _get_token; token = _get_token()
     reg = client.post(
         "/agents/register",
         json={"name": "VerifyTestAgent"},

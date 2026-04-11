@@ -187,7 +187,8 @@ async def test_push_register_endpoint():
     importlib.reload(daemon)
 
     with TestClient(daemon.app) as client:
-        token = daemon._daemon_token or "test-token"
+        from agent_net.node._auth import get_token
+        token = get_token() or "test-token"
 
         # 先注册 Agent 以绑定 DID（需要通过 daemon 的 agent 注册）
         reg_response = client.post(

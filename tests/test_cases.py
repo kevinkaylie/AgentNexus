@@ -220,18 +220,23 @@ def test_tc08_deliver_endpoint_preserves_message_type(tmp_path, monkeypatch):
     import importlib
     import agent_net.storage as st
     import agent_net.node.daemon as d
+    import agent_net.node._auth as _auth
+    import agent_net.node._config as _cfg
+    from agent_net.common.constants import NODE_CONFIG_FILE, DATA_DIR, DAEMON_TOKEN_FILE
 
     # 隔离 DB
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "test.db")
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", str(tmp_path / "token.txt"))
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    monkeypatch.setattr(_auth, "USER_TOKEN_FILE", tmp_path / "daemon_token.txt")
+    monkeypatch.setattr("agent_net.common.constants.DAEMON_TOKEN_FILE", str(tmp_path / "token.txt"))
+    monkeypatch.setattr("agent_net.common.constants.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("agent_net.common.constants.NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
 
     importlib.reload(d)
-    from agent_net.node.daemon import router
+    from agent_net.router import router
+    from agent_net.node._auth import get_token
 
     with TestClient(d.app) as client:
-        token = d._daemon_token
+        token = get_token()
 
         sender_did = client.post(
             "/agents/register",

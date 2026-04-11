@@ -337,9 +337,7 @@ def daemon_client(tmp_path, monkeypatch):
 
     # 3. patch daemon 模块级名称，使 token、配置均写入 tmp_path（完全隔离）
     token_file = str(tmp_path / "daemon_token.txt")
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", token_file)
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    import agent_net.node._auth as _auth; monkeypatch.setattr(_auth, "USER_TOKEN_FILE", tmp_path / "daemon_token.txt")
 
     # 4. 用 context manager 确保 lifespan（init_db + _init_daemon_token）运行
     from fastapi.testclient import TestClient
@@ -430,7 +428,7 @@ def test_tf13_local_relay_unreachable_register_succeeds(daemon_client, monkeypat
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
 
-    monkeypatch.setattr(d.aiohttp, "ClientSession", _FailSession)
+    import agent_net.node._config as _cfg_mod; monkeypatch.setattr(_cfg_mod.aiohttp, "ClientSession", _FailSession)
 
     resp = client.post(
         "/agents/register",
@@ -453,7 +451,8 @@ def test_tf14_seed_relay_unreachable_announce_silent(daemon_client, monkeypatch)
         token = f.read().strip()
 
     # 写入含不可达种子站的节点配置
-    with open(d.NODE_CONFIG_FILE, "w", encoding="utf-8") as f:
+    from agent_net.common.constants import NODE_CONFIG_FILE
+    with open(NODE_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump({
             "local_relay": "http://localhost:9000",
             "seed_relays": ["http://unreachable-seed.invalid:9999"],
@@ -466,7 +465,7 @@ def test_tf14_seed_relay_unreachable_announce_silent(daemon_client, monkeypatch)
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
 
-    monkeypatch.setattr(d.aiohttp, "ClientSession", _FailSession)
+    import agent_net.node._config as _cfg_mod; monkeypatch.setattr(_cfg_mod.aiohttp, "ClientSession", _FailSession)
 
     resp = client.post(
         "/agents/register",
@@ -648,7 +647,7 @@ def test_tf21_relay_add_triggers_federation_join(daemon_client, monkeypatch):
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
 
-    monkeypatch.setattr(d.aiohttp, "ClientSession", _SpySession)
+    import agent_net.node._config as _cfg_mod; monkeypatch.setattr(_cfg_mod.aiohttp, "ClientSession", _SpySession)
 
     resp = client.post(
         "/node/config/relay/add",

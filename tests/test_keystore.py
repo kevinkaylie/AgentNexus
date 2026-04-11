@@ -17,15 +17,14 @@ def daemon_client(tmp_path, monkeypatch):
     import agent_net.node.daemon as d
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "test.db")
     importlib.reload(d)
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", str(tmp_path / "token.txt"))
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    import agent_net.node._auth as _auth; monkeypatch.setattr(_auth, "USER_TOKEN_FILE", tmp_path / "token.txt")
     with TestClient(d.app) as client:
         yield client, d
 
 
 def _token(d):
-    return d._daemon_token
+    from agent_net.node._auth import get_token
+    return get_token()
 
 
 # ── tk01: 导出→导入往返完整 ──────────────────────────────────

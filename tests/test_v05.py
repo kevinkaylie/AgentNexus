@@ -20,9 +20,7 @@ def daemon_client(tmp_path, monkeypatch):
     monkeypatch.setattr(s, "DB_PATH", tmp_path / "test.db")
     importlib.reload(d)
     token_file = str(tmp_path / "daemon_token.txt")
-    monkeypatch.setattr(d, "DAEMON_TOKEN_FILE", token_file)
-    monkeypatch.setattr(d, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(d, "NODE_CONFIG_FILE", str(tmp_path / "node_config.json"))
+    import agent_net.node._auth as _auth; monkeypatch.setattr(_auth, "USER_TOKEN_FILE", Path(token_file))
     from fastapi.testclient import TestClient
     with TestClient(d.app) as client:
         yield client, d, token_file

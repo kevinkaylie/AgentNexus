@@ -249,9 +249,47 @@
 
 ---
 
-## v0.9.0 — 信任传递 & 声誉 + Output Provenance
+## v0.9.0 — 信任传递 & 声誉 + Output Provenance + Push 注册推送
 
-> 目标：动态信任网络 + 输出溯源，对抗 AI 幻觉。
+> 目标：L3 注册层 + L5 推送层 + 动态信任网络 + 输出溯源。
+
+### R-0900: Push 注册层（L3 — SIP REGISTER 风格）
+
+**用户故事：** 作为 Agent 进程（MCP/SDK），我希望启动时向 Daemon 注册自己的唤醒方式，以便有新消息时被主动通知，而不是轮询。
+
+**验收标准：**
+- ✅ `POST /push/register` 注册回调（callback_url + callback_type + TTL）
+- ✅ `POST /push/refresh` 续约 TTL
+- ✅ `DELETE /push/{did}` 主动注销
+- ✅ `GET /push/{did}` 查询注册状态（公开，不返回 callback_secret）
+- ✅ 注册时 Daemon 生成 `callback_secret`，仅返回一次
+- ✅ TTL 过期自动清理（后台任务每 5 分钟）
+- ✅ 同一 DID 可注册多个 callback（多平台 session）
+- ⬚ DID-Token 绑定验证（防止为他人 DID 注册回调）— 评审阻塞项 P1
+- ⬚ SSRF 防护（默认拒绝外部 callback_url）— 评审阻塞项 P2
+- ✅ 相关设计：[ADR-012 §3](adr/012-push-gateway-and-mcp-collaboration.md)
+
+### R-0900b: Push 推送层（L5 — APNs 风格精准推送）
+
+**用户故事：** 作为 Agent，我希望有新消息到达时被立即通知（而非等待下次轮询），以便实时响应。
+
+**验收标准：**
+- ✅ 消息存储后自动触发 Push 通知（`asyncio.create_task`）
+- ✅ HMAC-SHA256 签名验证（`X-Nexus-Signature` + `X-Nexus-Timestamp`）
+- ✅ 推送超时 5 秒，失败静默（消息已安全存储）
+- ✅ 推送失败记录 warning 日志
+- ✅ 通知 body 包含 preview（前 200 字符）
+- ✅ 相关设计：[ADR-012 §4](adr/012-push-gateway-and-mcp-collaboration.md)
+
+### R-0900c: MCP/SDK 自动注册
+
+**用户故事：** 作为 MCP/SDK 用户，我希望 Push 注册对我完全透明——启动自动注册，关闭自动注销。
+
+**验收标准：**
+- ✅ MCP：main() 启动时自动注册，finally 中注销，后台续约
+- ✅ SDK：connect 后可 register_push，close() 自动 unregister
+- ✅ SDK 续约间隔为 expires//2（动态计算）
+- ⬚ MCP 续约间隔应改为 expires//2（当前硬编码 30min）— 评审建议项 S1
 
 ### R-0901: Output Provenance（输出溯源）
 
@@ -297,7 +335,40 @@
 
 ## v1.0.0 — 桌面应用 & Web UI
 
-> 需求待定义。参考 [roadmap.md](roadmap.md) v1.0 功能列表。
+> 目标：C 端用户双击安装 + A2A Capability Token 互操作基础。
+
+### R-1001: A2A Capability Token Envelope
+
+**用户故事：** 作为 Enclave 的 owner，我希望为成员 Agent 签发结构化的 capability token，以便该 Agent 在跨 Enclave 协作时能向对方证明自己持有特定权限，而不需要对方信任我的 Enclave 网关。
+
+**验收标准：**
+- ⬚ Capability Token 采用 Ed25519 + JCS 规范化签名，任何持有 issuer 公钥的 Agent 可验证
+- ⬚ Token 结构包含五个必要字段：签名信封、skill binding、约束集、委托链引用、过期+撤销端点
+- ⬚ Enclave 的 `role → permissions → scope` 链映射为 token 的 constraint set
+- ⬚ `POST /enclaves/{id}/tokens` 签发 capability token
+- ⬚ `POST /capability/verify` 验证外部 capability token（无需网关）
+- ⬚ Token 过期时间必填，撤销端点必填（均不可省略）
+- ⬚ 相关设计：ADR-014 §与 A2A Capability Token Envelope 的关系
+
+### R-1002: Skill 版本绑定
+
+**用户故事：** 作为 capability token 的签发者，我希望指定 token 覆盖的 skill 版本范围，以便在 skill 升级时控制授权是否自动延续。
+
+**验收标准：**
+- ⬚ 支持三种绑定策略：`strict`（仅指定版本）、`semver`（兼容升级）、`capability`（版本无关，默认）
+- ⬚ 默认 `capability` binding：scope 如 `data:read` 覆盖任何读数据的 skill，不论版本
+- ⬚ 可选 version pinning：`data:read@v1` 仅覆盖 v1
+- ⬚ Playbook stage 的 `role` 字段作为 skill binding 的上层映射
+
+### R-1003: 跨 Enclave Token 互验
+
+**用户故事：** 作为 Enclave A 的成员，我希望验证来自 Enclave B 签发的 capability token，以便在无共享网关的情况下确认对方 Agent 的权限。
+
+**验收标准：**
+- ⬚ 验证方仅需 issuer 的公钥（通过 DID 解析获取），无需访问 issuer 的 Enclave
+- ⬚ 验证包含：签名校验 + 过期检查 + 委托链完整性（hash 比对）
+- ⬚ 验证失败时返回具体原因（签名无效 / 已过期 / 链断裂 / 已撤销）
+- ⬚ 约束集（constraint set）由 issuer 定义和评估，验证方不解释约束语义
 
 ---
 
