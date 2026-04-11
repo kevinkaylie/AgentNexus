@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
-## [0.9.1] - 2026-04-11
+## [0.9.6] - 2026-04-11
 
 ### Added
 
@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **APSClient**：集成 APS `validate-capabilities` API
 - **GovernanceRegistry**：管理多客户端，聚合验证结果
 - **GovernanceAttestation**：治理认证数据结构，支持 JWS 签名验证
-- **等级映射**：MolTrust/APS passport_grade → AgentNexus L1-L4
+- **等级映射**：MolTrust/APS passport_grade → AgentNexus L1-L4（参考）
 
 #### Web of Trust 信任网络
 - **TrustGraph**：信任图结构，BFS 路径搜索
@@ -31,6 +31,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **ReputationStore**：SQLite 持久化交互记录和声誉缓存
 - **OATR 格式导出**：`to_oatr_format()` 输出标准格式
 
+#### Daemon 模块化重构
+- **daemon.py**：从 2000+ 行精简为 70 行入口文件
+- **_auth.py**：Token 管理 + DID 绑定
+- **_config.py**：节点配置 + Relay 通信
+- **_models.py**：所有 Pydantic 请求模型
+- **routers/**：8 个功能模块（agents/messages/handshake/adapters/push/enclave/governance）
+
 #### Storage 扩展
 - **新增表**：`trust_edges`, `interactions`, `reputation_cache`, `governance_attestations`
 - **CRUD 函数**：`add_trust_edge`, `record_interaction`, `save_governance_attestation` 等
@@ -39,22 +46,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - `POST /governance/validate` — 调用外部治理服务
 - `GET /governance/attestations/{did}` — 获取缓存的治理认证
 - `GET /trust/paths` — 查找信任路径
-- `POST /trust/edge` — 添加信任边
+- `POST /trust/edge` — 添加信任边（带权限验证）
 - `GET /trust/edges/{did}` — 列出信任边
 - `DELETE /trust/edge` — 删除信任边
 - `POST /interactions` — 记录交互
 - `GET /interactions/{did}` — 获取交互历史
 - `GET /reputation/{did}` — 获取声誉评分
 
-#### MCP 工具（4 个新增）
+#### MCP 工具（4 个新增，33 个总计）
 - `validate_governance` — 验证 Agent 能力
 - `find_trust_path` — 查找信任路径
 - `add_trust` — 添加信任边
 - `get_reputation` — 获取声誉评分
 
+### Fixed
+
+#### ADR-014 设计评审问题修复
+- **P1**：spend_limit 作为参考信息，实际额度由 ADR-004 定义
+- **P2**：base_score 设计依据（非线性映射 + 行为空间）
+- **P3**：与 ADR-004 关系明确，Gatekeeper 决策优先级
+- **S1**：JWS 过期强制检查，防止重放攻击
+- **S2**：信任边添加权限验证（from_did owner only）
+
 ### Tests
-- 25 passed（Web of Trust + Reputation）
-- MolTrust API 真实调用验证通过
+- 301 passed, 6 skipped
+- 新增测试文件：test_v09_reputation.py, test_v09_web_of_trust.py, test_v09_api.py
 
 ---
 

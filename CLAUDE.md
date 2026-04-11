@@ -1,4 +1,4 @@
-# AgentNexus - CLAUDE.md (updated 2026-04-03)
+# AgentNexus - CLAUDE.md (updated 2026-04-11)
 
 ## 项目概述
 
@@ -7,9 +7,9 @@ AI时代的软件定义网络 - 去中心化Agent通信基础设施。
 - WG DID Resolution 规范：https://github.com/corpollc/qntm/blob/main/specs/working-group/did-resolution.md
 - did:key 实现参考：https://w3c-ccg.github.io/did-method-key/
 
-## 当前状态：v0.7.1 — Relay did:web 支持
+## 当前状态：v0.9.6 — Governance Attestation + Trust Network
 
-### 全部 144 个测试通过 ✅
+### 全部 301 个测试通过 ✅
 
 ### 已实现模块
 
@@ -21,8 +21,12 @@ AI时代的软件定义网络 - 去中心化Agent通信基础设施。
 | `agent_net/common/runtime_verifier.py` | AgentNexusRuntimeVerifier（L1-L4 信任体系，多 CA 架构） |
 | `agent_net/common/handshake.py` | 四步握手协议 |
 | `agent_net/common/keystore.py` | export/import（argon2id+SecretBox） |
-| `agent_net/node/daemon.py` | FastAPI :8765，含 POST /runtime/verify |
-| `agent_net/node/mcp_server.py` | MCP stdio，17 个工具 |
+| `agent_net/common/governance.py` | GovernanceClient（MolTrust/APS）、GovernanceRegistry、JWS 验证 |
+| `agent_net/common/trust_graph.py` | Web of Trust、信任传递、路径发现（BFS） |
+| `agent_net/common/reputation.py` | ReputationScore、BehaviorScorer、ReputationStore |
+| `agent_net/node/daemon.py` | FastAPI :8765 入口，组装 routers |
+| `agent_net/node/routers/` | 8 个功能模块（agents/messages/handshake/adapters/push/enclave/governance） |
+| `agent_net/node/mcp_server.py` | MCP stdio，33 个工具 |
 | `agent_net/node/gatekeeper.py` | public/ask/private 三模式访问控制 |
 | `agent_net/relay/server.py` | 联邦 Relay，Redis 存储，`/.well-known/did.json` |
 | `docs/did-method-spec.md` | did:agentnexus 规范文档（草稿） |
@@ -106,6 +110,45 @@ Giskard CA 集成：`{"did:agent:giskard_ca": "<hex>"}` → `payment_verified` c
 { "agent_did": "did:agentnexus:z...", "agent_public_key": "<hex>", "trusted_cas": {} }
 ```
 
+## Governance Attestation（v0.9.6）
+
+集成外部治理服务（MolTrust/APS）的 `validate-capabilities` API：
+
+```bash
+# 调用治理服务验证能力
+curl -X POST http://localhost:8765/governance/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_did": "did:agentnexus:z...",
+    "requested_capabilities": [{"scope": "data:read"}]
+  }'
+```
+
+**GovernanceAttestation 结构：**
+```json
+{
+  "signal_type": "governance_attestation",
+  "issuer": "api.moltrust.ch",
+  "subject": "did:agentnexus:z...",
+  "decision": "permit",
+  "scopes": ["data:read"],
+  "trust_score": 75,
+  "passport_grade": 2,
+  "jws": "eyJhbGciOiJFZERTQSIs..."
+}
+```
+
+**三维信任评分：**
+```
+trust_score = base_score(L级) + behavior_delta + attestation_bonus
+```
+
+| 分量 | 来源 | 范围 |
+|------|------|------|
+| base_score | L 级映射 | 15/40/70/95 |
+| behavior_delta | 交互行为 | -20 ~ +20 |
+| attestation_bonus | 治理认证 | 0 ~ +15 |
+
 ## Certification 格式
 
 ```json
@@ -128,12 +171,16 @@ Giskard CA 集成：`{"did:agent:giskard_ca": "<hex>"}` → `payment_verified` c
 ```bash
 python main.py node start                      # 启动 Daemon :8765
 python main.py node mcp --name "TestAgent"     # 启动 MCP 并注册新 DID
-python main.py test                            # 运行全部 144 个测试
+python main.py test                            # 运行全部 301 个测试
 python main.py relay start                     # 启动 Relay :9000（需 Redis）
 python main.py relay start --host my.domain    # 启动 Relay 并指定域名（用于 did:web）
 python main.py agent export <did> --output agent.key --password pw
 python main.py agent import agent.key --password pw
 python main.py agent profile <did>             # 调 daemon HTTP 生成签名名片
+
+# 治理服务测试（需要 API Key）
+export MOLTRUST_API_KEY="mt_xxx"
+python scripts/cross_verify_demo.py            # Cross-verify 演示
 ```
 
 ## Workflow Rules

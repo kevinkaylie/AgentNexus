@@ -42,6 +42,9 @@
 | ADR-009 | DID Method Handler 注册表架构 | 已采纳 | [docs/adr/009-did-method-handler-registry.md](docs/adr/009-did-method-handler-registry.md) |
 | ADR-010 | 平台适配器与 Skill 注册架构 | 提议 | [docs/adr/010-platform-adapter-skill-registry.md](docs/adr/010-platform-adapter-skill-registry.md) |
 | ADR-011 | Discussion Protocol 讨论协议设计 | 草稿 | [docs/adr/011-discussion-protocol.md](docs/adr/011-discussion-protocol.md) |
+| ADR-012 | ACP 协议栈（Push Gateway + MCP 协作） | 已采纳 | [docs/adr/012-push-gateway-and-mcp-collaboration.md](docs/adr/012-push-gateway-and-mcp-collaboration.md) |
+| ADR-013 | Enclave 协作架构（项目组 + VaultBackend + Playbook） | 已采纳 | [docs/adr/013-enclave-collaboration-architecture.md](docs/adr/013-enclave-collaboration-architecture.md) |
+| ADR-014 | Governance Attestation + Trust Network | 已采纳 | [docs/adr/014-governance-trust-network.md](docs/adr/014-governance-trust-network.md) |
 
 ### 接口契约
 
