@@ -61,16 +61,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
-#### ADR-014 设计评审问题修复
+#### ADR-014 设计评审问题修复（2026-04-11）
 - **P1**：spend_limit 作为参考信息，实际额度由 ADR-004 定义
 - **P2**：base_score 设计依据（非线性映射 + 行为空间）
 - **P3**：与 ADR-004 关系明确，Gatekeeper 决策优先级
 - **S1**：JWS 过期强制检查，防止重放攻击
 - **S2**：信任边添加权限验证（from_did owner only）
 
+#### ADR-014 代码评审问题修复（2026-04-12）
+- **P1**：`verify_attestation` 添加 `require_jws` 参数，防止无签名 attestation 绕过验证
+- **P2**：`DELETE /trust/edge` 添加鉴权 + from_did 归属验证
+- **S1**：JWS 验证添加 `logger.warning` 区分错误类型
+- **S2**：提供 `set_governance_registry()` / `reset_governance_registry()` 供测试注入
+- **S6**：`POST /interactions` 添加鉴权 + 本地 Agent 验证
+- **S7**：`GET /reputation/{did}` 从数据库查实际 L 级，移除外部参数
+
 ### Tests
-- 301 passed, 6 skipped
-- 新增测试文件：test_v09_reputation.py, test_v09_web_of_trust.py, test_v09_api.py
+- 330 passed, 6 skipped
+- 新增测试文件：test_v09_reputation.py, test_v09_web_of_trust.py, test_v09_api.py, test_governance.py
 
 ---
 

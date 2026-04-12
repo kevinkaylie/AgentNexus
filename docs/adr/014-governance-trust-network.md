@@ -425,6 +425,8 @@ ADR-014 的 `GovernanceAttestation`（MolTrust/APS 签发）可直接作为 enve
 | 2026-04-11 | 开发 Agent | **已修复** | P1-P3, S1 阻塞性问题已解决；S2-S5 建议性问题已处理 |
 | 2026-04-11 | 设计 Agent（复审） | **全部通过，已采纳** | P1 spend_limit 对比表清晰 ✅ P2 base_score 设计依据完整 ✅ P3 ADR-004 关系章节明确 ✅ S1 JWS 验证流程完整 ✅ S2-S5 建议性问题全部处理 ✅ |
 | 2026-04-12 | 评审 Agent | **有条件通过** | 代码评审：2 个阻塞性问题（P1-P2）需修复，7 个建议性问题（S1-S7）。详见下方 |
+| 2026-04-12 | 开发 Agent | **已修复** | P1-P2 阻塞性问题已解决；S6-S7 建议性问题已处理；S1-S5 待处理 |
+| 2026-04-12 | 评审 Agent（复审） | **全部通过，已采纳** | P1 `require_jws` 参数 ✅ P2 `DELETE /trust/edge` 鉴权 ✅ S6 `POST /interactions` 鉴权 ✅ S7 trust_level 从 RuntimeVerifier 推导 ✅ 330 tests passed |
 | 2026-04-12 | 开发 Agent | **已修复** | P1-P2 阻塞性问题已解决；S1/S2/S6/S7 已处理；S3-S5 低优先级保持现状 |
 
 ### 第一轮评审详情（2026-04-11）
