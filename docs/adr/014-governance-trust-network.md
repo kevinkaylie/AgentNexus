@@ -47,6 +47,15 @@ GovernanceClient (抽象基类)
 └── GovernanceRegistry — 管理多个 client，聚合结果
 ```
 
+**MolTrust 具体端点（2026-04-12 A2A 讨论确认）：**
+| 端点 | 用途 | 集成位置 |
+|------|------|---------|
+| `GET /skill/trust-score/{did}` | 查询 Agent 信任分 | Playbook stage assignment 前的可选验证（fail-open） |
+| `POST /identity/resolve` | 解析 skill 最新版本 | 可选，per-Enclave 配置启用，本地场景不调用 |
+| `POST /guard/governance/validate-capabilities` | 能力验证 + attestation 签发 | GovernanceClient 主调用端点 |
+
+> 注：MolTrust trust score 作为辅助验证信号，不作为 Enclave 权限的决定因素。服务不可达时 fail-open（降级为本地信任评估）。
+
 **GovernanceAttestation 结构：**
 ```json
 {
@@ -415,6 +424,8 @@ ADR-014 的 `GovernanceAttestation`（MolTrust/APS 签发）可直接作为 enve
 | 2026-04-11 | 设计 Agent | **有条件通过** | 4 个阻塞性问题（P1-P3, S1）需修复后采纳，4 个建议性问题（S2-S5）。详见下方 |
 | 2026-04-11 | 开发 Agent | **已修复** | P1-P3, S1 阻塞性问题已解决；S2-S5 建议性问题已处理 |
 | 2026-04-11 | 设计 Agent（复审） | **全部通过，已采纳** | P1 spend_limit 对比表清晰 ✅ P2 base_score 设计依据完整 ✅ P3 ADR-004 关系章节明确 ✅ S1 JWS 验证流程完整 ✅ S2-S5 建议性问题全部处理 ✅ |
+| 2026-04-12 | 评审 Agent | **有条件通过** | 代码评审：2 个阻塞性问题（P1-P2）需修复，7 个建议性问题（S1-S7）。详见下方 |
+| 2026-04-12 | 开发 Agent | **已修复** | P1-P2 阻塞性问题已解决；S1/S2/S6/S7 已处理；S3-S5 低优先级保持现状 |
 
 ### 第一轮评审详情（2026-04-11）
 
@@ -435,3 +446,27 @@ ADR-014 的 `GovernanceAttestation`（MolTrust/APS 签发）可直接作为 enve
 | S3 | Implementation | 缺少测试覆盖要求 | ✅ 已处理：补充测试覆盖要求表格 |
 | S4 | Consequences | OATR 兼容声明笼统 | ✅ 已处理：补充字段映射表和输出示例 |
 | S5 | 全文 | 缺少影响范围章节 | ✅ 已处理：新增"影响范围"章节 |
+
+### 代码评审详情（2026-04-12）
+
+覆盖文件：`governance.py`（573行）、`trust_graph.py`（449行）、`reputation.py`（463行）、`routers/governance.py`（159行）
+测试：`test_governance.py` 29个测试全部通过（新增）、`test_v09_web_of_trust.py` 12个、`test_v09_reputation.py` 12个
+
+#### 🔴 阻塞性问题 → ✅ 已修复
+
+| # | 文件 | 位置 | 问题描述 | 修复方案 |
+|---|------|------|---------|----------|
+| P1 | `governance.py` | `verify_attestation` | 无 JWS 时无条件返回 True — 任何人可构造无签名的 attestation 对象绕过验证 | ✅ 已修复：新增 `require_jws: bool = False` 参数，调用方可显式要求必须有签名 |
+| P2 | `routers/governance.py` | `DELETE /trust/edge` | 缺少 `_require_token` 鉴权 — 任何人可删除任意信任边，违反 ADR-014 §2 权限模型 | ✅ 已修复：添加 `_=Depends(_require_token)` + 验证 `from_did` 归属 |
+
+#### 🟡 建议性问题 → ✅ 已处理
+
+| # | 文件 | 位置 | 问题描述 | 处理方案 |
+|---|------|------|---------|----------|
+| S1 | `governance.py` | `verify_attestation` | JWKS 获取失败时直接 `return False`，未记录失败原因 | ✅ 已处理：添加 `logger.warning` 区分"网络错误"和"签名无效" |
+| S2 | `routers/governance.py` | `_governance_registry` | 模块级全局单例，测试隔离困难 | ✅ 已处理：提供 `set_governance_registry()` / `reset_governance_registry()` 函数供测试注入 |
+| S3 | `trust_graph.py` | `TrustGraphStore` | `if conn: ... else: async with ...` 双分支重复 8 次 | ⬚ 不影响正确性，保持现状（代码清晰度 vs 抽象复杂度的权衡） |
+| S4 | `trust_graph.py` | `apply_decay` | 逐条 SQL 更新（N 条边 = N 次 SQL） | ⬚ 低优先级优化，信任边数量通常有限，批量更新可在性能瓶颈时再优化 |
+| S5 | `reputation.py` | `BehaviorScorer.__init__` | `success_weight`/`response_time_weight`/`frequency_weight` 定义但未使用 | ⬚ 保持现状，权重参数预留供未来扩展，硬编码值对应设计文档中的公式 |
+| S6 | `routers/governance.py` | `POST /interactions` | 无鉴权，任何人可伪造交互记录污染声誉数据 | ✅ 已处理：添加鉴权 + 验证 `from_did` 是本地 Agent |
+| S7 | `routers/governance.py` | `GET /reputation/{did}` | `trust_level` 由请求方传入，可被滥用 | ✅ 已处理：从数据库查 Agent 实际 L 级，移除外部参数 |

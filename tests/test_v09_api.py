@@ -59,11 +59,19 @@ def test_tr_api_01_interaction_record_endpoint(daemon_client):
     client, d = daemon_client
     from agent_net.node._auth import get_token as _get_token; token = _get_token()
 
+    # 注册本地 Agent（交互记录需要 from_did 是本地 Agent）
+    reg = client.post(
+        "/agents/register",
+        json={"name": "InteractionTestAgent"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    from_did = reg.json()["did"]
+
     # 记录交互
     resp = client.post(
         "/interactions",
         json={
-            "from_did": "did:agentnexus:zCaller",
+            "from_did": from_did,
             "to_did": "did:agentnexus:zTestAgent",
             "interaction_type": "message",
             "success": True,
@@ -83,14 +91,21 @@ def test_tr_api_02_get_interactions_endpoint(daemon_client):
     client, d = daemon_client
     from agent_net.node._auth import get_token as _get_token; token = _get_token()
 
+    # 注册本地 Agent
+    reg = client.post(
+        "/agents/register",
+        json={"name": "InteractionTestAgent2"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    from_did = reg.json()["did"]
     agent_did = "did:agentnexus:zTestAgent"
 
-    # 先记录一些交互
+    # 记录一些交互
     for i in range(5):
-        client.post(
+        resp = client.post(
             "/interactions",
             json={
-                "from_did": f"did:agentnexus:zCaller{i}",
+                "from_did": from_did,
                 "to_did": agent_did,
                 "interaction_type": "message",
                 "success": True,
@@ -98,6 +113,7 @@ def test_tr_api_02_get_interactions_endpoint(daemon_client):
             },
             headers={"Authorization": f"Bearer {token}"},
         )
+        assert resp.status_code == 200
 
     # 查询
     resp = client.get(f"/interactions/{agent_did}")

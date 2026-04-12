@@ -26,6 +26,18 @@ def _get_governance_registry():
     return _governance_registry
 
 
+def set_governance_registry(registry) -> None:
+    """设置治理服务注册表（供测试注入）"""
+    global _governance_registry
+    _governance_registry = registry
+
+
+def reset_governance_registry() -> None:
+    """重置治理服务注册表（供测试隔离）"""
+    global _governance_registry
+    _governance_registry = None
+
+
 @router.post("/governance/validate")
 async def api_governance_validate(req: GovernanceValidateRequest):
     from agent_net.common.governance import CapabilityRequest
@@ -121,7 +133,12 @@ async def api_list_trust_edges(did: str):
 
 
 @router.delete("/trust/edge")
-async def api_remove_trust_edge(from_did: str, to_did: str):
+async def api_remove_trust_edge(from_did: str, to_did: str, _=Depends(_require_token)):
+    """删除信任边（需要鉴权，验证 from_did 归属）"""
+    # 验证 from_did 是本地注册的 Agent
+    local_agent = await get_agent(from_did)
+    if not local_agent:
+        raise HTTPException(403, "from_did is not a local agent. Cannot delete trust edges for remote agents.")
     removed = await remove_trust_edge(from_did, to_did)
     if not removed:
         raise HTTPException(404, "Trust edge not found")
@@ -129,7 +146,12 @@ async def api_remove_trust_edge(from_did: str, to_did: str):
 
 
 @router.post("/interactions")
-async def api_record_interaction(req: InteractionRequest):
+async def api_record_interaction(req: InteractionRequest, _=Depends(_require_token)):
+    """记录交互（需要鉴权，验证 from_did 是本地 Agent）"""
+    # 验证 from_did 是本地注册的 Agent
+    local_agent = await get_agent(req.from_did)
+    if not local_agent:
+        raise HTTPException(403, "from_did is not a local agent. Cannot record interactions for remote agents.")
     interaction_id = await record_interaction(
         from_did=req.from_did, to_did=req.to_did,
         interaction_type=req.interaction_type, success=req.success,
@@ -145,9 +167,27 @@ async def api_get_interactions(did: str, time_window_days: int = 30):
 
 
 @router.get("/reputation/{did}")
-async def api_get_reputation(did: str, trust_level: int = 1):
+async def api_get_reputation(did: str):
+    """
+    获取声誉评分
+
+    trust_level 从 Agent 的实际 L 级推导（S7 修复）
+    """
     from agent_net.common.reputation import ReputationStore
+    from agent_net.common.runtime_verifier import AgentNexusRuntimeVerifier
+
     store = ReputationStore()
+
+    # 获取 Agent 的实际 L 级
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, f"Agent not found: {did}")
+
+    # 使用 RuntimeVerifier 计算实际 L 级（无 trusted_cas 时基于 DID）
+    verifier = AgentNexusRuntimeVerifier()
+    result = verifier.verify(did, agent.get("public_key", ""), trusted_cas={})
+    trust_level = result.trust_level
+
     attestations = await get_all_governance_attestations(did)
     attestation_bonus = min(15.0, sum(
         att.get("attestation", {}).get("trust_score", 0) * 0.1
@@ -156,4 +196,9 @@ async def api_get_reputation(did: str, trust_level: int = 1):
     rep = await store.compute_reputation(
         agent_did=did, trust_level=trust_level, attestation_bonus=attestation_bonus,
     )
-    return {"status": "ok", "reputation": rep.to_dict(), "oatr_format": rep.to_oatr_format()}
+    return {
+        "status": "ok",
+        "trust_level": trust_level,
+        "reputation": rep.to_dict(),
+        "oatr_format": rep.to_oatr_format()
+    }

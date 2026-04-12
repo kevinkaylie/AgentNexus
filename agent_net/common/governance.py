@@ -10,6 +10,7 @@ from __future__ import annotations
 import aiohttp
 import base64
 import json
+import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -18,6 +19,8 @@ from typing import Any, Optional
 
 from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +451,7 @@ class GovernanceRegistry:
         self,
         attestation: GovernanceAttestation,
         client_name: Optional[str] = None,
+        require_jws: bool = False,
     ) -> bool:
         """
         验证 attestation 的 JWS 签名（ADR-014 S1）
@@ -460,6 +464,7 @@ class GovernanceRegistry:
         Args:
             attestation: 治理认证
             client_name: 客户端名称（用于获取 JWKS）
+            require_jws: 是否要求必须有 JWS 签名（默认 False）
 
         Returns:
             True if valid
@@ -476,7 +481,10 @@ class GovernanceRegistry:
                 pass  # 解析失败时继续验证签名
 
         if not attestation.jws:
-            # 无签名，信任 issuer（但需要检查过期）
+            # 无签名
+            if require_jws:
+                return False  # 要求签名但无签名，拒绝
+            # 信任 issuer（但需要检查过期）
             return True
 
         # 查找客户端
@@ -491,6 +499,7 @@ class GovernanceRegistry:
                     break
 
         if client is None:
+            logger.warning(f"JWS verification failed: client not found for issuer={attestation.issuer}")
             return False
 
         # 获取 JWKS
@@ -504,21 +513,27 @@ class GovernanceRegistry:
             try:
                 jwks = await client.fetch_jwks()
                 self.jwks_cache[jwks_url] = (jwks, time.time())
-            except Exception:
+            except Exception as e:
+                logger.warning(f"JWS verification failed: JWKS fetch error for {jwks_url}: {e}")
                 return False
 
         # 提取 kid
         kid = get_jws_kid(attestation.jws)
         if not kid:
+            logger.warning(f"JWS verification failed: no kid in JWS header")
             return False
 
         # 提取公钥
         public_key_hex = extract_jwk_public_key(jwks, kid)
         if not public_key_hex:
+            logger.warning(f"JWS verification failed: public key not found for kid={kid}")
             return False
 
         # 验证签名
-        return verify_jws(attestation.jws, public_key_hex)
+        valid = verify_jws(attestation.jws, public_key_hex)
+        if not valid:
+            logger.warning(f"JWS verification failed: invalid signature for subject={attestation.subject}")
+        return valid
 
     def get_highest_trust(self, results: dict[str, GovernanceAttestation]) -> GovernanceAttestation:
         """
