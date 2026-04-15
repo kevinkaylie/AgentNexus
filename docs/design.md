@@ -768,3 +768,191 @@ GET  /capability-tokens/by-did/{did} — 查询某 DID 持有的所有有效 tok
 ```
 
 1.0-04 和 1.0-06 是纯增量，不改现有逻辑。1.0-08 改动最大，但核心是新建 `capability_token.py` 模块，对现有代码的侵入限于 Playbook 引擎的 stage 推进处。
+
+---
+
+### 设计评审（2026-04-15）
+
+#### 1.0-04 个人主 DID — ✅ 通过
+
+| 项目 | 评估 | 备注 |
+|------|------|------|
+| 数据模型 | ✅ | 在 agents 表加 `owner_did` 列，不新建表，简洁 |
+| 端点设计 | ✅ | 5 个 `/owner/*` 端点，职责清晰 |
+| 注册流程 | ✅ | 生成密钥对 → 创建 DID → 写入 agents |
+| 向后兼容 | ✅ | `owner_did=NULL` 的 Agent 继续正常工作 |
+
+**改进建议：**
+
+| # | 建议 | 优先级 | 说明 |
+|---|------|--------|------|
+| S1-04-1 | `POST /owner/register` 返回加密私钥或提示导出 | P2 | 用户需能恢复主 DID，否则私钥丢失后无法管理子 Agent |
+
+#### 1.0-06 消息中心 — ✅ 通过
+
+| 项目 | 评估 | 备注 |
+|------|------|------|
+| 聚合查询 SQL | ✅ | 子查询 + JOIN 设计正确 |
+| 端点设计 | ✅ | 3 个 `/owner/messages/*` 端点 |
+| 响应格式 | ✅ | 包含 `to_agent_name` 字段，方便用户识别 |
+| 分页支持 | ✅ | LIMIT/OFFSET |
+
+**改进建议：**
+
+| # | 建议 | 优先级 | 说明 |
+|---|------|--------|------|
+| S1-06-1 | 可加 `GET /owner/messages/search?q=` 支持关键词搜索 | P3 | 非必需，但大消息量时有用 |
+
+#### 1.0-08 Capability Token Envelope — ✅ 通过（有改进项）
+
+| 项目 | 评估 | 备注 |
+|------|------|------|
+| Token 结构 | ✅ | 五字段齐全（签名信封、scope、constraints、delegation_chain、validity） |
+| `evaluated_constraint_hash` | ✅ | 符合 qntm WG decision artifact 要求 |
+| JCS 规范化 | ✅ | `sort_keys=True, separators=(",", ":")` 正确 |
+| 权限映射 | ✅ | `admin/rw/r` → 细粒度权限数组，与 SINT T2/T1/T0 对齐 |
+| 数据模型 | ✅ | `capability_tokens` 表 + `stage_executions` 新字段 |
+| 签发流程 | ✅ | 自动从 `enclave_members.permissions` 推导 |
+
+**改进建议（必须修复）：**
+
+| # | 建议 | 严重性 | 说明 |
+|---|------|--------|------|
+| S1-08-1 | Token 结构添加 `revocation_endpoint` 字段 | 🔴 必需 | R-1001 要求"撤销端点必填"，但当前 Token 结构未体现。应为 `revocation_endpoint: "https://relay.agentnexus.top/capability-tokens/{token_id}/status"` |
+| S1-08-2 | `delegation_chain` 改为结构化数组 | 🟡 建议 | 当前设计 `TEXT DEFAULT '[]'` 需 JSON 解析。改为独立表或 JSON 列（SQLite 3.38+ 支持）提升性能 |
+| S1-08-3 | 补充 monotonic narrowing 验证逻辑 | 🔴 必需 | R-1003 验证流程第 4 点"委托链完整性"未实现。需：1. 验证 parent token 存在且有效；2. 验证 child scope ⊆ parent scope；3. 验证 child constraints 更严格（spend_limit ≤ parent，delegation_depth ≤ parent） |
+| S1-08-4 | 与 SINT enclave-mapping.ts 字段命名对齐 | 🟢 小优化 | `input_keys` 对应 SINT `inputEvidenceRefs`，可加别名映射 |
+
+#### 与 SINT/qntm WG 对齐检查
+
+| 检查项 | 状态 | 参考 |
+|--------|------|------|
+| `evaluated_constraint_hash` 在 Token 中 | ✅ | qntm WG issue #7 要求 |
+| 权限映射 `r → T0, rw → T1, admin → T2` | ✅ | enclave-permission-model.md + enclave-mapping.ts |
+| JCS canonicalization | ✅ | SINT RFC-001 §签名格式 |
+| 委托链单调收窄验证 | ⚠️ 待实现 | S1-08-3 |
+| 撤销端点必填 | ⚠️ 待实现 | S1-08-1 |
+
+#### 改进后的 Token 结构
+
+```json
+{
+    "token_id": "ct_<uuid>",
+    "version": 1,
+    "issuer_did": "did:agentnexus:z6Mk...owner",
+    "subject_did": "did:agentnexus:z6Mk...agent",
+    "enclave_id": "enc_<uuid>",
+
+    "scope": {
+        "permissions": ["vault:read", "vault:write", "playbook:execute"],
+        "resource_pattern": "vault/*",
+        "role": "developer"
+    },
+
+    "constraints": {
+        "spend_limit": 100,
+        "max_delegation_depth": 1,
+        "allowed_stages": ["implement", "review_code"],
+        "input_keys": ["design_doc"],
+        "output_key": "code_diff"
+    },
+
+    "validity": {
+        "not_before": "2026-04-15T00:00:00Z",
+        "not_after": "2026-05-15T00:00:00Z"
+    },
+
+    "delegation_chain": [
+        {"token_id": "ct_<parent>", "scope_hash": "sha256:<hex>"}
+    ],
+
+    "revocation_endpoint": "https://relay.agentnexus.top/capability-tokens/<token_id>/status",
+
+    "evaluated_constraint_hash": "sha256:<hex>",
+    "signature_alg": "EdDSA",
+    "canonicalization": "JCS",
+    "signature": "<base64url>"
+}
+```
+
+#### 改进后的验证流程
+
+```python
+async def verify_capability_token(token: dict, action: str) -> dict:
+    """
+    验证 capability token。
+    返回 {valid: bool, reason: str} 或详细验证结果。
+    """
+    # 1. 签名验证（Ed25519 over JCS-canonicalized payload）
+    if not verify_signature(token):
+        return {"valid": False, "reason": "SIGNATURE_INVALID"}
+
+    # 2. 有效期检查
+    now = time.time()
+    validity = token["validity"]
+    if now < validity["not_before"]:
+        return {"valid": False, "reason": "NOT_YET_VALID"}
+    if now > validity["not_after"]:
+        return {"valid": False, "reason": "EXPIRED"}
+
+    # 3. 状态检查（调用 revocation_endpoint 或查本地缓存）
+    if await is_revoked(token["token_id"]):
+        return {"valid": False, "reason": "REVOKED"}
+
+    # 4. 委托链完整性 + 单调收窄验证（S1-08-3）
+    if token["delegation_chain"]:
+        parent = await get_token(token["delegation_chain"][0]["token_id"])
+        if not parent:
+            return {"valid": False, "reason": "CHAIN_BREAK"}
+        # 单调收窄：child scope ⊆ parent scope
+        if not scope_is_subset(token["scope"], parent["scope"]):
+            return {"valid": False, "reason": "SCOPE_EXPANSION"}
+        # 约束更严格
+        if token["constraints"]["spend_limit"] > parent["constraints"]["spend_limit"]:
+            return {"valid": False, "reason": "SPEND_LIMIT_EXPANSION"}
+        if token["constraints"]["max_delegation_depth"] > parent["constraints"]["max_delegation_depth"]:
+            return {"valid": False, "reason": "DELEGATION_DEPTH_EXPANSION"}
+
+    # 5. 权限检查
+    if action not in token["scope"]["permissions"]:
+        return {"valid": False, "reason": "PERMISSION_DENIED"}
+
+    return {"valid": True, "token_id": token["token_id"]}
+```
+
+#### 数据模型变更（补充）
+
+**`delegation_chain` 改为独立表（S1-08-2）：**
+
+```sql
+CREATE TABLE IF NOT EXISTS delegation_chain_links (
+    id INTEGER PRIMARY KEY,
+    child_token_id TEXT NOT NULL,
+    parent_token_id TEXT NOT NULL,
+    parent_scope_hash TEXT NOT NULL,
+    depth INTEGER DEFAULT 1,
+    FOREIGN KEY (child_token_id) REFERENCES capability_tokens(token_id),
+    FOREIGN KEY (parent_token_id) REFERENCES capability_tokens(token_id)
+);
+CREATE INDEX idx_dcl_child ON delegation_chain_links(child_token_id);
+```
+
+**`capability_tokens` 表移除 `delegation_chain TEXT` 列，改为通过 `delegation_chain_links` 表查询。**
+
+#### 文件变更（补充）
+
+| 文件 | 变更 |
+|------|------|
+| `agent_net/storage.py` | 新增 `delegation_chain_links` 表 + `check_monotonic_narrowing` 函数 |
+| `agent_net/common/capability_token.py` | 新增 `scope_is_subset`、`verify_delegation_chain` 函数 |
+| `agent_net/node/routers/governance.py` | 验证端点返回详细 `reason` 字段 |
+
+---
+
+### 评审结论
+
+三项设计全部通过，但 1.0-08 有 2 个必须修复项：
+- 🔴 S1-08-1：添加 `revocation_endpoint` 字段
+- 🔴 S1-08-3：实现 monotonic narrowing 验证逻辑
+
+建议修复后再进入开发。
