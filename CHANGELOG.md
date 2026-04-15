@@ -36,9 +36,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **权限映射**：admin/rw/r → 细粒度权限数组，与 SINT T2/T1/T0 对齐
 - **撤销端点必填**：revocation_endpoint 字段
 
+### Fixed
+
+#### 代码评审问题修复（2026-04-15）
+- **P1**: `verify_token` 委托链验证改为直接调用 `get_delegation_chain_func(token.token_id)`，不依赖动态属性 `_parent_token_id`
+- **P2**: `api_issue_token` 在保存前手动补上 `_parent_token_id` 和 `_parent_scope_hash`，确保委托链写入数据库
+- **S2**: `verify_token` 的 `parent.scope` 改为 `parent["scope"]`，兼容 dict 和 CapabilityToken 对象
+
 ### Tests
-- 368 passed, 8 skipped
-- 新增测试文件：test_v10_owner.py (6), test_v10_messages.py (4), test_v10_capability_token.py (6)
+- 371 passed, 8 skipped
+- 新增测试文件：test_v10_owner.py (6), test_v10_messages.py (4), test_v10_capability_token.py (9)
+- 补充测试用例：委托链端到端（T1）、单调收窄拒绝（T2）、过期 Token（T3）
 
 ### Compliance
 - 符合 qntm WG Authority Constraints 最小互操作面

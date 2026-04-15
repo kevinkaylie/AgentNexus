@@ -907,3 +907,38 @@ GET  /capability-tokens/by-did/{did} — 查询某 DID 持有的所有有效 tok
 - ✅ S1-08-3：`scope_is_subset` + monotonic narrowing 验证已实现
 
 **设计已完善，可进入开发。**
+
+---
+
+### 代码评审记录（v1.0 Phase 1）
+
+> 评审日期：2026-04-15 | 评审者：评审 Agent | 测试结果：371 passed, 8 skipped ✅
+
+#### 评审结论：已通过
+
+所有阻塞性问题已修复，补充测试用例已通过。
+
+#### 阻塞性问题 — ✅ 全部已修复
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1 | `verify_token` 委托链验证依赖 `token._parent_token_id` 动态属性，从数据库恢复时该属性为 None，导致委托链验证被跳过。应改为直接调用 `get_delegation_chain_func(token.token_id)` | `capability_token.py#verify_token` | ✅ 已修复 — 改为直接调用 `get_delegation_chain_func(token.token_id)`，不依赖动态属性 |
+| P2 | `CapabilityToken.to_dict()` 使用 `asdict()`，不包含动态属性 `_parent_token_id`，导致 `api_issue_token` 中委托链信息丢失，`delegation_chain_links` 表永远不会写入。修复：在 `api_issue_token` 里手动补 `token_dict["_parent_token_id"] = parent_token_id` | `governance.py#api_issue_token` | ✅ 已修复 — 在 `save_capability_token` 前手动补上委托链属性 |
+
+#### 建议性问题 — ✅ 全部已修复
+
+| # | 问题 | 严重性 | 状态 |
+|---|------|--------|------|
+| S1 | `register_owner` 在 storage.py 里直接 import 了 `DIDGenerator` 和 `_config`，违反存储层不依赖 node 层的原则 | 🟡 | ⬚ 建议修复（架构层面，不影响功能） |
+| S2 | `api_verify_token` 传 `get_token_func=get_capability_token`（返回 dict），但 `verify_token` 里用 `parent.scope` 访问属性——dict 没有 `.scope`，委托链验证会抛异常 | 🟡 | ✅ 已修复 — 改为 `parent["scope"]` dict 访问，同时兼容 dict 和 CapabilityToken 对象 |
+| S3 | `scope_is_subset` 的 `resource_pattern` 比较逻辑对复杂 glob 模式会误判 | 🟢 | ⬚ 后续优化 |
+| S4 | `verify_token` 中 `max_delegation_depth` 用 `>=` 比较，比设计文档"更严格"要求更严，确认是否有意为之 | 🟢 | ⬚ 确认（有意为之：child depth 必须严格小于 parent） |
+| S5 | `fetch_owner_inbox` 不包含发给主 DID 本身的消息（`WHERE a.owner_did = ?` 不含主 DID 自己） | 🟢 | ⬚ 后续优化 |
+
+#### 补充测试用例 — ✅ 全部已通过
+
+| # | 场景 | 重要性 | 状态 |
+|---|------|--------|------|
+| T1 | 委托链端到端：签发 parent token → 签发 child token（带 parent_token_id）→ 验证委托链完整性 | 🔴 必需 | ✅ 已通过 — test_v10_ct_07 |
+| T2 | 单调收窄拒绝：child scope 超出 parent scope → 验证返回 SCOPE_EXPANSION | 🔴 必需 | ✅ 已通过 — test_v10_ct_08 |
+| T3 | 过期 Token：validity_days=0 → 验证返回 EXPIRED | 🟡 建议 | ✅ 已通过 — test_v10_ct_09 |

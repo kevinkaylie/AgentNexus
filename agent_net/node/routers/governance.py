@@ -322,6 +322,10 @@ async def api_issue_token(req: dict, _=Depends(_require_token)):
 
     # 保存
     token_dict = signed_token.to_dict()
+    # P2 修复：to_dict() 使用 asdict() 不包含动态属性，手动补上委托链信息
+    if parent_token_id:
+        token_dict["_parent_token_id"] = parent_token_id
+        token_dict["_parent_scope_hash"] = parent_scope_hash
     await save_capability_token(token_dict)
 
     return {"status": "ok", "token": token_dict}

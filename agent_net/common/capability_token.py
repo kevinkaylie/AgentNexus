@@ -284,7 +284,8 @@ async def verify_token(
             return {"valid": False, "reason": "EXPIRED"}
 
     # 4. 委托链完整性 + 单调收窄验证
-    if get_delegation_chain_func and token._parent_token_id:
+    # P1 修复：直接调用 get_delegation_chain_func 获取委托链，不依赖动态属性
+    if get_delegation_chain_func:
         try:
             chain = await get_delegation_chain_func(token.token_id)
             if chain:
@@ -293,14 +294,18 @@ async def verify_token(
                 if not parent:
                     return {"valid": False, "reason": "CHAIN_BREAK"}
 
+                # S2 修复：get_token_func 返回 dict，使用 dict 访问方式
+                parent_scope = parent["scope"] if isinstance(parent, dict) else parent.scope
+                parent_constraints = parent["constraints"] if isinstance(parent, dict) else parent.constraints
+
                 # 单调收窄：child scope ⊆ parent scope
-                if not scope_is_subset(token.scope, parent.scope):
+                if not scope_is_subset(token.scope, parent_scope):
                     return {"valid": False, "reason": "SCOPE_EXPANSION"}
 
                 # 约束更严格
-                if token.constraints.get("spend_limit", 0) > parent.constraints.get("spend_limit", 0):
+                if token.constraints.get("spend_limit", 0) > parent_constraints.get("spend_limit", 0):
                     return {"valid": False, "reason": "SPEND_LIMIT_EXPANSION"}
-                if token.constraints.get("max_delegation_depth", 1) >= parent.constraints.get("max_delegation_depth", 1):
+                if token.constraints.get("max_delegation_depth", 1) >= parent_constraints.get("max_delegation_depth", 1):
                     return {"valid": False, "reason": "DELEGATION_DEPTH_EXPANSION"}
         except Exception as e:
             return {"valid": False, "reason": "CHAIN_CHECK_FAILED", "detail": str(e)}
