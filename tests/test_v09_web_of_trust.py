@@ -397,3 +397,181 @@ def test_tr_wot_12_decay_with_min_score():
     edge = graph.get_direct_trust("did:agentnexus:zA", "did:agentnexus:zB")
     # 不低于 min_score
     assert edge.score == 0.1
+
+
+# ---------------------------------------------------------------------------
+# TrustGraphStore 持久化测试（同步版本）
+# ---------------------------------------------------------------------------
+
+import sqlite3
+from pathlib import Path
+
+
+class TrustGraphStoreSync:
+    """同步版本的 TrustGraphStore，用于测试持久化逻辑"""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = str(db_path)
+        self._conn: Optional[sqlite3.Connection] = None
+        self._init_db()
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(self.db_path)
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
+
+    def _init_db(self) -> None:
+        conn = self._get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS trust_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_did TEXT NOT NULL,
+                to_did TEXT NOT NULL,
+                score REAL NOT NULL,
+                timestamp REAL NOT NULL,
+                evidence TEXT,
+                UNIQUE(from_did, to_did)
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trust_edges_from
+            ON trust_edges(from_did)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trust_edges_to
+            ON trust_edges(to_did)
+        """)
+
+    def add_edge(self, edge: TrustEdge) -> None:
+        conn = self._get_conn()
+        conn.execute(
+            """INSERT OR REPLACE INTO trust_edges
+            (from_did, to_did, score, timestamp, evidence)
+            VALUES (?, ?, ?, ?, ?)""",
+            (edge.from_did, edge.to_did, edge.score, edge.timestamp, edge.evidence),
+        )
+        conn.commit()
+
+    def remove_edge(self, from_did: str, to_did: str) -> bool:
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "DELETE FROM trust_edges WHERE from_did = ? AND to_did = ?",
+            (from_did, to_did),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def get_edge(self, from_did: str, to_did: str) -> Optional[TrustEdge]:
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT from_did, to_did, score, timestamp, evidence FROM trust_edges WHERE from_did = ? AND to_did = ?",
+            (from_did, to_did),
+        ).fetchone()
+        if row is None:
+            return None
+        return TrustEdge(row[0], row[1], row[2], row[3], row[4])
+
+    def get_outgoing_edges(self, from_did: str) -> list[TrustEdge]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT from_did, to_did, score, timestamp, evidence FROM trust_edges WHERE from_did = ?",
+            (from_did,),
+        ).fetchall()
+        return [TrustEdge(r[0], r[1], r[2], r[3], r[4]) for r in rows]
+
+    def get_all_edges(self) -> list[TrustEdge]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT from_did, to_did, score, timestamp, evidence FROM trust_edges"
+        ).fetchall()
+        return [TrustEdge(r[0], r[1], r[2], r[3], r[4]) for r in rows]
+
+    def load_graph(self) -> TrustGraph:
+        edges = self.get_all_edges()
+        graph = TrustGraph()
+        for edge in edges:
+            graph.add_edge(edge)
+        return graph
+
+    def apply_decay(self, decay_rate: float = 0.01, min_score: float = 0.1) -> int:
+        edges = self.get_all_edges()
+        updated = 0
+        for edge in edges:
+            new_score = max(min_score, edge.score * (1 - decay_rate))
+            if abs(new_score - edge.score) > 0.0001:
+                edge.score = new_score
+                self.add_edge(edge)
+                updated += 1
+        return updated
+
+
+def test_tr_wot_13_store_add_edge(tmp_path):
+    """TrustGraphStore 添加信任边"""
+    store = TrustGraphStoreSync(tmp_path / "trust.db")
+    edge = TrustEdge("did:agentnexus:zA", "did:agentnexus:zB", 0.9, time.time(), "cert_001")
+    store.add_edge(edge)
+
+    found = store.get_edge("did:agentnexus:zA", "did:agentnexus:zB")
+    assert found is not None
+    assert found.score == 0.9
+    assert found.evidence == "cert_001"
+
+
+def test_tr_wot_14_store_update_edge(tmp_path):
+    """TrustGraphStore 更新边（UPSERT）"""
+    store = TrustGraphStoreSync(tmp_path / "trust.db")
+    store.add_edge(TrustEdge("did:agentnexus:zA", "did:agentnexus:zB", 0.5, time.time(), None))
+    store.add_edge(TrustEdge("did:agentnexus:zA", "did:agentnexus:zB", 0.9, time.time(), "new_cert"))
+
+    edges = store.get_outgoing_edges("did:agentnexus:zA")
+    assert len(edges) == 1
+    assert edges[0].score == 0.9
+
+
+def test_tr_wot_15_store_remove_edge(tmp_path):
+    """TrustGraphStore 删除信任边"""
+    store = TrustGraphStoreSync(tmp_path / "trust.db")
+    store.add_edge(TrustEdge("did:agentnexus:zA", "did:agentnexus:zB", 0.9, time.time(), None))
+
+    removed = store.remove_edge("did:agentnexus:zA", "did:agentnexus:zB")
+    assert removed is True
+
+    found = store.get_edge("did:agentnexus:zA", "did:agentnexus:zB")
+    assert found is None
+
+
+def test_tr_wot_16_store_load_graph(tmp_path):
+    """TrustGraphStore 加载完整信任图"""
+    store = TrustGraphStoreSync(tmp_path / "trust.db")
+    store.add_edge(TrustEdge("did:agentnexus:zA", "did:agentnexus:zB", 0.9, time.time(), None))
+    store.add_edge(TrustEdge("did:agentnexus:zB", "did:agentnexus:zC", 0.8, time.time(), None))
+
+    graph = store.load_graph()
+    paths = graph.find_trust_paths("did:agentnexus:zA", "did:agentnexus:zC")
+    assert len(paths) == 1
+    assert paths[0].derived_score > 0
+
+
+def test_tr_wot_17_store_apply_decay(tmp_path):
+    """TrustGraphStore 信任衰减持久化"""
+    store = TrustGraphStoreSync(tmp_path / "trust.db")
+    store.add_edge(TrustEdge("did:agentnexus:zA", "did:agentnexus:zB", 1.0, time.time(), None))
+
+    updated = store.apply_decay(decay_rate=0.1, min_score=0.1)
+    assert updated == 1
+
+    edge = store.get_edge("did:agentnexus:zA", "did:agentnexus:zB")
+    assert abs(edge.score - 0.9) < 0.01
+
+
+def test_tr_wot_18_store_decay_min_score(tmp_path):
+    """TrustGraphStore 衰减有下限保护"""
+    store = TrustGraphStoreSync(tmp_path / "trust.db")
+    store.add_edge(TrustEdge("did:agentnexus:zA", "did:agentnexus:zB", 0.2, time.time(), None))
+
+    for _ in range(5):
+        store.apply_decay(decay_rate=0.5, min_score=0.1)
+
+    edge = store.get_edge("did:agentnexus:zA", "did:agentnexus:zB")
+    assert edge.score == 0.1

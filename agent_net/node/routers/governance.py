@@ -175,6 +175,7 @@ async def api_get_reputation(did: str):
     """
     from agent_net.common.reputation import ReputationStore
     from agent_net.common.runtime_verifier import AgentNexusRuntimeVerifier
+    from agent_net.common.did import DIDResolver
 
     store = ReputationStore()
 
@@ -184,8 +185,8 @@ async def api_get_reputation(did: str):
         raise HTTPException(404, f"Agent not found: {did}")
 
     # 使用 RuntimeVerifier 计算实际 L 级（无 trusted_cas 时基于 DID）
-    verifier = AgentNexusRuntimeVerifier()
-    result = verifier.verify(did, agent.get("public_key", ""), trusted_cas={})
+    verifier = AgentNexusRuntimeVerifier(resolver=DIDResolver())
+    result = await verifier.verify(did, agent.get("public_key", ""))
     trust_level = result.trust_level
 
     attestations = await get_all_governance_attestations(did)
@@ -202,3 +203,55 @@ async def api_get_reputation(did: str):
         "reputation": rep.to_dict(),
         "oatr_format": rep.to_oatr_format()
     }
+
+
+@router.get("/trust-snapshot/{did}")
+async def api_trust_snapshot(did: str):
+    """导出 OATR 格式的信任快照"""
+    from agent_net.common.reputation import ReputationStore
+    from agent_net.common.runtime_verifier import AgentNexusRuntimeVerifier
+    from agent_net.common.did import DIDResolver
+
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, f"Agent not found: {did}")
+
+    verifier = AgentNexusRuntimeVerifier(resolver=DIDResolver())
+    result = await verifier.verify(did, agent.get("public_key", ""))
+    trust_level = result.trust_level
+
+    attestations = await get_all_governance_attestations(did)
+    attestation_bonus = min(15.0, sum(
+        att.get("attestation", {}).get("trust_score", 0) * 0.1
+        for att in attestations
+    ))
+    store = ReputationStore()
+    rep = await store.compute_reputation(
+        agent_did=did, trust_level=trust_level, attestation_bonus=attestation_bonus,
+    )
+    return rep.to_oatr_format()
+
+
+@router.post("/attestations/verify")
+async def api_verify_attestation(request: dict):
+    """验证外部 governance attestation 的 JWS 签名"""
+    from agent_net.common.governance import GovernanceAttestation
+
+    jws = request.get("jwt", "") or request.get("jws", "")
+    if not jws:
+        return {"valid": False, "error": "missing jwt/jws field"}
+
+    att = GovernanceAttestation(
+        signal_type="governance_attestation",
+        issuer=request.get("issuer", ""),
+        subject=request.get("agent_did", ""),
+        decision="permit",
+        jws=jws,
+        expires_at=request.get("expires_at"),
+    )
+    registry = _get_governance_registry()
+    try:
+        valid = await registry.verify_attestation(att)
+        return {"valid": valid, "agent_did": request.get("agent_did", "")}
+    except Exception as e:
+        return {"valid": False, "error": str(e)}

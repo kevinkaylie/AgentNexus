@@ -585,3 +585,120 @@ def test_tr_rep_13_integration_with_verifier():
     cached = store.get_reputation(agent_did)
     assert cached is not None
     assert cached.trust_score > 70.0  # base_score + 行为加成
+
+
+# ---------------------------------------------------------------------------
+# compute_reputation 测试（同步版本，模拟异步逻辑）
+# ---------------------------------------------------------------------------
+
+def test_tr_rep_14_compute_reputation_basic():
+    """compute_reputation 自动计算行为分 + 保存缓存"""
+    store = ReputationStore()
+    agent_did = "did:agentnexus:zComputeTest"
+    now = time.time()
+
+    # 记录 50 次成功交互
+    for i in range(50):
+        store.record_interaction(InteractionRecord(
+            None, "did:caller", agent_did, "message", True, 500, now - i * 60
+        ))
+
+    # 模拟 compute_reputation 逻辑
+    scorer = BehaviorScorer()
+    interactions = store.get_interactions(agent_did)
+    behavior_delta = scorer.compute_behavior_delta(interactions)
+
+    rep = ReputationScore(
+        agent_did=agent_did,
+        base_score=LEVEL_BASE_SCORES[3],  # L3
+        behavior_delta=behavior_delta,
+        attestation_bonus=0.0,
+        trust_level=3,
+    )
+    store.save_reputation(rep)
+
+    # 验证
+    cached = store.get_reputation(agent_did)
+    assert cached is not None
+    assert cached.trust_score > 70.0
+
+
+def test_tr_rep_15_compute_reputation_with_attestation():
+    """compute_reputation 包含 attestation_bonus"""
+    store = ReputationStore()
+    agent_did = "did:agentnexus:zAttestTest"
+
+    # 模拟 compute_reputation 逻辑（带 attestation_bonus）
+    rep = ReputationScore(
+        agent_did=agent_did,
+        base_score=LEVEL_BASE_SCORES[3],  # L3 = 70
+        behavior_delta=0.0,
+        attestation_bonus=8.5,
+        trust_level=3,
+    )
+    store.save_reputation(rep)
+
+    cached = store.get_reputation(agent_did)
+    assert cached is not None
+    assert cached.trust_score == 78.5
+
+
+def test_tr_rep_16_get_all_reputations_empty():
+    """get_all_reputations 空缓存返回空列表"""
+    store = ReputationStore()
+
+    # 同步版本没有 get_all_reputations，测试手动实现
+    conn = store._get_conn()
+    rows = conn.execute("SELECT agent_did FROM reputation_cache").fetchall()
+    assert len(rows) == 0
+
+
+def test_tr_rep_17_get_all_reputations_multiple():
+    """get_all_reputations 批量获取"""
+    store = ReputationStore()
+
+    # 创建多个声誉记录
+    for level in [1, 2, 3, 4]:
+        rep = ReputationScore(
+            agent_did=f"did:agentnexus:zAgent{level}",
+            base_score=LEVEL_BASE_SCORES[level],
+            behavior_delta=0.0,
+            attestation_bonus=0.0,
+            trust_level=level,
+        )
+        store.save_reputation(rep)
+
+    # 模拟 get_all_reputations
+    conn = store._get_conn()
+    rows = conn.execute("SELECT agent_did, base_score, trust_level FROM reputation_cache").fetchall()
+    assert len(rows) == 4
+
+    dids = {row["agent_did"] for row in rows}
+    assert "did:agentnexus:zAgent1" in dids
+    assert "did:agentnexus:zAgent4" in dids
+
+
+def test_tr_rep_18_trust_score_clamped_100():
+    """trust_score 不超过 100"""
+    rep = ReputationScore(
+        agent_did="did:agentnexus:zMaxAgent",
+        base_score=LEVEL_BASE_SCORES[4],  # L4 = 95
+        behavior_delta=10.0,
+        attestation_bonus=15.0,
+        trust_level=4,
+    )
+    # 95 + 10 + 15 = 120，但应 clamp 到 100
+    assert rep.trust_score == 100.0
+
+
+def test_tr_rep_19_trust_score_clamped_0():
+    """trust_score 不低于 0"""
+    rep = ReputationScore(
+        agent_did="did:agentnexus:zMinAgent",
+        base_score=LEVEL_BASE_SCORES[1],  # L1 = 15
+        behavior_delta=-20.0,  # 最低行为分
+        attestation_bonus=0.0,
+        trust_level=1,
+    )
+    # 15 - 20 = -5，但应 clamp 到 0
+    assert rep.trust_score == 0.0

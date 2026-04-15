@@ -9,7 +9,7 @@ AI时代的软件定义网络 - 去中心化Agent通信基础设施。
 
 ## 当前状态：v0.9.6 — Governance Attestation + Trust Network
 
-### 全部 330 个测试通过 ✅
+### 全部 352 个测试通过 ✅
 
 ### 已实现模块
 
@@ -171,7 +171,7 @@ trust_score = base_score(L级) + behavior_delta + attestation_bonus
 ```bash
 python main.py node start                      # 启动 Daemon :8765
 python main.py node mcp --name "TestAgent"     # 启动 MCP 并注册新 DID
-python main.py test                            # 运行全部 330 个测试
+python main.py test                            # 运行全部 352 个测试
 python main.py relay start                     # 启动 Relay :9000（需 Redis）
 python main.py relay start --host my.domain    # 启动 Relay 并指定域名（用于 did:web）
 python main.py agent export <did> --output agent.key --password pw

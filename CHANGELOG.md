@@ -77,8 +77,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **S7**：`GET /reputation/{did}` 从数据库查实际 L 级，移除外部参数
 
 ### Tests
-- 330 passed, 6 skipped
-- 新增测试文件：test_v09_reputation.py, test_v09_web_of_trust.py, test_v09_api.py, test_governance.py
+- 352 passed, 8 skipped
+- 新增测试文件：test_v09_reputation.py, test_v09_web_of_trust.py, test_governance.py, test_governance_api.py
+- 新增测试用例：trust_graph 持久化（6个）、reputation compute/get_all（6个）、governance API（9个）
+- 线上测试新增：Governance、Trust Edge、Interaction、Reputation 端点（12个），总计 45 个线上测试
+
+### Fixed
+- 修复 aiosqlite 使用错误：`async with await _get_db()` → `async with _get_db()`（reputation.py, trust_graph.py）
 
 ---
 

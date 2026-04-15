@@ -15,6 +15,24 @@ from agent_net.node._config import (
     set_public_endpoint, cleanup_expired_push_registrations_loop,
     _cleanup_push_task, _heartbeat_task,
 )
+
+_decay_task: asyncio.Task | None = None
+
+
+async def _trust_decay_loop():
+    """每小时对所有信任边执行衰减（0.9-05）"""
+    import logging
+    from agent_net.common.trust_graph import TrustGraphStore
+    logger = logging.getLogger(__name__)
+    store = TrustGraphStore()
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            updated = await store.apply_decay(decay_rate=0.01, min_score=0.1)
+            if updated > 0:
+                logger.info(f"[TrustDecay] {updated} edges updated")
+        except Exception as e:
+            logger.warning(f"[TrustDecay] error: {e}")
 from agent_net.node.routers import agents, messages, handshake, adapters, push, enclave, governance
 from agent_net.storage import init_db
 
@@ -44,6 +62,10 @@ async def lifespan(app: FastAPI):
     # 启动 Push 注册过期清理任务
     _cfg._cleanup_push_task = asyncio.create_task(cleanup_expired_push_registrations_loop())
 
+    # 启动信任衰减定时任务（0.9-05）
+    global _decay_task
+    _decay_task = asyncio.create_task(_trust_decay_loop())
+
     print(f"[Node] Started. Public endpoint: {ep}")
     print(f"[Node] Local relay: {get_relay_url()}")
 
@@ -53,6 +75,8 @@ async def lifespan(app: FastAPI):
         _cfg._heartbeat_task.cancel()
     if _cfg._cleanup_push_task:
         _cfg._cleanup_push_task.cancel()
+    if _decay_task:
+        _decay_task.cancel()
 
 
 app = FastAPI(title="AgentNet Node Daemon", version="0.9.5", lifespan=lifespan)

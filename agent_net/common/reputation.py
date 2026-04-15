@@ -194,20 +194,20 @@ class ReputationStore:
     def __init__(self, db_path: str | Path | None = None):
         self.db_path = str(db_path) if db_path else None
 
-    async def _get_db(self) -> aiosqlite.Connection:
-        """获取数据库连接"""
+    def _get_db(self):
+        """获取数据库连接（返回 aiosqlite.connect context manager）"""
         if self.db_path:
-            return await aiosqlite.connect(self.db_path)
+            return aiosqlite.connect(self.db_path)
         else:
             from agent_net.storage import DB_PATH
-            return await aiosqlite.connect(DB_PATH)
+            return aiosqlite.connect(DB_PATH)
 
     async def init_tables(self, conn: Optional[aiosqlite.Connection] = None) -> None:
         """初始化表（由 storage.py 调用）"""
         if conn:
             await self._init_tables(conn)
         else:
-            async with await self._get_db() as db_conn:
+            async with self._get_db() as db_conn:
                 await self._init_tables(db_conn)
 
     async def _init_tables(self, conn: aiosqlite.Connection) -> None:
@@ -269,7 +269,7 @@ class ReputationStore:
         if conn:
             return await _record(conn)
         else:
-            async with await self._get_db() as db_conn:
+            async with self._get_db() as db_conn:
                 return await _record(db_conn)
 
     async def get_interactions(
@@ -298,7 +298,7 @@ class ReputationStore:
         if conn:
             return await _get(conn)
         else:
-            async with await self._get_db() as db_conn:
+            async with self._get_db() as db_conn:
                 return await _get(db_conn)
 
     async def save_reputation(
@@ -328,7 +328,7 @@ class ReputationStore:
         if conn:
             await _save(conn)
         else:
-            async with await self._get_db() as db_conn:
+            async with self._get_db() as db_conn:
                 await _save(db_conn)
 
     async def get_reputation(
@@ -359,7 +359,7 @@ class ReputationStore:
         if conn:
             return await _get(conn)
         else:
-            async with await self._get_db() as db_conn:
+            async with self._get_db() as db_conn:
                 return await _get(db_conn)
 
     async def compute_reputation(
@@ -409,7 +409,7 @@ class ReputationStore:
         if conn:
             return await _compute(conn)
         else:
-            async with await self._get_db() as c:
+            async with self._get_db() as c:
                 return await _compute(c)
 
     async def get_all_reputations(
@@ -439,7 +439,7 @@ class ReputationStore:
         if conn:
             return await _get(conn)
         else:
-            async with await self._get_db() as db_conn:
+            async with self._get_db() as db_conn:
                 return await _get(db_conn)
 
 

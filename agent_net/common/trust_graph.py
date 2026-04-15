@@ -230,21 +230,21 @@ class TrustGraphStore:
     def __init__(self, db_path: str | Path | None = None):
         self.db_path = str(db_path) if db_path else None
 
-    async def _get_db(self) -> aiosqlite.Connection:
-        """获取数据库连接"""
+    def _get_db(self):
+        """获取数据库连接（返回 aiosqlite.connect context manager）"""
         if self.db_path:
-            return await aiosqlite.connect(self.db_path)
+            return aiosqlite.connect(self.db_path)
         else:
             # 使用默认路径
             from agent_net.storage import DB_PATH
-            return await aiosqlite.connect(DB_PATH)
+            return aiosqlite.connect(DB_PATH)
 
     async def init_table(self, conn: Optional[aiosqlite.Connection] = None) -> None:
         """初始化表（由 storage.py 调用）"""
         if conn:
             await self._init_table(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 await self._init_table(conn)
 
     async def _init_table(self, conn: aiosqlite.Connection) -> None:
@@ -291,7 +291,7 @@ class TrustGraphStore:
         if conn:
             await _add(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 await _add(conn)
 
     async def remove_edge(self, from_did: str, to_did: str, conn: Optional[aiosqlite.Connection] = None) -> bool:
@@ -307,7 +307,7 @@ class TrustGraphStore:
         if conn:
             return await _remove(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 return await _remove(conn)
 
     async def get_edge(self, from_did: str, to_did: str, conn: Optional[aiosqlite.Connection] = None) -> Optional[TrustEdge]:
@@ -331,7 +331,7 @@ class TrustGraphStore:
         if conn:
             return await _get(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 return await _get(conn)
 
     async def get_outgoing_edges(self, from_did: str, conn: Optional[aiosqlite.Connection] = None) -> list[TrustEdge]:
@@ -356,7 +356,7 @@ class TrustGraphStore:
         if conn:
             return await _get(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 return await _get(conn)
 
     async def get_incoming_edges(self, to_did: str, conn: Optional[aiosqlite.Connection] = None) -> list[TrustEdge]:
@@ -381,7 +381,7 @@ class TrustGraphStore:
         if conn:
             return await _get(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 return await _get(conn)
 
     async def get_all_edges(self, conn: Optional[aiosqlite.Connection] = None) -> list[TrustEdge]:
@@ -405,7 +405,7 @@ class TrustGraphStore:
         if conn:
             return await _get(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 return await _get(conn)
 
     async def load_graph(self, conn: Optional[aiosqlite.Connection] = None) -> TrustGraph:
@@ -445,5 +445,5 @@ class TrustGraphStore:
         if conn:
             return await _apply(conn)
         else:
-            async with await self._get_db() as conn:
+            async with self._get_db() as conn:
                 return await _apply(conn)

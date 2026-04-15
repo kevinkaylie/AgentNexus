@@ -333,9 +333,10 @@
 
 ---
 
-## v1.0.0 — 桌面应用 & Web UI
+## v1.0.0 — Web 仪表盘 + 桌面应用壳
 
-> 目标：C 端用户双击安装 + A2A Capability Token 互操作基础。
+> 策略：先做 Web 仪表盘验证功能，再用 Tauri 包壳加系统托盘，复用 Web 前端。
+> Web 端覆盖绝大多数管理功能；桌面壳只补 Web 做不到的（托盘常驻、系统通知）。
 
 ### R-1001: A2A Capability Token Envelope
 

@@ -567,6 +567,213 @@ def t_stun_endpoint():
 check("STUN /stun/endpoint 返回公网 IP:Port", t_stun_endpoint)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 15. Governance Attestation（v0.9.6 新增）
+# ══════════════════════════════════════════════════════════════════════════════
+
+print("\n[15] Governance Attestation")
+
+def t_governance_validate():
+    """POST /governance/validate 调用治理服务"""
+    did = state.get("did_a", "")
+    if not did:
+        raise AssertionError("did_a 未初始化")
+    # 注意：这个测试会实际调用 MolTrust/APS API（如果配置了 API Key）
+    # 如果没有配置，会返回 deny 的 attestation
+    r = _post(f"{DAEMON}/governance/validate", {
+        "agent_did": did,
+        "requested_capabilities": [{"scope": "data:read"}],
+    })
+    assert r.get("status") == "ok", r
+    assert "best_decision" in r
+    assert "results" in r
+
+def t_governance_attestations_list():
+    """GET /governance/attestations/{did} 获取缓存的认证"""
+    did = state.get("did_a", "")
+    if not did:
+        raise AssertionError("did_a 未初始化")
+    r = _get(f"{DAEMON}/governance/attestations/{did}")
+    assert r.get("status") == "ok"
+    assert r.get("agent_did") == did
+    # attestations 可能是空列表（如果没有调用过 validate）
+    assert "attestations" in r
+
+check("POST /governance/validate", t_governance_validate)
+check("GET /governance/attestations/{did}", t_governance_attestations_list)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 16. Trust Edge 信任边（v0.9.6 新增）
+# ══════════════════════════════════════════════════════════════════════════════
+
+print("\n[16] Trust Edge 信任边")
+
+def t_add_trust_edge():
+    """POST /trust/edge 添加信任边"""
+    did_a = state.get("did_a", "")
+    did_b = state.get("did_b", "")
+    if not did_a or not did_b:
+        raise AssertionError("did 未初始化")
+    tok = _token()
+    r = _post(f"{DAEMON}/trust/edge", {
+        "from_did": did_a,
+        "to_did": did_b,
+        "score": 0.9,
+        "evidence": "online_test",
+    }, token=tok)
+    assert r.get("status") == "ok", r
+    state["trust_edge_added"] = True
+
+def t_list_trust_edges():
+    """GET /trust/edges/{did} 列出信任边"""
+    did_a = state.get("did_a", "")
+    if not did_a:
+        raise AssertionError("did_a 未初始化")
+    r = _get(f"{DAEMON}/trust/edges/{did_a}")
+    assert r.get("status") == "ok"
+    assert "edges" in r
+    # 验证刚才添加的边
+    edges = r.get("edges", [])
+    did_b = state.get("did_b", "")
+    assert any(e.get("to_did") == did_b for e in edges), f"信任边未找到: {edges}"
+
+def t_delete_trust_edge():
+    """DELETE /trust/edge 删除信任边"""
+    did_a = state.get("did_a", "")
+    did_b = state.get("did_b", "")
+    if not did_a or not did_b:
+        raise AssertionError("did 未初始化")
+    tok = _token()
+    # 使用 DELETE 请求
+    req = urllib.request.Request(
+        f"{DAEMON}/trust/edge?from_did={did_a}&to_did={did_b}",
+        headers={"Authorization": f"Bearer {tok}"},
+        method="DELETE",
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        resp = json.loads(r.read())
+    assert resp.get("status") == "ok", resp
+
+def t_trust_edge_remote_rejected():
+    """远程 Agent 添加信任边被拒绝"""
+    tok = _token()
+    try:
+        r = _post(f"{DAEMON}/trust/edge", {
+            "from_did": "did:agentnexus:zRemoteAgentNotLocal",
+            "to_did": state.get("did_b", ""),
+            "score": 0.5,
+        }, token=tok)
+        raise AssertionError("应该被拒绝，但成功了")
+    except urllib.error.HTTPError as e:
+        assert e.code == 403, f"期望 403，实际 {e.code}"
+
+check("POST /trust/edge 添加信任边", t_add_trust_edge)
+check("GET /trust/edges/{did} 列出信任边", t_list_trust_edges)
+check("DELETE /trust/edge 删除信任边", t_delete_trust_edge)
+check("远程 Agent 添加信任边被拒绝", t_trust_edge_remote_rejected)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 17. Interaction 交互记录（v0.9.6 新增）
+# ══════════════════════════════════════════════════════════════════════════════
+
+print("\n[17] Interaction 交互记录")
+
+def t_record_interaction():
+    """POST /interactions 记录交互"""
+    did_a = state.get("did_a", "")
+    did_b = state.get("did_b", "")
+    if not did_a or not did_b:
+        raise AssertionError("did 未初始化")
+    tok = _token()
+    r = _post(f"{DAEMON}/interactions", {
+        "from_did": did_a,
+        "to_did": did_b,
+        "interaction_type": "message",
+        "success": True,
+        "response_time_ms": 500,
+    }, token=tok)
+    assert r.get("status") == "ok", r
+    assert "interaction_id" in r
+    state["interaction_id"] = r["interaction_id"]
+
+def t_get_interactions():
+    """GET /interactions/{did} 获取交互历史"""
+    did_b = state.get("did_b", "")
+    if not did_b:
+        raise AssertionError("did_b 未初始化")
+    r = _get(f"{DAEMON}/interactions/{did_b}")
+    assert r.get("status") == "ok"
+    assert "interactions" in r
+
+def t_interaction_remote_rejected():
+    """远程 Agent 记录交互被拒绝"""
+    tok = _token()
+    try:
+        r = _post(f"{DAEMON}/interactions", {
+            "from_did": "did:agentnexus:zRemoteAgentNotLocal",
+            "to_did": state.get("did_b", ""),
+            "interaction_type": "message",
+            "success": True,
+        }, token=tok)
+        raise AssertionError("应该被拒绝，但成功了")
+    except urllib.error.HTTPError as e:
+        assert e.code == 403, f"期望 403，实际 {e.code}"
+
+check("POST /interactions 记录交互", t_record_interaction)
+check("GET /interactions/{did} 获取交互历史", t_get_interactions)
+check("远程 Agent 记录交互被拒绝", t_interaction_remote_rejected)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 18. Reputation 声誉评分（v0.9.6 新增）
+# ══════════════════════════════════════════════════════════════════════════════
+
+print("\n[18] Reputation 声誉评分")
+
+def t_get_reputation():
+    """GET /reputation/{did} 获取声誉评分"""
+    did_a = state.get("did_a", "")
+    if not did_a:
+        raise AssertionError("did_a 未初始化")
+    r = _get(f"{DAEMON}/reputation/{did_a}")
+    assert r.get("status") == "ok", r
+    assert "trust_level" in r
+    assert "reputation" in r
+    rep = r["reputation"]
+    assert "trust_score" in rep
+    assert "base_score" in rep
+    assert "behavior_delta" in rep
+    assert "attestation_bonus" in rep
+    # trust_score 应该在 0-100 范围
+    assert 0 <= rep["trust_score"] <= 100
+
+def t_reputation_oatr_format():
+    """声誉评分包含 OATR 格式"""
+    did_a = state.get("did_a", "")
+    if not did_a:
+        raise AssertionError("did_a 未初始化")
+    r = _get(f"{DAEMON}/reputation/{did_a}")
+    assert "oatr_format" in r
+    oatr = r["oatr_format"]
+    assert "extensions" in oatr
+    assert "agent-trust" in oatr["extensions"]
+    trust = oatr["extensions"]["agent-trust"]
+    assert trust["did"] == did_a
+    assert "trust_score" in trust
+    assert "trust_level" in trust
+
+def t_trust_snapshot():
+    """GET /trust-snapshot/{did} 导出 OATR 格式"""
+    did_a = state.get("did_a", "")
+    if not did_a:
+        raise AssertionError("did_a 未初始化")
+    r = _get(f"{DAEMON}/trust-snapshot/{did_a}")
+    assert "extensions" in r
+    assert "agent-trust" in r["extensions"]
+
+check("GET /reputation/{did} 获取声誉评分", t_get_reputation)
+check("声誉评分包含 OATR 格式", t_reputation_oatr_format)
+check("GET /trust-snapshot/{did} 导出 OATR", t_trust_snapshot)
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 汇总
 # ══════════════════════════════════════════════════════════════════════════════
 

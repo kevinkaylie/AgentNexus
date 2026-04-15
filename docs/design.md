@@ -369,3 +369,402 @@ enclave_config = {
 ## v1.0.0+ — 桌面应用及后续
 
 > 设计待定义。参考 [roadmap.md](roadmap.md)。
+
+---
+
+## v0.9.0 剩余条目实现设计
+
+> 2026-04-13。底层数据结构（trust_graph.py、reputation.py）和存储层（4 张表）已在 v0.9.6 实现，以下为集成层设计。
+
+### 现状分析
+
+| 模块 | 已有 | 缺失 |
+|------|------|------|
+| trust_graph.py | TrustEdge、TrustGraph（内存 BFS）、TrustGraphStore（SQLite） | 未接入 governance router |
+| reputation.py | InteractionRecord、ReputationScore、BehaviorScorer、ReputationStore | 未接入 governance router |
+| governance router | 11 个端点 | 端点内部是桩实现，未调用 trust_graph/reputation 模块 |
+| runtime_verifier.py | verify() → trust_level、trust_score | trust_score 仅基于 L 级 base_score，未接入 behavior_delta |
+
+### 0.9-01 + 0.9-02：Web of Trust 信任传递 + 路径发现
+
+**接入点：**
+
+- `POST /trust/edge` → 写入 `TrustGraphStore`（现在只写内存）
+- `DELETE /trust/edge` → 同步删除持久化层
+- `GET /trust/edges/{did}` → 从持久化层读取
+- `GET /trust/paths` → 加载 TrustGraph，调用 `find_trust_paths(source, target)`
+
+**路径缓存：** 频繁查询的路径结果缓存 60 秒，避免每次加载全图做 BFS。
+
+**衍生信任分消费：** `GET /reputation/{did}` 和 `GET /trust-snapshot/{did}` 中，若无直接信任边，通过 `compute_derived_trust(viewer_did, target_did)` 获取衍生分，注入 `attestation_bonus`。
+
+**文件变更：** `agent_net/node/routers/governance.py`（4 个端点）
+
+### 0.9-03 + 0.9-04：交互声誉系统 + 声誉存储查询 API
+
+**接入点：**
+
+- `POST /interactions` → 调用 `ReputationStore.record_interaction()`
+- `GET /interactions/{did}` → 调用 `ReputationStore.get_interactions()`
+- `GET /reputation/{did}` → RuntimeVerifier 获取 trust_level，ReputationStore 计算完整声誉分（base_score + behavior_delta + attestation_bonus）
+- `GET /trust-snapshot/{did}` → 返回完整快照（含 recent_interactions、success_rate、trust_edges_in/out、OATR 格式）
+
+**自动记录交互：** 消息投递成功/失败后，`routers/messages.py` 自动调用 `ReputationStore.record_interaction()`，无需手动调用。
+
+**attestation_bonus 计算：** 从 `governance_attestations` 表读取未过期认证，permit +3 分，conditional +1 分，上限 15 分。
+
+**文件变更：** `agent_net/node/routers/governance.py`（3 个端点 + `_compute_attestation_bonus`）、`agent_net/node/routers/messages.py`（自动记录）
+
+### 0.9-05：信任衰减机制
+
+**后台定时任务：** daemon 启动时注册 asyncio task，每小时执行一次 `TrustGraphStore.apply_decay(decay_rate=0.01, min_score=0.1)`。
+
+**衰减效果：** score=0.8 的边，30 天无交互后 ≈ 0.39，90 天后触底 0.1。
+
+**交互刷新：** `POST /interactions` 记录成功交互时，若存在对应信任边，timestamp 刷新 + score 小幅提升（+0.01，上限 1.0），防止活跃关系衰减。
+
+**文件变更：** `agent_net/node/daemon.py`（衰减任务）、`agent_net/node/routers/governance.py`（交互刷新）
+
+### 0.95-07：SDK Enclave API
+
+**状态：已完成。** `agentnexus-sdk/src/agentnexus/enclave.py` 已实现 EnclaveManager / EnclaveProxy / VaultProxy / PlaybookRunProxy 全部方法，roadmap 已标记 ✅。
+
+### 实施顺序
+
+```
+0.9-01 + 0.9-02（TrustGraphStore 接入）→ 0.9-03 + 0.9-04（ReputationStore 接入）→ 0.9-05（衰减任务）
+```
+
+预估总改动量约 220 行，分两批实现，每批完成后跑全量测试。
+
+---
+
+## v1.0.0 Phase 1 — 后端基础（1.0-04 + 1.0-06 + 1.0-08）
+
+> 2026-04-15。三个优先条目的详细设计。
+
+### 1.0-04 个人主 DID
+
+#### 目标
+
+一个"我"的 DID 代表本人，下挂 N 个 Agent DID。用户通过主 DID 统一管理所有 Agent。
+
+#### 现状
+
+`agents` 表：`did(PK), profile(JSON), is_local, last_seen, private_key_hex`。每个 Agent 独立，没有 owner_did 或层级关系。
+
+#### 数据模型变更
+
+**方案：agents 表新增 `owner_did` 字段**
+
+不新建表，直接在 agents 表加一列。主 DID 本身也是一条 agent 记录（`owner_did = NULL`），子 Agent 的 `owner_did` 指向主 DID。
+
+```sql
+ALTER TABLE agents ADD COLUMN owner_did TEXT DEFAULT NULL;
+CREATE INDEX idx_agents_owner ON agents(owner_did);
+```
+
+主 DID 与子 Agent 的区别：
+
+| 字段 | 主 DID | 子 Agent |
+|------|--------|---------|
+| `owner_did` | `NULL` | 主 DID 的 did |
+| `is_local` | 1 | 1 |
+| `private_key_hex` | 有 | 有 |
+| `profile.type` | `"owner"` | `"agent"` |
+
+#### 新增端点
+
+```
+POST /owner/register          — 注册主 DID（生成密钥对，创建 owner 类型 agent）
+POST /owner/bind              — 将已有 Agent DID 绑定到主 DID
+DELETE /owner/unbind           — 解绑子 Agent
+GET  /owner/agents             — 列出主 DID 下所有子 Agent
+GET  /owner/profile            — 获取主 DID 的 profile
+```
+
+#### 注册流程
+
+```
+1. POST /owner/register {name: "Kevin"}
+   → 生成 Ed25519 密钥对
+   → 创建 did:agentnexus:<multikey>
+   → 写入 agents 表（owner_did=NULL, profile.type="owner"）
+   → 返回 {did, public_key}
+
+2. POST /owner/bind {owner_did: "did:agentnexus:z6Mk...", agent_did: "did:agentnexus:z6Mk..."}
+   → 验证 owner_did 是本地主 DID
+   → 验证 agent_did 是本地 Agent
+   → UPDATE agents SET owner_did=? WHERE did=?
+   → 返回 {status: "ok"}
+```
+
+#### 向后兼容
+
+- 没有 owner_did 的 Agent 继续正常工作
+- 所有现有端点不受影响
+- 主 DID 也可以直接收发消息（它本身就是一个 Agent）
+
+#### 文件变更
+
+| 文件 | 变更 |
+|------|------|
+| `agent_net/storage.py` | `init_db` 加 ALTER TABLE + 新增 `register_owner`、`bind_agent`、`unbind_agent`、`list_owned_agents` |
+| `agent_net/node/routers/agents.py` | 新增 5 个 `/owner/*` 端点 |
+
+---
+
+### 1.0-06 消息中心
+
+#### 目标
+
+统一查看主 DID 下所有 Agent 收发的消息。
+
+#### 现状
+
+`messages` 表查询只支持按单个 `to_did` 查收件箱。没有跨 Agent 聚合查询。
+
+#### 新增端点
+
+```
+GET /owner/messages/inbox      — 主 DID 下所有子 Agent 的未读消息（聚合）
+GET /owner/messages/all        — 主 DID 下所有子 Agent 的全部消息（分页）
+GET /owner/messages/stats      — 各子 Agent 的消息统计（未读数、最后消息时间）
+```
+
+#### 查询逻辑
+
+```sql
+-- /owner/messages/inbox：聚合所有子 Agent 的未读消息
+SELECT m.id, m.from_did, m.to_did, m.content, m.timestamp,
+       m.session_id, m.message_type, m.protocol
+FROM messages m
+WHERE m.to_did IN (
+    SELECT did FROM agents WHERE owner_did = ?
+)
+AND m.delivered = 0
+ORDER BY m.timestamp DESC
+LIMIT ? OFFSET ?
+
+-- /owner/messages/stats：各子 Agent 统计
+SELECT a.did, a.profile,
+       COUNT(CASE WHEN m.delivered = 0 THEN 1 END) as unread_count,
+       MAX(m.timestamp) as last_message_at
+FROM agents a
+LEFT JOIN messages m ON m.to_did = a.did
+WHERE a.owner_did = ?
+GROUP BY a.did
+```
+
+#### 响应格式
+
+```json
+// GET /owner/messages/inbox?owner_did=did:agentnexus:z6Mk...
+{
+    "owner_did": "did:agentnexus:z6Mk...",
+    "messages": [
+        {
+            "id": 42,
+            "from_did": "did:agentnexus:z6Mk...外部",
+            "to_did": "did:agentnexus:z6Mk...子Agent",
+            "to_agent_name": "Architect",
+            "content": "设计方案已完成",
+            "timestamp": 1744700000.0,
+            "message_type": "state_notify",
+            "session_id": "sess_abc123"
+        }
+    ],
+    "total_unread": 5
+}
+```
+
+#### 文件变更
+
+| 文件 | 变更 |
+|------|------|
+| `agent_net/storage.py` | 新增 `fetch_owner_inbox`、`fetch_owner_messages`、`fetch_owner_message_stats` |
+| `agent_net/node/routers/messages.py` | 新增 3 个 `/owner/messages/*` 端点 |
+
+---
+
+### 1.0-08 A2A Capability Token Envelope
+
+#### 目标
+
+Ed25519+JCS 签名信封，将 Enclave permissions 升级为结构化 capability token，支持跨 Enclave 互验。包含 `evaluated_constraint_hash`（qntm WG 最小互操作面要求）。
+
+#### 现状
+
+- `enclave_members.permissions`：简单字符串（`"rw"` / `"r"` / `"admin"`）
+- `stage_executions`：没有 constraint_hash 字段
+- 没有 capability token 的签发、验证、撤销机制
+
+#### Capability Token 结构
+
+```json
+{
+    "token_id": "ct_<uuid>",
+    "version": 1,
+    "issuer_did": "did:agentnexus:z6Mk...owner",
+    "subject_did": "did:agentnexus:z6Mk...agent",
+    "enclave_id": "enc_<uuid>",
+
+    "scope": {
+        "permissions": ["vault:read", "vault:write", "playbook:execute"],
+        "resource_pattern": "vault/*",
+        "role": "developer"
+    },
+
+    "constraints": {
+        "spend_limit": 100,
+        "max_delegation_depth": 1,
+        "allowed_stages": ["implement", "review_code"],
+        "input_keys": ["design_doc"],
+        "output_key": "code_diff"
+    },
+
+    "validity": {
+        "not_before": "2026-04-15T00:00:00Z",
+        "not_after": "2026-05-15T00:00:00Z"
+    },
+
+    "delegation_chain": [
+        "ct_<parent_token_id>"
+    ],
+
+    "evaluated_constraint_hash": "sha256:<hex>",
+    "signature_alg": "EdDSA",
+    "canonicalization": "JCS",
+    "signature": "<base64url>"
+}
+```
+
+#### `evaluated_constraint_hash` 计算
+
+```python
+import hashlib
+import json
+
+def compute_constraint_hash(scope: dict, constraints: dict) -> str:
+    """
+    计算约束集的内容寻址哈希。
+    qntm WG decision artifact 要求：每个 decision 必须引用被评估的约束集。
+    """
+    # JCS 规范化（确定性 JSON 序列化）
+    canonical = json.dumps(
+        {"scope": scope, "constraints": constraints},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+```
+
+#### 数据模型变更
+
+**新增 `capability_tokens` 表：**
+
+```sql
+CREATE TABLE IF NOT EXISTS capability_tokens (
+    token_id TEXT PRIMARY KEY,
+    version INTEGER DEFAULT 1,
+    issuer_did TEXT NOT NULL,
+    subject_did TEXT NOT NULL,
+    enclave_id TEXT,
+    scope_json TEXT NOT NULL,
+    constraints_json TEXT NOT NULL,
+    validity_json TEXT NOT NULL,
+    delegation_chain TEXT DEFAULT '[]',
+    evaluated_constraint_hash TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    status TEXT DEFAULT 'active',   -- active / revoked / expired
+    created_at REAL NOT NULL,
+    revoked_at REAL
+);
+CREATE INDEX idx_ct_subject ON capability_tokens(subject_did);
+CREATE INDEX idx_ct_enclave ON capability_tokens(enclave_id);
+CREATE INDEX idx_ct_status ON capability_tokens(status);
+```
+
+**`stage_executions` 新增字段：**
+
+```sql
+ALTER TABLE stage_executions ADD COLUMN evaluated_constraint_hash TEXT;
+ALTER TABLE stage_executions ADD COLUMN capability_token_id TEXT;
+```
+
+#### 签发流程
+
+```
+1. Enclave owner 创建 Enclave + 添加成员
+2. 系统自动为每个成员签发 capability token：
+   - scope 从 enclave_members.permissions + role 推导
+   - constraints 从 Playbook stage 定义推导（input_keys, output_key, allowed_stages）
+   - issuer_did = enclave owner_did
+   - 用 owner 的 Ed25519 私钥签名
+3. Token 写入 capability_tokens 表
+4. Playbook 引擎在 stage 推进时：
+   - 验证 assigned_did 持有有效 token
+   - 验证 token.constraints 包含当前 stage
+   - 计算 evaluated_constraint_hash 写入 stage_executions
+```
+
+#### 验证流程
+
+```python
+async def verify_capability_token(token: dict, action: str) -> bool:
+    """
+    验证 capability token。
+    1. 签名验证（Ed25519 over JCS-canonicalized payload）
+    2. 有效期检查（not_before ≤ now ≤ not_after）
+    3. 状态检查（status == 'active'）
+    4. 权限检查（action 在 scope.permissions 中）
+    5. 约束检查（spend_limit、delegation_depth 等）
+    """
+```
+
+#### 新增端点
+
+```
+POST /capability-tokens/issue     — 签发 token（Enclave owner 调用）
+GET  /capability-tokens/{token_id} — 查询 token
+POST /capability-tokens/{token_id}/verify — 验证 token
+POST /capability-tokens/{token_id}/revoke — 撤销 token
+GET  /capability-tokens/by-did/{did} — 查询某 DID 持有的所有有效 token
+```
+
+#### 与现有 permissions 的兼容
+
+- `enclave_members.permissions` 字段保留，作为简写
+- 系统自动从 permissions 生成 capability token
+- 映射规则：
+  - `"admin"` → `["vault:read", "vault:write", "vault:delete", "playbook:execute", "member:manage"]`
+  - `"rw"` → `["vault:read", "vault:write", "playbook:execute"]`
+  - `"r"` → `["vault:read"]`
+- 旧代码继续用 permissions 字符串，新代码用 capability token
+
+#### 与 crosswalk 的对齐
+
+`evaluated_constraint_hash` 对应 `crosswalk/agentnexus.yaml` 中的 `active_constraints` 映射。签发的 token 即 qntm WG decision artifact 中的 constraint envelope（`constraint_set_type: "enclave"`）。
+
+#### 文件变更
+
+| 文件 | 变更 |
+|------|------|
+| `agent_net/storage.py` | `init_db` 新增 capability_tokens 表 + stage_executions ALTER |
+| `agent_net/common/capability_token.py` | **新建**。CapabilityToken 数据类 + 签发/验证/撤销逻辑 + `compute_constraint_hash` |
+| `agent_net/node/routers/governance.py` | 新增 5 个 `/capability-tokens/*` 端点 |
+| `agent_net/enclave/playbook.py` | stage 推进时验证 token + 写入 evaluated_constraint_hash |
+
+---
+
+### 实施顺序
+
+```
+1.0-04 个人主 DID（~150 行）
+    ↓ agents 表 owner_did 就绪
+1.0-06 消息中心（~100 行）
+    ↓ 聚合查询端点就绪
+1.0-08 Capability Token Envelope（~400 行）
+    ↓ 新模块 + 表 + 端点 + Playbook 集成
+```
+
+1.0-04 和 1.0-06 是纯增量，不改现有逻辑。1.0-08 改动最大，但核心是新建 `capability_token.py` 模块，对现有代码的侵入限于 Playbook 引擎的 stage 推进处。

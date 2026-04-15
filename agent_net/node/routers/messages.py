@@ -28,11 +28,26 @@ async def api_send_message(req: SendMessageRequest):
         content_encoding = "json"
 
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:16]}"
-    return await msg_router.route_message(
+    t0 = time.time()
+    result = await msg_router.route_message(
         req.from_did, req.to_did, content_str, session_id, req.reply_to,
         message_type=req.message_type, protocol=req.protocol,
         content_encoding=content_encoding,
     )
+
+    # 自动记录交互（0.9-05）
+    try:
+        from agent_net.storage import record_interaction
+        success = result.get("status") == "delivered"
+        await record_interaction(
+            from_did=req.from_did, to_did=req.to_did,
+            interaction_type="message", success=success,
+            response_time_ms=(time.time() - t0) * 1000,
+        )
+    except Exception:
+        pass  # 记录失败不影响消息投递
+
+    return result
 
 
 @router.get("/messages/inbox/{did}")
