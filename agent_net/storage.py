@@ -350,6 +350,135 @@ async def fetch_session(session_id: str) -> list[dict]:
              "message_type": r[7], "protocol": r[8], "content_encoding": r[9]} for r in rows]
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Owner 消息聚合函数 — v1.0-06
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def fetch_owner_inbox(owner_did: str, limit: int = 50, offset: int = 0) -> dict:
+    """
+    聚合主 DID 下所有子 Agent 的未读消息。
+    返回 {owner_did, messages, total_unread}。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        # 查询所有子 Agent 的未读消息
+        async with db.execute(
+            """SELECT m.id, m.from_did, m.to_did, m.content, m.timestamp,
+                      m.session_id, m.message_type, m.protocol,
+                      a.profile
+               FROM messages m
+               JOIN agents a ON m.to_did = a.did
+               WHERE a.owner_did = ? AND m.delivered = 0
+               ORDER BY m.timestamp DESC
+               LIMIT ? OFFSET ?""",
+            (owner_did, limit, offset)
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        # 统计总数
+        async with db.execute(
+            """SELECT COUNT(*) FROM messages m
+               JOIN agents a ON m.to_did = a.did
+               WHERE a.owner_did = ? AND m.delivered = 0""",
+            (owner_did,)
+        ) as cursor:
+            total = await cursor.fetchone()
+            total_unread = total[0] if total else 0
+
+    messages = []
+    for r in rows:
+        profile = json.loads(r[8]) if r[8] else {}
+        messages.append({
+            "id": r[0],
+            "from_did": r[1],
+            "to_did": r[2],
+            "to_agent_name": profile.get("name", ""),
+            "content": r[3],
+            "timestamp": r[4],
+            "session_id": r[5] or "",
+            "message_type": r[6],
+            "protocol": r[7],
+        })
+    return {"owner_did": owner_did, "messages": messages, "total_unread": total_unread}
+
+
+async def fetch_owner_messages(owner_did: str, limit: int = 100, offset: int = 0) -> dict:
+    """
+    聚合主 DID 下所有子 Agent 的全部消息（分页）。
+    返回 {owner_did, messages, total}。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT m.id, m.from_did, m.to_did, m.content, m.timestamp,
+                      m.session_id, m.message_type, m.protocol, m.delivered,
+                      a.profile
+               FROM messages m
+               JOIN agents a ON m.to_did = a.did
+               WHERE a.owner_did = ?
+               ORDER BY m.timestamp DESC
+               LIMIT ? OFFSET ?""",
+            (owner_did, limit, offset)
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        # 统计总数
+        async with db.execute(
+            """SELECT COUNT(*) FROM messages m
+               JOIN agents a ON m.to_did = a.did
+               WHERE a.owner_did = ?""",
+            (owner_did,)
+        ) as cursor:
+            total = await cursor.fetchone()
+            total_count = total[0] if total else 0
+
+    messages = []
+    for r in rows:
+        profile = json.loads(r[9]) if r[9] else {}
+        messages.append({
+            "id": r[0],
+            "from_did": r[1],
+            "to_did": r[2],
+            "to_agent_name": profile.get("name", ""),
+            "content": r[3],
+            "timestamp": r[4],
+            "session_id": r[5] or "",
+            "message_type": r[6],
+            "protocol": r[7],
+            "delivered": bool(r[8]),
+        })
+    return {"owner_did": owner_did, "messages": messages, "total": total_count}
+
+
+async def fetch_owner_message_stats(owner_did: str) -> dict:
+    """
+    各子 Agent 的消息统计（未读数、最后消息时间）。
+    返回 {owner_did, stats: [{did, name, unread_count, last_message_at}]}。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT a.did, a.profile,
+                      COUNT(CASE WHEN m.delivered = 0 THEN 1 END) as unread_count,
+                      MAX(m.timestamp) as last_message_at
+               FROM agents a
+               LEFT JOIN messages m ON m.to_did = a.did
+               WHERE a.owner_did = ?
+               GROUP BY a.did
+               ORDER BY unread_count DESC""",
+            (owner_did,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    stats = []
+    for r in rows:
+        profile = json.loads(r[1]) if r[1] else {}
+        stats.append({
+            "did": r[0],
+            "name": profile.get("name", ""),
+            "unread_count": r[2] or 0,
+            "last_message_at": r[3] or None,
+        })
+    return {"owner_did": owner_did, "stats": stats}
+
+
 async def search_agents_by_capability(keyword: str) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(

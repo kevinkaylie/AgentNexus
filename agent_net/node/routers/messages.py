@@ -11,6 +11,8 @@ from agent_net.node._config import get_relay_url, resolve_from_relay
 from agent_net.node._models import SendMessageRequest, AddContactRequest
 from agent_net.router import router as msg_router
 from agent_net.storage import fetch_inbox, fetch_session, upsert_contact
+from agent_net.storage import fetch_owner_inbox, fetch_owner_messages, fetch_owner_message_stats
+from agent_net.storage import get_owner
 
 router = APIRouter()
 
@@ -113,3 +115,40 @@ async def api_deliver(payload: dict):
         message_type=payload.get("message_type"),
         protocol=payload.get("protocol"),
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Owner 消息中心端点 — v1.0-06
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/owner/messages/inbox")
+async def api_owner_inbox(owner_did: str, limit: int = 50, offset: int = 0):
+    """
+    聚合主 DID 下所有子 Agent 的未读消息。
+    """
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found")
+    return await fetch_owner_inbox(owner_did, limit, offset)
+
+
+@router.get("/owner/messages/all")
+async def api_owner_messages(owner_did: str, limit: int = 100, offset: int = 0):
+    """
+    聚合主 DID 下所有子 Agent 的全部消息（分页）。
+    """
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found")
+    return await fetch_owner_messages(owner_did, limit, offset)
+
+
+@router.get("/owner/messages/stats")
+async def api_owner_stats(owner_did: str):
+    """
+    各子 Agent 的消息统计。
+    """
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found")
+    return await fetch_owner_message_stats(owner_did)
