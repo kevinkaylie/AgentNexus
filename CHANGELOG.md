@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [1.0.0] - 2026-04-15
+
+### Added
+
+#### 1.0-04 个人主 DID
+- **agents 表新增 owner_did 列**：支持层级关系，主 DID 的 owner_did=NULL
+- **register_owner(name)**：注册主 DID（profile.type="owner"）
+- **bind_agent/unbind_agent**：绑定/解绑 Agent 到主 DID
+- **list_owned_agents**：列出主 DID 下所有子 Agent
+- **端点**：`POST /owner/register`, `/bind`, `DELETE /unbind`, `GET /owner/agents`, `GET /owner/profile`
+
+#### 1.0-06 消息中心
+- **fetch_owner_inbox**：聚合主 DID 下所有子 Agent 的未读消息
+- **fetch_owner_messages**：聚合全部消息（分页）
+- **fetch_owner_message_stats**：各子 Agent 消息统计（未读数、最后消息时间）
+- **端点**：`GET /owner/messages/inbox`, `/all`, `/stats`
+
+#### 1.0-08 Capability Token Envelope（ADR-015）
+- **capability_tokens 表**：存储结构化权限令牌
+- **delegation_chain_links 表**：委托链关系
+- **stage_executions 新增字段**：evaluated_constraint_hash, capability_token_id
+- **CapabilityToken dataclass**：完整 Token 结构（12 个字段）
+- **compute_constraint_hash**：JCS 规范化 + SHA256，符合 qntm WG decision artifact 要求
+- **scope_is_subset**：单调收窄验证（child ⊆ parent）
+- **issue_token/sign_token**：Ed25519 + JCS 签名
+- **verify_token**：5 步验证（状态→签名→有效期→委托链→权限）
+- **端点**：`POST /capability-tokens/issue`, `GET/{id}`, `POST/{id}/verify`, `POST/{id}/revoke`, `GET/by-did/{did}`
+- **权限映射**：admin/rw/r → 细粒度权限数组，与 SINT T2/T1/T0 对齐
+- **撤销端点必填**：revocation_endpoint 字段
+
+### Tests
+- 368 passed, 8 skipped
+- 新增测试文件：test_v10_owner.py (6), test_v10_messages.py (4), test_v10_capability_token.py (6)
+
+### Compliance
+- 符合 qntm WG Authority Constraints 最小互操作面
+- evaluated_constraint_hash 约束集内容寻址
+- monotonic narrowing 委托链单调收窄验证
+
+---
+
 ## [0.9.6] - 2026-04-11
 
 ### Added
