@@ -77,6 +77,7 @@ async def init_db():
         # 向后兼容：为旧数据库追加列（若已存在则忽略错误）
         for alter in [
             "ALTER TABLE agents ADD COLUMN private_key_hex TEXT",
+            "ALTER TABLE agents ADD COLUMN owner_did TEXT DEFAULT NULL",
             "ALTER TABLE messages ADD COLUMN session_id TEXT DEFAULT ''",
             "ALTER TABLE messages ADD COLUMN reply_to INTEGER DEFAULT NULL",
             "ALTER TABLE messages ADD COLUMN message_type TEXT DEFAULT NULL",
@@ -88,6 +89,16 @@ async def init_db():
                 await db.commit()
             except Exception:
                 pass  # 列已存在，忽略
+
+        # 向后兼容：添加索引（若已存在则忽略错误）
+        for idx in [
+            "CREATE INDEX IF NOT EXISTS idx_agents_owner ON agents(owner_did)",
+        ]:
+            try:
+                await db.execute(idx)
+                await db.commit()
+            except Exception:
+                pass
 
     # 初始化 Enclave 相关表
     await init_enclave_tables()
@@ -179,12 +190,118 @@ async def list_local_agents() -> list[dict]:
 async def get_agent(did: str) -> Optional[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT did, profile, is_local, last_seen FROM agents WHERE did=?", (did,)
+            "SELECT did, profile, is_local, last_seen, owner_did FROM agents WHERE did=?", (did,)
         ) as cursor:
             row = await cursor.fetchone()
     if row:
-        return {"did": row[0], "profile": json.loads(row[1]), "is_local": bool(row[2]), "last_seen": row[3]}
+        return {"did": row[0], "profile": json.loads(row[1]), "is_local": bool(row[2]), "last_seen": row[3], "owner_did": row[4]}
     return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Owner（个人主 DID）相关函数 — v1.0-04
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def register_owner(name: str) -> dict:
+    """
+    注册个人主 DID。
+    返回 {did, public_key_hex, profile}。
+    """
+    from agent_net.common.did import DIDGenerator, AgentProfile
+    from agent_net.node._config import get_relay_url, get_public_endpoint_cached, NODE_PORT
+
+    agent_did_obj, _ = DIDGenerator.create_agentnexus(name)
+    did = agent_did_obj.did
+    signing_key = agent_did_obj.private_key
+
+    _public_endpoint = get_public_endpoint_cached()
+    endpoint = f"http://localhost:{NODE_PORT}"
+    if _public_endpoint:
+        endpoint = f"http://{_public_endpoint['public_ip']}:{_public_endpoint['public_port']}"
+
+    RELAY_URL = get_relay_url()
+    profile = AgentProfile(
+        id=did, name=name, type="owner",
+        capabilities=[], location=None,
+        endpoints={"p2p": endpoint, "relay": RELAY_URL},
+    )
+    profile_dict = profile.to_dict()
+    profile_dict["public_key_hex"] = signing_key.verify_key.encode().hex()
+
+    from nacl.encoding import HexEncoder
+    pk_hex = signing_key.encode(HexEncoder).decode()
+    await register_agent(did, profile_dict, is_local=True, private_key_hex=pk_hex)
+
+    return {"did": did, "public_key_hex": pk_hex, "profile": profile_dict}
+
+
+async def bind_agent(owner_did: str, agent_did: str) -> bool:
+    """
+    将 Agent 绑定到主 DID。
+    返回 True 表示成功，False 表示 Agent 不存在或已是其他 owner 的子 Agent。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        # 检查 agent 存在且未绑定
+        async with db.execute(
+            "SELECT did, owner_did FROM agents WHERE did=?", (agent_did,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return False
+        if row[1] is not None and row[1] != owner_did:
+            return False  # 已绑定到其他 owner
+
+        await db.execute(
+            "UPDATE agents SET owner_did=? WHERE did=?", (owner_did, agent_did)
+        )
+        await db.commit()
+    return True
+
+
+async def unbind_agent(owner_did: str, agent_did: str) -> bool:
+    """
+    解绑 Agent 与主 DID 的关系。
+    返回 True 表示成功，False 表示关系不存在。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT did FROM agents WHERE did=? AND owner_did=?", (agent_did, owner_did)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return False
+
+        await db.execute(
+            "UPDATE agents SET owner_did=NULL WHERE did=?", (agent_did,)
+        )
+        await db.commit()
+    return True
+
+
+async def list_owned_agents(owner_did: str) -> list[dict]:
+    """
+    列出主 DID 下的所有子 Agent。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT did, profile, last_seen FROM agents WHERE owner_did=? ORDER BY last_seen DESC",
+            (owner_did,)
+        ) as cur:
+            rows = await cur.fetchall()
+    return [{"did": r[0], "profile": json.loads(r[1]), "last_seen": r[2]} for r in rows]
+
+
+async def get_owner(owner_did: str) -> Optional[dict]:
+    """
+    获取主 DID 信息（验证它是 owner 类型）。
+    """
+    agent = await get_agent(owner_did)
+    if not agent:
+        return None
+    profile = agent.get("profile", {})
+    if profile.get("type") != "owner":
+        return None
+    return agent
 
 
 async def store_message(from_did: str, to_did: str, content: str,

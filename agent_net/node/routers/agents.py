@@ -19,6 +19,7 @@ from agent_net.node._models import (
 from agent_net.storage import (
     register_agent, list_local_agents, get_agent, search_agents_by_capability,
     get_private_key, update_agent_profile, add_certification, get_certifications,
+    register_owner, bind_agent, unbind_agent, list_owned_agents, get_owner,
 )
 
 router = APIRouter()
@@ -295,3 +296,87 @@ async def api_import_agent(req: ImportRequest, _=Depends(_require_token)):
         except Exception:
             pass
     return {"status": "ok", "did": did, "certifications_restored": len(certs)}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Owner（个人主 DID）端点 — v1.0-04
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/owner/register")
+async def api_register_owner(req: dict, _=Depends(_require_token)):
+    """
+    注册个人主 DID。
+    请求体：{name: str}
+    返回：{did, public_key_hex, profile}
+    """
+    name = req.get("name", "Owner")
+    result = await register_owner(name)
+    bind_token_to_did(result["did"])
+    return result
+
+
+@router.post("/owner/bind")
+async def api_bind_agent(req: dict, _=Depends(_require_token)):
+    """
+    将 Agent 绑定到主 DID。
+    请求体：{owner_did: str, agent_did: str}
+    """
+    owner_did = req.get("owner_did")
+    agent_did = req.get("agent_did")
+    if not owner_did or not agent_did:
+        raise HTTPException(400, "Missing owner_did or agent_did")
+
+    # 验证 owner 存在且是 owner 类型
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found or not owner type")
+
+    # 验证 agent 存在
+    agent = await get_agent(agent_did)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+
+    success = await bind_agent(owner_did, agent_did)
+    if not success:
+        raise HTTPException(409, "Agent already bound to another owner")
+    return {"status": "ok", "owner_did": owner_did, "agent_did": agent_did}
+
+
+@router.delete("/owner/unbind")
+async def api_unbind_agent(req: dict, _=Depends(_require_token)):
+    """
+    解绑 Agent 与主 DID。
+    请求体：{owner_did: str, agent_did: str}
+    """
+    owner_did = req.get("owner_did")
+    agent_did = req.get("agent_did")
+    if not owner_did or not agent_did:
+        raise HTTPException(400, "Missing owner_did or agent_did")
+
+    success = await unbind_agent(owner_did, agent_did)
+    if not success:
+        raise HTTPException(404, "Binding not found")
+    return {"status": "ok"}
+
+
+@router.get("/owner/agents/{owner_did}")
+async def api_list_owned_agents(owner_did: str):
+    """
+    列出主 DID 下的所有子 Agent。
+    """
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found")
+    agents = await list_owned_agents(owner_did)
+    return {"owner_did": owner_did, "agents": agents, "count": len(agents)}
+
+
+@router.get("/owner/profile/{owner_did}")
+async def api_get_owner_profile(owner_did: str):
+    """
+    获取主 DID 的 profile。
+    """
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found")
+    return owner["profile"]
