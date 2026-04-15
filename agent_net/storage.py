@@ -304,6 +304,189 @@ async def get_owner(owner_did: str) -> Optional[dict]:
     return agent
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Capability Token CRUD — v1.0-08
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def save_capability_token(token: dict) -> str:
+    """
+    保存 Capability Token 到数据库。
+    返回 token_id。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO capability_tokens (
+                token_id, version, issuer_did, subject_did, enclave_id,
+                scope_json, constraints_json, validity_json, revocation_endpoint,
+                evaluated_constraint_hash, signature, status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                token["token_id"],
+                token.get("version", 1),
+                token["issuer_did"],
+                token["subject_did"],
+                token.get("enclave_id"),
+                json.dumps(token["scope"]),
+                json.dumps(token["constraints"]),
+                json.dumps(token["validity"]),
+                token["revocation_endpoint"],
+                token["evaluated_constraint_hash"],
+                token["signature"],
+                "active",
+                token.get("created_at", time.time()),
+            )
+        )
+        await db.commit()
+
+        # 如果有委托链，写入 delegation_chain_links
+        parent_id = token.get("_parent_token_id")
+        parent_hash = token.get("_parent_scope_hash")
+        if parent_id and parent_hash:
+            await db.execute(
+                """INSERT INTO delegation_chain_links (
+                    child_token_id, parent_token_id, parent_scope_hash, depth
+                ) VALUES (?, ?, ?, 1)""",
+                (token["token_id"], parent_id, parent_hash)
+            )
+            await db.commit()
+
+    return token["token_id"]
+
+
+async def get_capability_token(token_id: str) -> Optional[dict]:
+    """
+    查询 Capability Token。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT token_id, version, issuer_did, subject_did, enclave_id,
+                      scope_json, constraints_json, validity_json, revocation_endpoint,
+                      evaluated_constraint_hash, signature, status, created_at, revoked_at
+               FROM capability_tokens WHERE token_id=?""",
+            (token_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return None
+
+    # 查询委托链
+    chain = await get_delegation_chain(token_id)
+
+    return {
+        "token_id": row[0],
+        "version": row[1],
+        "issuer_did": row[2],
+        "subject_did": row[3],
+        "enclave_id": row[4],
+        "scope": json.loads(row[5]),
+        "constraints": json.loads(row[6]),
+        "validity": json.loads(row[7]),
+        "revocation_endpoint": row[8],
+        "evaluated_constraint_hash": row[9],
+        "signature": row[10],
+        "status": row[11],
+        "created_at": row[12],
+        "revoked_at": row[13],
+        "_parent_token_id": chain[0]["parent_token_id"] if chain else None,
+        "_parent_scope_hash": chain[0]["parent_scope_hash"] if chain else None,
+    }
+
+
+async def list_capability_tokens_by_did(did: str, status: str = "active") -> list[dict]:
+    """
+    查询某 DID 持有的所有 Token。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT token_id, version, issuer_did, subject_did, enclave_id,
+                      scope_json, constraints_json, validity_json, revocation_endpoint,
+                      evaluated_constraint_hash, signature, status, created_at
+               FROM capability_tokens WHERE subject_did=? AND status=?""",
+            (did, status)
+        ) as cur:
+            rows = await cur.fetchall()
+    return [{
+        "token_id": r[0],
+        "version": r[1],
+        "issuer_did": r[2],
+        "subject_did": r[3],
+        "enclave_id": r[4],
+        "scope": json.loads(r[5]),
+        "constraints": json.loads(r[6]),
+        "validity": json.loads(r[7]),
+        "revocation_endpoint": r[8],
+        "evaluated_constraint_hash": r[9],
+        "signature": r[10],
+        "status": r[11],
+        "created_at": r[12],
+    } for r in rows]
+
+
+async def revoke_capability_token(token_id: str) -> bool:
+    """
+    撤销 Token。返回 True 表示成功，False 表示 Token 不存在或已撤销。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT token_id, status FROM capability_tokens WHERE token_id=?", (token_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row or row[1] != "active":
+            return False
+
+        await db.execute(
+            "UPDATE capability_tokens SET status='revoked', revoked_at=? WHERE token_id=?",
+            (time.time(), token_id)
+        )
+        await db.commit()
+    return True
+
+
+async def add_delegation_link(child_token_id: str, parent_token_id: str, parent_scope_hash: str, depth: int = 1) -> None:
+    """
+    添加委托链链接。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO delegation_chain_links (
+                child_token_id, parent_token_id, parent_scope_hash, depth
+            ) VALUES (?, ?, ?, ?)""",
+            (child_token_id, parent_token_id, parent_scope_hash, depth)
+        )
+        await db.commit()
+
+
+async def get_delegation_chain(token_id: str) -> list[dict]:
+    """
+    查询 Token 的委托链。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT child_token_id, parent_token_id, parent_scope_hash, depth
+               FROM delegation_chain_links WHERE child_token_id=?""",
+            (token_id,)
+        ) as cur:
+            rows = await cur.fetchall()
+    return [{
+        "child_token_id": r[0],
+        "parent_token_id": r[1],
+        "parent_scope_hash": r[2],
+        "depth": r[3],
+    } for r in rows]
+
+
+async def is_token_revoked(token_id: str) -> bool:
+    """
+    检查 Token 是否已撤销。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT status FROM capability_tokens WHERE token_id=?", (token_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return row is not None and row[0] != "active"
+
+
 async def store_message(from_did: str, to_did: str, content: str,
                         session_id: str = "", reply_to: int | None = None,
                         message_type: str | None = None, protocol: str | None = None,
@@ -892,8 +1075,53 @@ async def init_enclave_tables():
             CREATE INDEX IF NOT EXISTS idx_playbook_runs_status ON playbook_runs(status);
             CREATE INDEX IF NOT EXISTS idx_stage_executions_task ON stage_executions(task_id);
             CREATE INDEX IF NOT EXISTS idx_vault_history_enclave_key ON enclave_vault_history(enclave_id, key);
+
+            -- Capability Tokens（v1.0-08）
+            CREATE TABLE IF NOT EXISTS capability_tokens (
+                token_id TEXT PRIMARY KEY,
+                version INTEGER DEFAULT 1,
+                issuer_did TEXT NOT NULL,
+                subject_did TEXT NOT NULL,
+                enclave_id TEXT,
+                scope_json TEXT NOT NULL,
+                constraints_json TEXT NOT NULL,
+                validity_json TEXT NOT NULL,
+                revocation_endpoint TEXT NOT NULL,
+                evaluated_constraint_hash TEXT NOT NULL,
+                signature TEXT NOT NULL,
+                status TEXT DEFAULT 'active',
+                created_at REAL NOT NULL,
+                revoked_at REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ct_subject ON capability_tokens(subject_did);
+            CREATE INDEX IF NOT EXISTS idx_ct_enclave ON capability_tokens(enclave_id);
+            CREATE INDEX IF NOT EXISTS idx_ct_status ON capability_tokens(status);
+
+            -- 委托链关系（v1.0-08）
+            CREATE TABLE IF NOT EXISTS delegation_chain_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                child_token_id TEXT NOT NULL,
+                parent_token_id TEXT NOT NULL,
+                parent_scope_hash TEXT NOT NULL,
+                depth INTEGER DEFAULT 1,
+                FOREIGN KEY (child_token_id) REFERENCES capability_tokens(token_id),
+                FOREIGN KEY (parent_token_id) REFERENCES capability_tokens(token_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_dcl_child ON delegation_chain_links(child_token_id);
+            CREATE INDEX IF NOT EXISTS idx_dcl_parent ON delegation_chain_links(parent_token_id);
         """)
         await db.commit()
+
+        # 向后兼容：stage_executions 新增字段（v1.0-08）
+        for alter in [
+            "ALTER TABLE stage_executions ADD COLUMN evaluated_constraint_hash TEXT",
+            "ALTER TABLE stage_executions ADD COLUMN capability_token_id TEXT",
+        ]:
+            try:
+                await db.execute(alter)
+                await db.commit()
+            except Exception:
+                pass  # 列已存在，忽略
 
 
 # ── Trust & Governance Tables (ADR-014) ───────────────────────────────────

@@ -1,5 +1,6 @@
 """Governance & Trust Endpoints (ADR-014)"""
 import os
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -10,6 +11,9 @@ from agent_net.storage import (
     add_trust_edge, list_trust_edges_from, remove_trust_edge,
     record_interaction, get_interactions,
     save_governance_attestation, get_all_governance_attestations,
+    save_capability_token, get_capability_token, list_capability_tokens_by_did,
+    revoke_capability_token, get_delegation_chain, is_token_revoked,
+    get_private_key,
 )
 
 router = APIRouter()
@@ -255,3 +259,147 @@ async def api_verify_attestation(request: dict):
         return {"valid": valid, "agent_did": request.get("agent_did", "")}
     except Exception as e:
         return {"valid": False, "error": str(e)}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Capability Token 端点 — v1.0-08
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/capability-tokens/issue")
+async def api_issue_token(req: dict, _=Depends(_require_token)):
+    """
+    签发 Capability Token。
+
+    请求体：
+    {
+        "issuer_did": "did:agentnexus:...",
+        "subject_did": "did:agentnexus:...",
+        "enclave_id": "enc_..." (可选),
+        "scope": {"permissions": [...], "role": "..."},
+        "constraints": {"spend_limit": 100, "max_delegation_depth": 1, ...},
+        "validity_days": 30,
+        "parent_token_id": "ct_..." (可选，委托链)
+    }
+    """
+    issuer_did = req.get("issuer_did")
+    subject_did = req.get("subject_did")
+    if not issuer_did or not subject_did:
+        raise HTTPException(400, "Missing issuer_did or subject_did")
+
+    # 验证 issuer 存在且有私钥
+    issuer_pk = await get_private_key(issuer_did)
+    if not issuer_pk:
+        raise HTTPException(404, "Issuer not found or no private key")
+
+    from agent_net.common.capability_token import (
+        issue_token, sign_token, compute_constraint_hash,
+    )
+
+    # 获取父 Token 信息（如果有）
+    parent_token_id = req.get("parent_token_id")
+    parent_scope_hash = None
+    if parent_token_id:
+        parent = await get_capability_token(parent_token_id)
+        if not parent:
+            raise HTTPException(404, "Parent token not found")
+        parent_scope_hash = compute_constraint_hash(parent["scope"], parent["constraints"])
+
+    # 签发 Token
+    token = await issue_token(
+        issuer_did=issuer_did,
+        subject_did=subject_did,
+        enclave_id=req.get("enclave_id"),
+        scope=req.get("scope"),
+        constraints=req.get("constraints"),
+        validity_days=req.get("validity_days", 30),
+        max_delegation_depth=req.get("constraints", {}).get("max_delegation_depth", 1),
+        parent_token_id=parent_token_id,
+        parent_scope_hash=parent_scope_hash,
+    )
+
+    # 签名
+    signed_token = sign_token(token, issuer_pk)
+
+    # 保存
+    token_dict = signed_token.to_dict()
+    await save_capability_token(token_dict)
+
+    return {"status": "ok", "token": token_dict}
+
+
+@router.get("/capability-tokens/{token_id}")
+async def api_get_token(token_id: str):
+    """
+    查询 Capability Token。
+    """
+    token = await get_capability_token(token_id)
+    if not token:
+        raise HTTPException(404, "Token not found")
+    return token
+
+
+@router.post("/capability-tokens/{token_id}/verify")
+async def api_verify_token(token_id: str, req: dict):
+    """
+    验证 Capability Token。
+
+    请求体：{"action": "vault:read"}
+    返回：{valid: bool, reason: str}
+    """
+    token = await get_capability_token(token_id)
+    if not token:
+        raise HTTPException(404, "Token not found")
+
+    action = req.get("action", "")
+    if not action:
+        raise HTTPException(400, "Missing action")
+
+    from agent_net.common.capability_token import CapabilityToken, verify_token
+
+    # 转换为 CapabilityToken 对象
+    ct = CapabilityToken(
+        token_id=token["token_id"],
+        version=token["version"],
+        issuer_did=token["issuer_did"],
+        subject_did=token["subject_did"],
+        enclave_id=token["enclave_id"],
+        scope=token["scope"],
+        constraints=token["constraints"],
+        validity=token["validity"],
+        revocation_endpoint=token["revocation_endpoint"],
+        evaluated_constraint_hash=token["evaluated_constraint_hash"],
+        signature=token["signature"],
+        status=token["status"],
+        created_at=token["created_at"],
+        revoked_at=token.get("revoked_at"),
+    )
+    ct._parent_token_id = token.get("_parent_token_id")
+    ct._parent_scope_hash = token.get("_parent_scope_hash")
+
+    result = await verify_token(
+        ct, action,
+        get_token_func=get_capability_token,
+        get_delegation_chain_func=get_delegation_chain,
+        is_revoked_func=is_token_revoked,
+    )
+    return result
+
+
+@router.post("/capability-tokens/{token_id}/revoke")
+async def api_revoke_token(token_id: str, _=Depends(_require_token)):
+    """
+    撤销 Capability Token。
+    """
+    success = await revoke_capability_token(token_id)
+    if not success:
+        raise HTTPException(404, "Token not found or already revoked")
+    return {"status": "ok", "token_id": token_id, "revoked_at": time.time()}
+
+
+@router.get("/capability-tokens/by-did/{did}")
+async def api_list_tokens_by_did(did: str, status: str = "active"):
+    """
+    查询某 DID 持有的所有 Token。
+    """
+    tokens = await list_capability_tokens_by_did(did, status)
+    return {"did": did, "tokens": tokens, "count": len(tokens)}
