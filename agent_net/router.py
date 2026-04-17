@@ -1,5 +1,6 @@
 """
 路由模块 - 判断目标DID是本地还是远程，选择传输路径
+v1.0-05: 新增意图路由，支持主 DID 自动转发到子 Agent
 """
 import asyncio
 import json
@@ -12,6 +13,9 @@ from typing import Optional
 from . import storage
 
 logger = logging.getLogger(__name__)
+
+# 意图路由匹配阈值（S1-05-1）
+MIN_MATCH_SCORE = 2  # 至少 2 个关键词匹配才转发
 
 RELAY_URL = "https://relay.agent-net.io"  # 可配置
 
@@ -31,12 +35,58 @@ class Router:
     def is_local(self, did: str) -> bool:
         return did in self._local_sessions
 
+    async def _intent_route(self, content: str, owner_did: str) -> Optional[str]:
+        """
+        根据消息内容匹配最合适的子 Agent（v1.0-05）。
+        策略：关键词匹配 Agent capabilities + tags。
+
+        Args:
+            content: 消息内容
+            owner_did: 主 DID
+
+        Returns:
+            匹配的子 Agent DID，或 None（无匹配）
+        """
+        try:
+            agents = await storage.list_owned_agents(owner_did)
+            if not agents:
+                return None
+
+            # 将 content 转为字符串
+            content_str = content if isinstance(content, str) else json.dumps(content)
+            content_lower = content_str.lower()
+
+            best_match = None
+            best_score = 0
+
+            for agent in agents:
+                profile = agent.get("profile", {})
+                caps = profile.get("capabilities", [])
+                tags = profile.get("tags", [])
+                # 使用 set 去重，避免 tags 继承 capabilities 导致重复计数
+                keywords = set(c.lower() for c in caps + tags)
+
+                score = sum(1 for kw in keywords if kw in content_lower)
+                if score > best_score:
+                    best_score = score
+                    best_match = agent["did"]
+
+            # 匹配阈值，避免低质量转发（S1-05-1）
+            if best_score < MIN_MATCH_SCORE:
+                return None  # 无足够匹配，消息留在主 DID 收件箱
+
+            logger.info(f"Intent route: {owner_did} → {best_match} (score={best_score})")
+            return best_match
+        except Exception as e:
+            logger.warning(f"Intent route error for {owner_did}: {e}")
+            return None
+
     async def route_message(self, from_did: str, to_did: str, content: str,
                             session_id: str = "", reply_to: int | None = None,
                             message_type: str | None = None,
                             protocol: str | None = None,
                             content_encoding: str | None = None) -> dict:
-        """路由消息：本地直投 -> 远程P2P -> Relay -> 离线存储"""
+        """路由消息：本地直投 -> 意图路由 -> 远程P2P -> Relay -> 离线存储"""
         # 1. 本地直投
         if self.is_local(to_did):
             await self._local_sessions[to_did].put({
@@ -50,7 +100,22 @@ class Router:
             })
             return {"status": "delivered", "method": "local", "session_id": session_id}
 
-        # 2. 查通讯录，尝试远程投递
+        # 2. 意图路由（v1.0-05，P1 修复）：如果 to_did 是主 DID 且不在本地，尝试转发到子 Agent
+        #    这样外部发消息给离线的主 DID 时，可以先转发到在线的子 Agent
+        owner = await storage.get_owner(to_did)
+        if owner:
+            target = await self._intent_route(content, to_did)
+            if target:
+                # 递归路由到子 Agent（保留原始 from_did）
+                result = await self.route_message(
+                    from_did, target, content, session_id, reply_to,
+                    message_type, protocol, content_encoding,
+                )
+                # 如果转发成功，返回结果；否则继续尝试其他路由方式
+                if result["status"] == "delivered":
+                    return result
+
+        # 3. 查通讯录，尝试远程投递
         contact = await storage.get_contact(to_did)
         if contact and contact.get("endpoint"):
             try:
@@ -61,7 +126,7 @@ class Router:
             except Exception:
                 pass
 
-        # 3. 尝试 Relay
+        # 4. 尝试 Relay
         if contact and contact.get("relay"):
             try:
                 result = await self._send_relay(from_did, to_did, content, contact["relay"],
@@ -71,7 +136,7 @@ class Router:
             except Exception:
                 pass
 
-        # 4. 离线存储
+        # 5. 离线存储
         await storage.store_message(from_did, to_did, content, session_id, reply_to,
                                     message_type, protocol, content_encoding)
 

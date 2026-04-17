@@ -57,3 +57,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Frontend source (not for pip install, build output goes to agent_net/node/static/)
+web/
+web/node_modules/
+
+# Crosswalk (external reference, not part of main repo)
+crosswalk/

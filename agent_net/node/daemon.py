@@ -89,6 +89,25 @@ app.include_router(push.router)
 app.include_router(enclave.router)
 app.include_router(governance.router)
 
+# Web 仪表盘静态文件挂载（v1.0-01）
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.exists() and (_static_dir / "index.html").exists():
+    # P2 修复：只 mount assets 目录，其他路径用 catch-all route 处理 SPA fallback
+    _assets_dir = _static_dir / "assets"
+    if _assets_dir.exists():
+        app.mount("/ui/assets", StaticFiles(directory=_assets_dir), name="ui-assets")
+
+    # SPA fallback：所有非 assets 路径返回 index.html
+    from fastapi.responses import FileResponse
+
+    @app.get("/ui/{path:path}")
+    async def serve_ui_spa(path: str = ""):
+        # assets 路径由 StaticFiles 处理，这里只处理其他路径
+        return FileResponse(_static_dir / "index.html")
+
 
 def run(host: str = "0.0.0.0", port: int = NODE_PORT):
     uvicorn.run(app, host=host, port=port, log_level="info")

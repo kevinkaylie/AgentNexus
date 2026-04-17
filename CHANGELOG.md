@@ -36,6 +36,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **权限映射**：admin/rw/r → 细粒度权限数组，与 SINT T2/T1/T0 对齐
 - **撤销端点必填**：revocation_endpoint 字段
 
+### Phase 2 新增（2026-04-17）
+
+#### 1.0-05 意图路由
+- **_intent_route 方法**：根据消息内容关键词匹配子 Agent capabilities
+- **匹配阈值 MIN_MATCH_SCORE=2**：避免低质量转发（S1-05-1）
+- **set 去重关键词**：避免 tags 继承 capabilities 导致重复计数
+- **递归路由**：匹配成功后递归调用 route_message 转发到子 Agent
+
+#### 1.0-01 Web 仪表盘 Phase A
+- **Vue 3 + Vite + PrimeVue**：前端框架选型
+- **web/ 目录**：前端源码（不打包进 pip install）
+- **构建产物**：输出到 `agent_net/node/static/`
+- **StaticFiles(html=True)**：SPA fallback，支持 Vue Router history mode
+- **API 调用层**：`src/api/client.ts`（fetchApi wrapper + Token 携带）
+- **路由配置**：Dashboard/Agents/Messages/Enclaves/TrustNetwork/Setup
+- **基础页面组件**：Dashboard.vue、Agents.vue、Messages.vue、Enclaves.vue、TrustNetwork.vue、Setup.vue
+
 ### Fixed
 
 #### 代码评审问题修复（2026-04-15）
@@ -44,9 +61,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **S2**: `verify_token` 的 `parent.scope` 改为 `parent["scope"]`，兼容 dict 和 CapabilityToken 对象
 
 ### Tests
-- 371 passed, 8 skipped
-- 新增测试文件：test_v10_owner.py (6), test_v10_messages.py (4), test_v10_capability_token.py (9)
-- 补充测试用例：委托链端到端（T1）、单调收窄拒绝（T2）、过期 Token（T3）
+- 375 passed, 8 skipped
+- 新增测试文件：test_v10_owner.py (6), test_v10_messages.py (4), test_v10_capability_token.py (9), test_v10_intent_route.py (4)
+- 补充测试用例：委托链端到端（T1）、单调收窄拒绝（T2）、过期 Token（T3）、意图路由匹配/无匹配/阈值/无子Agent
+
+### Fixed（Phase 2 代码评审修复，2026-04-17）
+- **P1**: 意图路由位置从步骤 3.5 移到步骤 1 之后（本地直投之后，P2P/Relay 之前），避免主 DID 有 endpoint 时消息被提前投递
+- **P2**: daemon.py 添加 catch-all route `/ui/{path:path}` 处理 Vue Router history mode
+- **S1**: Setup.vue 步骤顺序调整：先设置 Token（Step 0）再创建 Owner（Step 1）
+- **S2**: Dashboard.vue 调用 `listEnclaves()` 获取 Enclave 数量
+- **S3**: Messages.vue 判断 content 类型后再 slice
 
 ### Compliance
 - 符合 qntm WG Authority Constraints 最小互操作面

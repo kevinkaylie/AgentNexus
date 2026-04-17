@@ -942,3 +942,542 @@ GET  /capability-tokens/by-did/{did} — 查询某 DID 持有的所有有效 tok
 | T1 | 委托链端到端：签发 parent token → 签发 child token（带 parent_token_id）→ 验证委托链完整性 | 🔴 必需 | ✅ 已通过 — test_v10_ct_07 |
 | T2 | 单调收窄拒绝：child scope 超出 parent scope → 验证返回 SCOPE_EXPANSION | 🔴 必需 | ✅ 已通过 — test_v10_ct_08 |
 | T3 | 过期 Token：validity_days=0 → 验证返回 EXPIRED | 🟡 建议 | ✅ 已通过 — test_v10_ct_09 |
+
+---
+
+## v1.0.0 Phase 2 — 意图路由 + Web 仪表盘 + 接入向导（1.0-05 + 1.0-01 + 1.0-03）
+
+> 2026-04-17。
+
+### 1.0-05 意图路由
+
+#### 目标
+
+外部发消息给主 DID，根据消息内容自动转发到最匹配的子 Agent。
+
+#### 现状
+
+`router.py` 的 `route_message` 按 `to_did` 直接路由。如果 `to_did` 是主 DID，消息存入主 DID 的收件箱，不会转发给子 Agent。
+
+#### 设计
+
+在 `route_message` 的离线存储步骤之前，插入意图路由逻辑：
+
+```python
+# router.py — route_message 中，离线存储之前
+
+# 意图路由：如果 to_did 是主 DID，尝试转发到子 Agent
+from agent_net.storage import get_owner, list_owned_agents
+owner = await get_owner(to_did)
+if owner:
+    target = await _intent_route(content, to_did)
+    if target:
+        # 递归路由到子 Agent（保留原始 from_did）
+        return await self.route_message(
+            from_did, target, content, session_id, reply_to,
+            message_type, protocol, content_encoding,
+        )
+```
+
+#### 匹配策略
+
+```python
+async def _intent_route(content: str, owner_did: str) -> Optional[str]:
+    """
+    根据消息内容匹配最合适的子 Agent。
+    策略：关键词匹配 Agent capabilities。
+    """
+    agents = await list_owned_agents(owner_did)
+    if not agents:
+        return None
+
+    content_lower = content.lower()
+    best_match = None
+    best_score = 0
+
+    for agent in agents:
+        profile = agent.get("profile", {})
+        caps = profile.get("capabilities", [])
+        tags = profile.get("tags", [])
+        keywords = [c.lower() for c in caps + tags]
+
+        score = sum(1 for kw in keywords if kw in content_lower)
+        if score > best_score:
+            best_score = score
+            best_match = agent["did"]
+
+    # S1-05-1：匹配阈值，避免低质量转发
+    MIN_MATCH_SCORE = 2  # 至少 2 个关键词匹配才转发
+    if best_score < MIN_MATCH_SCORE:
+        return None  # 无足够匹配，消息留在主 DID 收件箱
+
+    return best_match  # None 表示无匹配，消息留在主 DID 收件箱
+```
+
+#### 防递归
+
+主 DID 转发到子 Agent 后，子 Agent 的 `route_message` 不会再触发意图路由（因为子 Agent 不是 owner 类型）。
+
+#### 文件变更
+
+| 文件 | 变更 |
+|------|------|
+| `agent_net/router.py` | `route_message` 插入意图路由逻辑 + `_intent_route` 方法 |
+
+预估：~35 行。
+
+#### 改进建议（已采纳）
+
+| # | 建议 | 状态 | 说明 |
+|---|------|------|------|
+| S1-05-1 | 添加匹配阈值，避免低质量转发 | ✅ 已采纳 | `MIN_MATCH_SCORE = 2`，至少 2 个关键词匹配才转发 |
+| S2-05-1 | 返回匹配日志/元数据 | 🟢 后续 | 转发成功后记录匹配 Agent 和 score，便于调试 |
+| S3-05-1 | 支持配置优先级权重 | 🟢 后续 | 某些 capability（如 "Emergency"）可设置更高权重 |
+
+---
+
+### 1.0-01 Web 仪表盘
+
+#### 目标
+
+`localhost:8765/ui` 提供 Web 管理界面，覆盖 Agent 管理、消息中心、Enclave/Playbook、信任网络。
+
+#### 技术选型
+
+| 选项 | 方案 | 理由 |
+|------|------|------|
+| 前端框架 | **Vue 3 + Vite** | 轻量、SFC 单文件组件、构建产物小（< 500KB gzip）。项目 Python 为主，Vue 的模板语法对非前端开发者更友好 |
+| UI 组件库 | **PrimeVue** | 开箱即用的数据表格、树形组件、图表，免费 |
+| 图可视化 | **D3.js**（信任网络图）+ **dagre**（Playbook DAG） | 轻量，不引入重框架 |
+| 构建产物 | Vite build → `agent_net/node/static/` 目录 | FastAPI `StaticFiles` 挂载，零额外依赖 |
+| 开发模式 | `vite dev` 代理 API 到 `:8765` | 前后端分离开发，构建后合并 |
+
+#### 目录结构
+
+```
+web/                          # 前端源码（不打包进 pip install）
+├── package.json
+├── vite.config.ts
+├── index.html
+├── src/
+│   ├── main.ts
+│   ├── App.vue
+│   ├── api/                  # API 调用层
+│   │   └── client.ts         # fetch wrapper，baseURL = /
+│   ├── views/
+│   │   ├── Dashboard.vue     # 首页概览
+│   │   ├── Agents.vue        # Agent 列表 + 详情
+│   │   ├── Messages.vue      # 消息中心
+│   │   ├── Enclaves.vue      # Enclave 管理
+│   │   ├── TrustNetwork.vue  # 信任网络图
+│   │   └── Setup.vue         # 接入向导（1.0-03）
+│   └── components/
+│       ├── PlaybookDAG.vue   # Playbook DAG 可视化
+│       ├── TrustGraph.vue    # D3 信任网络图
+│       └── TokenList.vue     # Capability Token 列表
+└── dist/                     # 构建产物 → 复制到 agent_net/node/static/
+
+agent_net/node/static/        # 构建产物（git tracked）
+├── index.html
+├── assets/
+│   ├── index-xxx.js
+│   └── index-xxx.css
+```
+
+#### FastAPI 挂载
+
+```python
+# daemon.py 追加
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
+
+_static_dir = Path(__file__).parent / "static"
+
+if _static_dir.exists():
+    # S4-01-1 修复：使用 html=True 模式，自动处理 SPA fallback
+    app.mount("/ui", StaticFiles(directory=_static_dir, html=True), name="ui")
+```
+
+使用 `StaticFiles(html=True)` 模式：
+- `/ui/assets/index.js` → 返回静态文件
+- `/ui/agents` → 无匹配文件时返回 `index.html`（SPA fallback）
+- 无需额外路由，FastAPI 自动处理
+
+所有 `/ui/*` 路径由 StaticFiles 处理，Vue Router history mode 自动生效。
+
+#### 鉴权机制（S5-01-1）
+
+本地访问免鉴权，远程访问需 Token：
+
+```python
+# daemon.py 鉴权中间件
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class UIAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # 仅对 /ui 路径鉴权（API 端点已有独立鉴权）
+        if not request.url.path.startswith("/ui"):
+            return await call_next(request)
+
+        # 本地访问（localhost / 127.0.0.1）免鉴权
+        client_host = request.client.host if request.client else ""
+        if client_host in ("localhost", "127.0.0.1", "::1"):
+            return await call_next(request)
+
+        # 远程访问：检查 Authorization header 或 cookie
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if not token:
+            token = request.cookies.get("daemon_token", "")
+
+        if token != _load_daemon_token():
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+        return await call_next(request)
+
+app.add_middleware(UIAuthMiddleware)
+```
+
+前端配合（`web/src/api/client.ts`）：
+
+```typescript
+// 本地开发时无需 Token，远程访问自动携带
+const token = localStorage.getItem("daemon_token") || "";
+
+export async function fetchApi(path: string, options = {}) {
+  const headers = { ...options.headers };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetch(path, { ...options, headers });
+}
+```
+
+#### 页面设计
+
+**1. Dashboard（首页）**
+
+```
+┌─────────────────────────────────────────────────────┐
+│  AgentNexus Dashboard                    [Owner DID]│
+├──────────┬──────────┬──────────┬───────────────────┤
+│ Agents   │ Unread   │ Enclaves │ Avg Trust Score   │
+│   5      │   12     │   3      │   78.5            │
+├──────────┴──────────┴──────────┴───────────────────┤
+│  最近消息                                           │
+│  ┌─────────────────────────────────────────────┐   │
+│  │ Agent1 ← sender: "设计方案已完成"    2min ago│   │
+│  │ Agent2 ← sender: "代码已提交"        5min ago│   │
+│  └─────────────────────────────────────────────┘   │
+│  活跃 Playbook                                      │
+│  ┌─────────────────────────────────────────────┐   │
+│  │ 登录功能开发  [design] → [review] → implement│   │
+│  └─────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────┘
+```
+
+数据源：`GET /owner/agents/{did}` + `GET /owner/messages/stats` + `GET /enclaves` + `GET /reputation/{did}`（聚合子 Agent）
+
+**S2-01-1 改进：** 信任分改为 `Avg Trust Score`（子 Agent 平均），明确显示来源，避免用户误解为主 DID 自身分数。
+
+**S3-01-1 优化：** TrustNetwork 页面节点 > 50 时启用分页加载，每页显示 20 个节点，支持搜索/筛选功能。
+
+**2. Agents（Agent 列表）**
+
+表格：DID（缩写）、名称、capabilities、信任分、最后活跃时间、状态（在线/离线）。点击进入详情页（profile、certifications、capability tokens）。
+
+数据源：`GET /owner/agents/{did}` + `GET /reputation/{did}` + `GET /capability-tokens/by-did/{did}`
+
+**3. Messages（消息中心）**
+
+左侧：子 Agent 列表 + 未读数。右侧：选中 Agent 的消息流。
+
+数据源：`GET /owner/messages/stats` + `GET /owner/messages/inbox` + `GET /messages/all/{did}`
+
+**4. Enclaves（Enclave 管理）**
+
+Enclave 列表 → 点击进入：成员、Vault 文档、Playbook 运行状态。Playbook 用 DAG 图展示 stage 依赖和当前进度。
+
+数据源：`GET /enclaves` + `GET /enclaves/{id}` + `GET /enclaves/{id}/runs/{rid}`
+
+**5. TrustNetwork（信任网络）**
+
+D3 力导向图：节点 = Agent DID，边 = 信任关系（score 映射为边粗细），颜色 = trust_level。
+
+数据源：`GET /trust/edges/{did}` + `GET /reputation/{did}`
+
+#### 文件变更
+
+| 文件 | 变更 |
+|------|------|
+| `web/` | **新建**。Vue 3 + Vite 前端项目 |
+| `agent_net/node/static/` | **新建**。构建产物目录 |
+| `agent_net/node/daemon.py` | 挂载 StaticFiles(html=True) + UIAuthMiddleware |
+| `pyproject.toml` | 排除 `web/` 目录，不打包进 pip install |
+
+#### pyproject.toml 配置（S1-01-1）
+
+```toml
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["agent_net*"]
+exclude = ["web*"]
+
+# 或使用 hatchling
+[tool.hatch.build.targets.wheel]
+exclude = ["web/", "*.ts", "*.vue"]
+```
+
+确保 `pip install agentnexus-sdk` 不包含前端源码，构建产物 `agent_net/node/static/` 随主包一起安装。
+
+#### 改进建议（已采纳）
+
+| # | 建议 | 状态 | 说明 |
+|---|------|------|------|
+| S1-01-1 | pyproject.toml 排除 `web/` 目录 | ✅ 已采纳 | 配置 exclude 规则 |
+| S2-01-1 | Dashboard 信任分显示来源 | ✅ 已采纳 | 改为 `Avg Trust Score` |
+| S3-01-1 | TrustNetwork 性能优化 | 🟢 后续 | 节点 > 50 时分页加载 |
+| S4-01-1 | SPA fallback 路由顺序 | ✅ 已采纳 | 使用 `StaticFiles(html=True)` |
+| S5-01-1 | 鉴权机制 | ✅ 已采纳 | 本地免鉴权 + UIAuthMiddleware |
+
+---
+
+### 1.0-03 Agent 接入向导
+
+#### 目标
+
+UI 引导用户接入 Agent：选平台 → 显示安装命令 → Agent 注册后自动出现在列表中。
+
+#### 设计
+
+作为仪表盘的一个页面（`Setup.vue`），不是独立应用。
+
+**步骤流程：**
+
+```
+Step 1: 选择接入方式
+  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+  │  MCP     │  │  SDK     │  │ OpenClaw │  │ Webhook  │
+  │(Claude)  │  │(Python)  │  │ (Skill)  │  │ (HTTP)   │
+  └──────────┘  └──────────┘  └──────────┘  └──────────┘
+
+Step 2: 显示安装命令（根据选择动态生成）
+  ┌─────────────────────────────────────────────────┐
+  │ # MCP 方式                                       │
+  │ python main.py node mcp --name "MyAgent" \       │
+  │   --caps "Chat,Code"                             │
+  │                                    [复制] [下一步]│
+  └─────────────────────────────────────────────────┘
+
+Step 3: 等待 Agent 注册（轮询 /agents/local）
+  ┌─────────────────────────────────────────────────┐
+  │ ⏳ 等待 Agent 连接...                             │
+  │                                                   │
+  │ ✅ MyAgent (did:agentnexus:z6Mk...) 已连接！     │
+  │                                    [绑定到主 DID] │
+  └─────────────────────────────────────────────────┘
+
+Step 4: 绑定到主 DID（调用 POST /owner/bind）
+  ┌─────────────────────────────────────────────────┐
+  │ ✅ MyAgent 已绑定到你的主 DID                     │
+  │                                    [完成]         │
+  └─────────────────────────────────────────────────┘
+```
+
+#### 各平台安装命令模板
+
+```typescript
+// S2-03-1：使用模板函数而非字符串拼接
+interface SetupTemplate {
+  title: string;
+  generateCommand: (name: string, caps: string[]) => string;
+  description: string;
+}
+
+const SETUP_TEMPLATES: Record<string, SetupTemplate> = {
+  mcp: {
+    title: "MCP（Claude Desktop / Cursor / Claude Code）",
+    generateCommand: (name, caps) =>
+      `python main.py node mcp --name "${name}" --caps "${caps.join(",")}"`,
+    description: "适合 AI 编程助手场景",
+  },
+  sdk: {
+    title: "Python SDK",
+    generateCommand: (name, caps) =>
+      `import agentnexus\nnexus = await agentnexus.connect("${name}", caps=["${caps.join('", "')}"])`,
+    description: "适合自定义 Agent 开发",
+  },
+  openclaw: {
+    title: "OpenClaw Skill",
+    generateCommand: (name, caps) =>
+      `curl -X POST http://localhost:8765/adapters/openclaw/register \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -d '{"skill_name": "${name}", "capabilities": ["${caps.join('", "')}"]}'`,
+    description: "适合已有 OpenClaw Skill",
+  },
+  webhook: {
+    title: "Webhook（Dify / Coze / 自定义）",
+    generateCommand: (name, caps) =>
+      `curl -X POST http://localhost:8765/adapters/webhook/register \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -d '{"name": "${name}", "callback_url": "https://your-service/webhook"}'`,
+    description: "适合任何能发 HTTP 请求的服务",
+  },
+};
+
+// 使用示例
+const command = SETUP_TEMPLATES.mcp.generateCommand("MyAgent", ["Chat", "Code"]);
+```
+
+#### 轮询检测新 Agent
+
+```typescript
+// Setup.vue — Step 3
+const POLL_INTERVAL = 2000;  // 2 秒
+const POLL_TIMEOUT = 60000;  // 60 秒超时（S1-03-1）
+
+async function waitForAgent(expectedName: string) {
+  const before = await fetch("/agents/local").then(r => r.json());
+  const beforeDids = new Set(before.agents.map(a => a.did));
+
+  let elapsed = 0;
+
+  const interval = setInterval(async () => {
+    elapsed += POLL_INTERVAL;
+
+    // S1-03-1：超时机制
+    if (elapsed >= POLL_TIMEOUT) {
+      clearInterval(interval);
+      showError("等待超时，请检查命令是否正确执行，或手动刷新页面");
+      return;
+    }
+
+    // S3-03-1：显示进度
+    updateProgress(`等待中... (已轮询 ${elapsed / 1000} 秒)`);
+
+    const after = await fetch("/agents/local").then(r => r.json());
+    const newAgent = after.agents.find(a => !beforeDids.has(a.did));
+
+    if (newAgent) {
+      clearInterval(interval);
+
+      // S4-03-1：检查名称匹配
+      if (newAgent.profile?.name !== expectedName) {
+        showWarning(`检测到新 Agent "${newAgent.profile?.name}"，但名称不匹配`);
+      }
+
+      onAgentConnected(newAgent);
+    }
+  }, POLL_INTERVAL);
+}
+```
+
+#### 文件变更
+
+| 文件 | 变更 |
+|------|------|
+| `web/src/views/Setup.vue` | 接入向导页面（4 步流程） |
+| `web/src/api/client.ts` | fetchApi wrapper + Token 携带逻辑 |
+
+#### 改进建议（已采纳）
+
+| # | 建议 | 状态 | 说明 |
+|---|------|------|------|
+| S1-03-1 | 轮询超时机制 | ✅ 已采纳 | 60 秒超时 + 错误提示 |
+| S2-03-1 | placeholder 替换逻辑 | ✅ 已采纳 | 使用模板函数 `generateCommand(name, caps)` |
+| S3-03-1 | Step 3 显示进度 | ✅ 已采纳 | 显示轮询秒数 |
+| S4-03-1 | 错误处理 | ✅ 已采纳 | 名称不匹配警告 + 超时错误提示 |
+
+---
+
+### 实施顺序
+
+```
+1.0-05 意图路由（~35 行，纯后端）✅ 已完成（2026-04-17）
+    ↓
+1.0-01 Web 仪表盘
+    Phase A: 项目脚手架（Vite + Vue + FastAPI 挂载）✅ 已完成（2026-04-17）
+    Phase B: Dashboard + Agents 页面 → 待实施
+    Phase C: Messages + Enclaves 页面 → 待实施
+    Phase D: TrustNetwork 页面（D3）→ 待实施
+    ↓
+1.0-03 接入向导（仪表盘的一个页面，随 Phase B 一起做）
+```
+
+**已完成：**
+- 1.0-05 意图路由（router.py + test_v10_intent_route.py）
+- 1.0-01 Phase A：web/ 前端脚手架 + daemon.py StaticFiles 挂载
+
+**下一步：** Phase B — Dashboard + Agents 页面完善 + Setup.vue 接入向导
+
+---
+
+### Phase 2 设计评审记录（v1.0.0）
+
+> 评审日期：2026-04-17 | 评审者：Claude Code
+
+#### 评审结论：✅ 全部通过，改进已采纳
+
+三项设计全部通过，改进建议已采纳并整合到设计中。
+
+#### 1.0-05 意图路由 — ✅ 通过
+
+| 项目 | 评估 | 备注 |
+|------|------|------|
+| 设计位置 | ✅ | 在 `route_message` 离线存储前插入 |
+| 匹配策略 | ✅ | 关键词匹配 capabilities + tags |
+| 防递归 | ✅ | 子 Agent 不是 owner 类型 |
+| 改进 S1-05-1 | ✅ 已采纳 | `MIN_MATCH_SCORE = 2` 匹配阈值 |
+
+#### 1.0-01 Web 仪表盘 — ✅ 通过
+
+| 项目 | 评估 | 备注 |
+|------|------|------|
+| 技术选型 | ✅ | Vue 3 + Vite + PrimeVue |
+| 构建产物 | ✅ | `web/` → `agent_net/node/static/` |
+| 改进 S1-01-1 | ✅ 已采纳 | pyproject.toml exclude `web/` |
+| 改进 S2-01-1 | ✅ 已采纳 | 改为 `Avg Trust Score` |
+| 改进 S4-01-1 | ⚠️ 部分采纳 | `StaticFiles(html=True)` 仅处理目录请求，不处理 Vue Router history mode。必须保留 catch-all 路由作为 SPA fallback，两者并存 |
+| 改进 S5-01-1 | ✅ 已采纳 | UIAuthMiddleware 鉴权。补充：用 daemon token 生成 session cookie，避免每次访问输入 token |
+
+#### 1.0-03 Agent 接入向导 — ✅ 通过
+
+| 项目 | 评估 | 备注 |
+|------|------|------|
+| 流程设计 | ✅ | 4 步流程清晰 |
+| 平台覆盖 | ✅ | MCP/SDK/OpenClaw/Webhook |
+| 改进 S1-03-1 | ✅ 已采纳 | 60 秒轮询超时 |
+| 改进 S2-03-1 | ✅ 已采纳 | 模板函数 `generateCommand()` |
+| 改进 S3-03-1 | ✅ 已采纳 | 显示轮询进度 |
+| 改进 S4-03-1 | ⚠️ 部分采纳 | 保持 DID 差集检测为主要逻辑，名称匹配仅作辅助提示。用户可能修改命令中的名称，按名称匹配不可靠 |
+
+#### 后续优化（P3）
+
+| # | 建议 | 说明 |
+|---|------|------|
+| S2-05-1 | 返回匹配日志/元数据 | 意图路由转发后记录匹配详情 |
+| S3-05-1 | 支持配置优先级权重 | 某些 capability 设置更高权重 |
+| S3-01-1 | TrustNetwork 性能优化 | 节点 > 50 时分页加载 |
+
+**设计已完善，可进入开发。**
+
+---
+
+### 代码评审记录（v1.0 Phase 2）
+
+> 评审日期：2026-04-17 | 评审者：评审 Agent | 测试结果：375 passed, 8 skipped ✅
+
+#### 评审结论：已通过
+
+所有阻塞性和建议性问题已修复。
+
+#### 阻塞性问题 — ✅ 全部已修复
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1 | 意图路由插入位置错误（步骤 3.5，Relay 之后）。若主 DID 有 P2P endpoint 或 Relay 地址，消息在步骤 2/3 就被投递，永远不触发意图路由 | `router.py#route_message` | ✅ 已修复 — 移到步骤 1 之后（本地直投之后，P2P/Relay 之前） |
+| P2 | `StaticFiles(html=True)` 不处理 Vue Router history mode 路径。需补充 catch-all 路由 | `daemon.py` | ✅ 已修复 — mount `/ui/assets` + catch-all route `/ui/{path:path}` |
+
+#### 建议性问题 — ✅ 全部已修复
+
+| # | 问题 | 严重性 | 状态 |
+|---|------|--------|------|
+| S1 | `Setup.vue` Step 1 调用 `registerOwner` 时 token 尚未设置（Step 2 才设置），会 401 | 🟡 | ✅ 已修复 — 调换步骤顺序：先设置 Token（Step 0）再创建 Owner（Step 1） |
+| S2 | `Dashboard.vue` 中 `totalEnclaves` 初始化为 0 但从未更新 | 🟢 | ✅ 已修复 — 调用 `listEnclaves()` 获取数量 |
+| S3 | `Messages.vue` 中 `content.slice(0, 50)` 未判断 content 类型 | 🟢 | ✅ 已修复 — 先判断 `typeof data.content === 'string'` |
+| S4 | `client.ts` `fetchOwnerStats` 返回类型中 `last_message_at` 可能为 null | 🟢 | ⬚ 后续优化 |
