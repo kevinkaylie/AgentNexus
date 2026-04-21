@@ -201,12 +201,24 @@ def sign_token(token: CapabilityToken, private_key_hex: str) -> CapabilityToken:
     return token
 
 
+from agent_net.common.consistency_level import (
+    ConsistencyLevel,
+    EvaluationContext,
+    build_evaluation_context,
+    check_l1_window,
+)
+
+
 async def verify_token(
     token: CapabilityToken,
     action: str,
     get_token_func=None,
     get_delegation_chain_func=None,
     is_revoked_func=None,
+    consistency_level: ConsistencyLevel = ConsistencyLevel.L0,
+    policy_version: Optional[str] = None,
+    node_id: Optional[str] = None,
+    l1_window_seconds: Optional[float] = None,
 ) -> dict:
     """
     验证 Capability Token。
@@ -217,13 +229,21 @@ async def verify_token(
         get_token_func: 获取 Token 的函数（用于查询父 Token）
         get_delegation_chain_func: 获取委托链的函数
         is_revoked_func: 检查是否已撤销的函数
+        consistency_level: 一致性级别（默认 L0，零开销）
+        policy_version: 策略版本标签（L1+ 记录到 evaluation_context）
+        node_id: 节点标识（L2+ 记录到 HLC）
+        l1_window_seconds: L1 验证窗口秒数（默认使用 consistency_level 模块默认值）
 
     Returns:
-        {valid: bool, reason: str} 或详细验证结果
+        {valid: bool, token_id: str, checks: dict, consistency_level, evaluation_context}
+        或失败时返回 {valid: False, reason: str}
     """
     from nacl.signing import VerifyKey
     from nacl.encoding import URLSafeBase64Encoder
     from agent_net.storage import get_private_key
+
+    # Track verification checks for structured success response
+    checks = {}
 
     # 1. 状态检查（先检查，避免对 revoked token 进行签名验证）
     if token.status != "active":
@@ -236,6 +256,8 @@ async def verify_token(
                 return {"valid": False, "reason": "REVOKED"}
         except Exception:
             pass  # 撤销检查失败不阻塞验证
+
+    checks["status"] = "active"
 
     # 2. 签名验证（Ed25519 over JCS-canonicalized payload）
     try:
@@ -270,6 +292,7 @@ async def verify_token(
             return {"valid": False, "reason": "SIGNATURE_MISSING"}
 
         verify_key.verify(canonical.encode(), signature_bytes)
+        checks["signature"] = "verified"
     except Exception as e:
         return {"valid": False, "reason": "SIGNATURE_INVALID", "detail": str(e)}
 
@@ -282,6 +305,7 @@ async def verify_token(
     if isinstance(validity.get("not_after"), (int, float)):
         if now > validity["not_after"]:
             return {"valid": False, "reason": "EXPIRED"}
+    checks["validity"] = "in_window"
 
     # 4. 委托链完整性 + 单调收窄验证
     # P1 修复：直接调用 get_delegation_chain_func 获取委托链，不依赖动态属性
@@ -307,6 +331,11 @@ async def verify_token(
                     return {"valid": False, "reason": "SPEND_LIMIT_EXPANSION"}
                 if token.constraints.get("max_delegation_depth", 1) >= parent_constraints.get("max_delegation_depth", 1):
                     return {"valid": False, "reason": "DELEGATION_DEPTH_EXPANSION"}
+
+                checks["chain"] = "complete"
+                checks["scope_is_subset"] = True
+            else:
+                checks["chain"] = "none"
         except Exception as e:
             return {"valid": False, "reason": "CHAIN_CHECK_FAILED", "detail": str(e)}
 
@@ -314,7 +343,27 @@ async def verify_token(
     if action not in token.scope.get("permissions", []):
         return {"valid": False, "reason": "PERMISSION_DENIED"}
 
-    return {"valid": True, "token_id": token.token_id}
+    checks["permission"] = "granted"
+
+    # Build consistency level result (L0 = omitted from wire, backward compatible)
+    eval_ctx = build_evaluation_context(consistency_level, policy_version, node_id)
+
+    # L1: verify time window
+    if consistency_level == ConsistencyLevel.L1 and eval_ctx is not None:
+        within_window, reason = check_l1_window(
+            eval_ctx.evaluated_at,
+            window_seconds=l1_window_seconds,
+        )
+        if not within_window:
+            return {"valid": False, "reason": "TIME_WINDOW_EXCEEDED", "detail": reason}
+        eval_ctx.policy_version = policy_version or "unspecified"
+
+    result = {"valid": True, "token_id": token.token_id, "checks": checks}
+    if consistency_level != ConsistencyLevel.L0:
+        result["consistency_level"] = consistency_level.value
+        result["evaluation_context"] = eval_ctx.to_dict()
+
+    return result
 
 
 async def revoke_token(token_id: str, revoke_func=None) -> bool:

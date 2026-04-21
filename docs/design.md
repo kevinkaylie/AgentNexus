@@ -1481,3 +1481,46 @@ async function waitForAgent(expectedName: string) {
 | S2 | `Dashboard.vue` 中 `totalEnclaves` 初始化为 0 但从未更新 | 🟢 | ✅ 已修复 — 调用 `listEnclaves()` 获取数量 |
 | S3 | `Messages.vue` 中 `content.slice(0, 50)` 未判断 content 类型 | 🟢 | ✅ 已修复 — 先判断 `typeof data.content === 'string'` |
 | S4 | `client.ts` `fetchOwnerStats` 返回类型中 `last_message_at` 可能为 null | 🟢 | ⬚ 后续优化 |
+
+---
+
+## v1.5 前瞻 — 决策一致性分级（1.5-13）
+
+> 2026-04-20 概念设计。来源：A2A#1575 讨论中关于"decision identity 是否 time-dependent"的问题。
+
+### 问题
+
+同一个 Agent 在不同时间点被验证，可能因信任分衰减、TTL 过期、图传播延迟等因素得到不同结果。对于大部分操作这不是问题（权限验证是时间无关的），但金融、合规等场景需要精确的时间保证。
+
+### 设计：协议层一致性级别
+
+在 `evaluation_context` 中引入可选的 `consistency_level` 字段，按需开启：
+
+| 级别 | 名称 | 机制 | 开销 | 适用场景 |
+|------|------|------|------|---------|
+| L0 | 无时间约束 | 不填 `evaluation_context`，仅校验 constraint hash | 零 | 权限查询、scope 验证、日常操作（默认） |
+| L1 | 墙钟时间戳 | `evaluated_at` 填 Unix 时间戳，验证者检查合理窗口 | 极低 | 审计留痕、一般合规、交易记录 |
+| L2 | 因果序保证 | HLC（物理时钟 + 逻辑计数器），精确判断多 Agent 并发事件的因果关系 | 低 | 分布式多 Agent 协作、因果序敏感场景 |
+| L3 | 极端延迟容忍 | 存储-转发 + 延迟确认，容忍长时间断连和网络分区 | 中 | 高延迟网络、跨地域合规举证 |
+
+### 协议表达
+
+```json
+{
+  "evaluated_constraint_hash": "sha256:abc...",
+  "consistency_level": "L1",
+  "evaluation_context": {
+    "evaluated_at": 1713600000,
+    "policy_version": "v1.2"
+  }
+}
+```
+
+L0 时 `consistency_level` 和 `evaluation_context` 均省略，向下兼容现有实现。
+
+### 关键原则
+
+1. **默认零开销**：L0 是默认值，现有代码不需要改动
+2. **业务方按需选择**：不是平台强制，而是业务根据场景声明需要的级别
+3. **成本递增**：越高级别开销越大，只有真正需要的场景才付成本
+4. **与策略引擎联动**：`consistency_level` 可作为 1.5-12 策略引擎的一条策略规则
