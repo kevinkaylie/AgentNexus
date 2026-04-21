@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### A2A Protocol: Decision Consistency Levels (L0/L1)
+- **consistency_level.py** — `ConsistencyLevel` 枚举（L0-L3）、`EvaluationContext` 数据类、L1 窗口验证（`check_l1_window`）
+- **capability_token.py** — `verify_token()` 新增 `consistency_level` 参数，成功响应携带 `evaluation_context`（L0 省略，向后兼容）
+- **design.md** — 协议层一致性级别设计规格
+- **test_consistency_level.py** — 7 个测试用例覆盖 L0/L1/L2 构建、窗口边界、序列化往返
+- 382 tests pass（新增 7 个，无破坏）
+- A2A proposal 已发布：https://github.com/a2aproject/A2A/issues/1717#issuecomment-4289144462
+
+---
+
 ## [1.0.0] - 2026-04-15
 
 ### Added
@@ -76,6 +90,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - 符合 qntm WG Authority Constraints 最小互操作面
 - evaluated_constraint_hash 约束集内容寻址
 - monotonic narrowing 委托链单调收窄验证
+
+### Interop Enhancements（2026-04-18）
+
+- **verify_token 成功响应增加 `checks` 字段**：5 步验证结果结构化返回（status / signature / validity / chain / scope_is_subset / permission），支持跨验证器对比
+- **Track A interop fixtures**：生成 `interop/fixtures/agentnexus/happy-path.json` + `scope-expansion.json`，包含 JCS 规范化、Ed25519 签名、委托链完整信息
+- **PR #17 提交到 APS**：`aeoess/agent-passport-system` interop fixtures 目录
 
 ---
 
