@@ -17,6 +17,11 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
+from agent_net.common.consistency_level import (
+    ConsistencyLevel,
+    build_evaluation_context,
+)
+
 
 def compute_constraint_hash(scope: dict, constraints: dict) -> str:
     """
@@ -201,14 +206,6 @@ def sign_token(token: CapabilityToken, private_key_hex: str) -> CapabilityToken:
     return token
 
 
-from agent_net.common.consistency_level import (
-    ConsistencyLevel,
-    EvaluationContext,
-    build_evaluation_context,
-    check_l1_window,
-)
-
-
 async def verify_token(
     token: CapabilityToken,
     action: str,
@@ -218,7 +215,6 @@ async def verify_token(
     consistency_level: ConsistencyLevel = ConsistencyLevel.L0,
     policy_version: Optional[str] = None,
     node_id: Optional[str] = None,
-    l1_window_seconds: Optional[float] = None,
 ) -> dict:
     """
     验证 Capability Token。
@@ -232,10 +228,9 @@ async def verify_token(
         consistency_level: 一致性级别（默认 L0，零开销）
         policy_version: 策略版本标签（L1+ 记录到 evaluation_context）
         node_id: 节点标识（L2+ 记录到 HLC）
-        l1_window_seconds: L1 验证窗口秒数（默认使用 consistency_level 模块默认值）
 
     Returns:
-        {valid: bool, token_id: str, checks: dict, consistency_level, evaluation_context}
+        {valid: bool, token_id: str, checks: dict} — L1+ 额外携带 consistency_level + evaluation_context
         或失败时返回 {valid: False, reason: str}
     """
     from nacl.signing import VerifyKey
@@ -345,18 +340,8 @@ async def verify_token(
 
     checks["permission"] = "granted"
 
-    # Build consistency level result (L0 = omitted from wire, backward compatible)
+    # Build evaluation context (L0 = omitted from wire, backward compatible)
     eval_ctx = build_evaluation_context(consistency_level, policy_version, node_id)
-
-    # L1: verify time window
-    if consistency_level == ConsistencyLevel.L1 and eval_ctx is not None:
-        within_window, reason = check_l1_window(
-            eval_ctx.evaluated_at,
-            window_seconds=l1_window_seconds,
-        )
-        if not within_window:
-            return {"valid": False, "reason": "TIME_WINDOW_EXCEEDED", "detail": reason}
-        eval_ctx.policy_version = policy_version or "unspecified"
 
     result = {"valid": True, "token_id": token.token_id, "checks": checks}
     if consistency_level != ConsistencyLevel.L0:

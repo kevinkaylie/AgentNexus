@@ -69,7 +69,7 @@ def test_cl_05_l1_window_boundary():
     # 正好 30 秒 → 应通过
     ok, _ = check_l1_window(970.0, window_seconds=30, now=now)
     assert ok is True
-    # 30.001 秒 → 应拒绝
+    # 超过 30 秒 → 应拒绝
     ok, _ = check_l1_window(969.99, window_seconds=30, now=now)
     assert ok is False
 
