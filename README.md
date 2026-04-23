@@ -9,7 +9,7 @@
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
-  [![Tests](https://img.shields.io/badge/Tests-279%20collected-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
+  [![Tests](https://img.shields.io/badge/Tests-375%20passed-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
   [![CI](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml)
 
   **[中文](#-中文) | [English](#-english)**
@@ -53,6 +53,13 @@
 | 🔌 **平台适配器** | OpenClaw Skill / Webhook 通用桥接，外部 Agent 零改动接入 ⚡ *v0.8 新增* |
 | 📡 **Push 注册 + 推送** | SIP REGISTER 风格 TTL 注册 + APNs 风格 HMAC 签名精准推送，消息到达即通知 ⚡ *v0.9 新增* |
 | 🏗️ **Enclave 项目组** | 多 Agent 团队 + 角色绑定 + 可插拔 VaultBackend（Git/Local）+ Playbook 自动编排 ⚡ *v0.9.5 新增* |
+| 🕸️ **Governance + 信任网络** | Web of Trust 信任传递 + 交互声誉系统 + 信任衰减 + 治理认证（MolTrust/APS）⚡ *v0.9.6 新增* |
+| 👤 **个人主 DID** | 一个"我"的 DID 代表本人，下挂 N 个 Agent DID，统一管理 ⚡ *v1.0 新增* |
+| 📬 **消息中心** | 主 DID 下所有子 Agent 消息聚合查看、未读统计 ⚡ *v1.0 新增* |
+| 🎫 **Capability Token** | Ed25519 签名信封 + 约束集哈希 + 委托链单调收窄 + 撤销端点 ⚡ *v1.0 新增* |
+| 🧭 **意图路由** | 外部发消息给主 DID，根据意图自动转发到最匹配的子 Agent ⚡ *v1.0 新增* 🚧 开发中 |
+| 🖥️ **Web 仪表盘** | localhost:8765/ui — Agent 管理、消息中心、Enclave 管理、信任网络可视化 ⚡ *v1.0 新增* 🚧 开发中 |
+| 🧙 **接入向导** | UI 引导：选平台 → 显示安装命令 → 自动检测注册 → 绑定主 DID ⚡ *v1.0 新增* 🚧 开发中 |
 
 ---
 
@@ -733,6 +740,13 @@ Every multi-agent framework today (CrewAI, AutoGen, MetaGPT…) is a walled gard
 | 🔌 **Platform Adapters** | OpenClaw Skill / Webhook bridge, external agents plug in with zero changes ⚡ *v0.8 NEW* |
 | 📡 **Push Registration + Notification** | SIP REGISTER-style TTL registration + APNs-style HMAC-signed push — instant message notification ⚡ *v0.9 NEW* |
 | 🏗️ **Enclave Project Groups** | Multi-agent teams + role binding + pluggable VaultBackend (Git/Local) + Playbook auto-orchestration ⚡ *v0.9.5 NEW* |
+| 🕸️ **Governance + Trust Network** | Web of Trust propagation + interaction reputation + trust decay + governance attestation (MolTrust/APS) ⚡ *v0.9.6 NEW* |
+| 👤 **Personal Owner DID** | One "me" DID representing the person, managing N Agent DIDs underneath ⚡ *v1.0 NEW* |
+| 📬 **Message Center** | Aggregated inbox across all sub-Agent messages, unread counts ⚡ *v1.0 NEW* |
+| 🎫 **Capability Token** | Ed25519 signed envelope + constraint hash + monotonic delegation narrowing + revocation endpoint ⚡ *v1.0 NEW* |
+| 🧭 **Intent Routing** | Messages to owner DID auto-forwarded to best-matching sub-Agent by intent ⚡ *v1.0 NEW* 🚧 In Progress |
+| 🖥️ **Web Dashboard** | localhost:8765/ui — Agent management, message center, Enclave management, trust network visualization ⚡ *v1.0 NEW* 🚧 In Progress |
+| 🧙 **Setup Wizard** | UI-guided onboarding: choose platform → show install command → auto-detect registration → bind to owner DID ⚡ *v1.0 NEW* 🚧 In Progress |
 
 ---
 

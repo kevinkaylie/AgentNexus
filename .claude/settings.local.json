@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3 -m pytest tests/ -v --tb=short)"
+      "Bash(python3 -m pytest tests/ -v --tb=short)",
+      "Bash(gh api:*)",
+      "Bash(gh pr:*)",
+      "Bash(python3 main.py test)",
+      "Bash(python3:*)"
     ]
   }
 }

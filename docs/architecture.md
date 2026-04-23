@@ -13,10 +13,10 @@
 │              你的 AI（Claude / GPT / 本地模型）           │
 │         "帮我找一个会翻译的 Agent 然后发消息给它"          │
 └──────────────────────┬──────────────────────────────────┘
-                       │ MCP stdio（27 个工具）
+                       │ MCP stdio（37 个工具）
 ┌──────────────────────▼──────────────────────────────────┐
 │              AgentNexus MCP Server (stdio)               │
-│   基础工具(17) + Action Layer(4) + Discussion(4) + ...   │
+│   基础工具(17+) + Action Layer(4) + Discussion(4) + ...   │
 └──────────────────────┬──────────────────────────────────┘
                        │ HTTP :8765（Bearer Token 鉴权）
 ┌──────────────────────▼──────────────────────────────────┐
@@ -70,16 +70,18 @@ AgentNexus Communication Protocol (ACP) 是一个九层协议栈：
 ```
 
 v0.8 完整实现：L0-L2 + L4 + L6-L8
-v0.9 已实现：L3（注册层）+ L5（推送层）— 评审有条件通过，2 个安全阻塞项待修复
+v0.9 已发布：L3（注册层）+ L5（推送层）
 
-### MCP 工具分类（27 个）
+### MCP 工具分类（37 个）
 
-| 类别 | 工具 | 说明 |
-|------|------|------|
-| **基础工具** | whoami, register, list, send, fetch, search, ... | 身份管理和消息收发 |
-| **Action Layer** | propose_task, claim_task, sync_resource, notify_state | 任务委派和状态同步 |
-| **Discussion** | start_discussion, reply, vote, conclude | 多方讨论和投票 |
-| **Emergency** | emergency_halt, list_skills | 紧急熔断和技能查询 |
+| 类别 | 工具（共 37 个） | 说明 |
+|------|----------------|------|
+| **基础工具（17）** | whoami, register_agent, list_local_agents, send_message, fetch_inbox, search_agents, add_contact, get_stun_endpoint, get_pending_requests, resolve_request, get_card, update_card, get_session, certify_agent, get_certifications, export_agent, import_agent | 身份管理、消息收发、Gatekeeper |
+| **Action Layer（4）** | propose_task, claim_task, sync_resource, notify_state | 任务委派和状态同步 |
+| **Discussion（4）** | start_discussion, reply_discussion, vote_discussion, conclude_discussion | 多方讨论和投票 |
+| **Emergency + Skill（2）** | emergency_halt, list_skills | 紧急熔断和技能查询 |
+| **Enclave（6）** | create_enclave, vault_get, vault_put, vault_list, run_playbook, get_run_status | 项目组管理和 Playbook 编排 |
+| **Governance（4）** | validate_governance, find_trust_path, add_trust, get_reputation | 治理认证和信任网络 |
 
 ### 联邦网络
 
@@ -230,7 +232,7 @@ AgentNexus/
 │              Your AI (Claude / GPT / Local Model)        │
 │         "Find a translation Agent and send it a message" │
 └──────────────────────┬──────────────────────────────────┘
-                       │ MCP stdio (27 tools)
+                       │ MCP stdio (37 tools)
 ┌──────────────────────▼──────────────────────────────────┐
 │              AgentNexus MCP Server (stdio)               │
 │   Basic(17) + Action Layer(4) + Discussion(4) + ...      │
@@ -289,7 +291,7 @@ AgentNexus Communication Protocol (ACP) is a 9-layer stack:
 v0.8 implements: L0-L2 + L4 + L6-L8
 v0.9 implemented: L3 (Registration) + L5 (Push) — conditional approval, 2 security blockers pending
 
-### MCP Tools (27)
+### MCP Tools (37)
 
 | Category | Tools | Description |
 |----------|-------|-------------|

@@ -1,5 +1,7 @@
 # API Reference | API 参考
 
+> **状态说明**：本文档反映当前已实现的接口。鉴权矩阵 v3（`docs/design.md`）定义了目标态鉴权策略（含 actor DID 校验、/deliver 签名验证等），尚未全部落地实现。已设计但未实现的变更跟踪见 `docs/wip.md`。
+
 **[中文](#-中文) | [English](#-english)**
 
 ---

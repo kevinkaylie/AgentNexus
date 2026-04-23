@@ -65,9 +65,11 @@
 
 | 文档 | 路径 | 状态 |
 |------|------|------|
-| 项目现状速览 | [docs/project-status.md](docs/project-status.md) | 生效 |
+| 项目现状速览 | [docs/project-status.md](docs/project-status.md) | **唯一状态源** |
 | 项目需求文档 | [docs/requirements.md](docs/requirements.md) | 生效 |
-| 项目设计文档 | [docs/design.md](docs/design.md) | 生效 |
+| 设计文档索引 | [docs/design.md](docs/design.md) | 生效 |
+| 设计 v1.0+（活跃） | [docs/design/design-v1.0.md](docs/design/design-v1.0.md) | 生效 |
+| 设计 v0.x（归档） | [docs/design/design-v0.x.md](docs/design/design-v0.x.md) | 归档 |
 
 ### 变更追踪
 

@@ -6,7 +6,7 @@
 
 ## 🇨🇳 中文
 
-### MCP 工具列表（27 个）
+### MCP 工具列表（37 个）
 
 #### 基础工具（17 个）
 
@@ -56,6 +56,26 @@
 |--------|------|
 | `emergency_halt` | 紧急熔断（广播给已建立会话的 Agent） |
 | `list_skills` | 查询节点注册的 Skills |
+
+#### Enclave 工具（6 个）— v0.9.5 新增
+
+| 工具名 | 说明 |
+|--------|------|
+| `create_enclave` | 创建 Enclave 项目组（指定成员和 VaultBackend） |
+| `vault_get` | 读取 Enclave Vault 中的文档 |
+| `vault_put` | 写入 Enclave Vault 文档（自动记录版本历史） |
+| `vault_list` | 列出 Enclave Vault 中的所有文档 |
+| `run_playbook` | 启动 Playbook 自动编排流程 |
+| `get_run_status` | 查询 Playbook 运行状态和当前 stage |
+
+#### Governance 工具（4 个）— v0.9.6 新增
+
+| 工具名 | 说明 |
+|--------|------|
+| `validate_governance` | 调用外部治理服务（MolTrust/APS）验证 Agent 能力 |
+| `find_trust_path` | 在 Web of Trust 中查找两个 DID 之间的信任路径 |
+| `add_trust` | 添加信任边（为目标 DID 背书） |
+| `get_reputation` | 获取 Agent 的声誉分（trust_score + trust_level） |
 
 ### 前置条件
 
@@ -149,7 +169,7 @@ python main.py node mcp
 
 ## 🇬🇧 English
 
-### MCP Tools (27)
+### MCP Tools (37)
 
 #### Basic Tools (17)
 
