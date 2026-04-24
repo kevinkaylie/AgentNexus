@@ -332,7 +332,7 @@ async def api_issue_token(req: dict, _=Depends(_require_token)):
 
 
 @router.get("/capability-tokens/{token_id}")
-async def api_get_token(token_id: str):
+async def api_get_token(token_id: str, _=Depends(_require_token)):
     """
     查询 Capability Token。
     """
@@ -401,7 +401,7 @@ async def api_revoke_token(token_id: str, _=Depends(_require_token)):
 
 
 @router.get("/capability-tokens/by-did/{did}")
-async def api_list_tokens_by_did(did: str, status: str = "active"):
+async def api_list_tokens_by_did(did: str, status: str = "active", _=Depends(_require_token)):
     """
     查询某 DID 持有的所有 Token。
     """

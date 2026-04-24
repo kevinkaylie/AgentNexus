@@ -2,11 +2,17 @@
 import json
 import time
 import uuid
+from collections import OrderedDict
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException
 
-from agent_net.node._auth import _require_token
+from agent_net.node._auth import (
+    _require_token,
+    _verify_actor,
+    _verify_actor_can_access_did,
+    _verify_actor_is_owner,
+)
 from agent_net.node._config import get_relay_url, resolve_from_relay
 from agent_net.node._models import SendMessageRequest, AddContactRequest
 from agent_net.router import router as msg_router
@@ -16,9 +22,83 @@ from agent_net.storage import get_owner
 
 router = APIRouter()
 
+_SEEN_MESSAGE_IDS: OrderedDict[str, float] = OrderedDict()
+_REPLAY_WINDOW_SECONDS = 60
+_SEEN_TTL_SECONDS = 120
+_SIGNED_FIELDS = {
+    "from", "to", "content", "session_id", "message_id", "timestamp",
+    "message_type", "protocol", "reply_to", "content_encoding",
+}
+
+
+def _canonical_message(payload: dict) -> bytes:
+    signed = {k: payload.get(k) for k in sorted(_SIGNED_FIELDS) if k in payload}
+    return json.dumps(signed, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def _check_replay(message_id: str, timestamp: float) -> None:
+    now = time.time()
+    expired = [mid for mid, seen_at in _SEEN_MESSAGE_IDS.items() if now - seen_at > _SEEN_TTL_SECONDS]
+    for mid in expired:
+        _SEEN_MESSAGE_IDS.pop(mid, None)
+    if abs(now - float(timestamp)) > _REPLAY_WINDOW_SECONDS:
+        raise HTTPException(403, "Message timestamp out of window")
+    if message_id in _SEEN_MESSAGE_IDS:
+        raise HTTPException(403, "Duplicate message_id")
+    _SEEN_MESSAGE_IDS[message_id] = now
+    while len(_SEEN_MESSAGE_IDS) > 4096:
+        _SEEN_MESSAGE_IDS.popitem(last=False)
+
+
+async def _resolve_public_key_hex(did: str) -> str | None:
+    from agent_net.storage import get_agent
+    agent = await get_agent(did)
+    if agent:
+        profile = agent.get("profile", {}) or {}
+        pubkey_hex = profile.get("public_key_hex")
+        if pubkey_hex:
+            return pubkey_hex
+    if did.startswith("did:agentnexus:"):
+        try:
+            from agent_net.common.did import decode_multibase_pubkey
+            return decode_multibase_pubkey(did.split(":")[-1]).hex()
+        except Exception:
+            return None
+    return None
+
+
+async def _actor_owns_did(actor_did: str, did: str) -> bool:
+    if actor_did == did:
+        return True
+    from agent_net.storage import get_agent
+    agent = await get_agent(did)
+    return bool(agent and agent.get("owner_did") == actor_did)
+
+
+async def _verify_deliver_signature(payload: dict) -> None:
+    signature = payload.get("signature")
+    if not signature:
+        return
+    message_id = payload.get("message_id")
+    timestamp = payload.get("timestamp")
+    if not message_id or timestamp is None:
+        raise HTTPException(400, "Signed delivery requires message_id and timestamp")
+    _check_replay(message_id, float(timestamp))
+
+    from_did = payload.get("from")
+    pubkey_hex = await _resolve_public_key_hex(from_did)
+    if not pubkey_hex:
+        raise HTTPException(403, "Cannot resolve sender public key")
+    try:
+        from nacl.signing import VerifyKey
+        VerifyKey(bytes.fromhex(pubkey_hex)).verify(_canonical_message(payload), bytes.fromhex(signature))
+    except Exception:
+        raise HTTPException(403, "Invalid message signature")
+
 
 @router.post("/messages/send")
-async def api_send_message(req: SendMessageRequest):
+async def api_send_message(req: SendMessageRequest, _=Depends(_require_token)):
+    await _verify_actor(req.from_did)
     if not msg_router.is_local(req.to_did):
         await resolve_from_relay(req.to_did)
 
@@ -53,13 +133,15 @@ async def api_send_message(req: SendMessageRequest):
 
 
 @router.get("/messages/inbox/{did}")
-async def api_fetch_inbox(did: str):
+async def api_fetch_inbox(did: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor_can_access_did(actor_did, did)
     messages = await fetch_inbox(did)
     return {"messages": messages, "count": len(messages)}
 
 
 @router.get("/messages/all/{did}")
-async def api_all_messages(did: str, limit: int = 100):
+async def api_all_messages(did: str, actor_did: str, limit: int = 100, _=Depends(_require_token)):
+    await _verify_actor_can_access_did(actor_did, did)
     from agent_net.storage import DB_PATH
     import aiosqlite
     async with aiosqlite.connect(DB_PATH) as db:
@@ -79,8 +161,23 @@ async def api_all_messages(did: str, limit: int = 100):
 
 
 @router.get("/messages/session/{session_id}")
-async def api_fetch_session(session_id: str):
+async def api_fetch_session(session_id: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor(actor_did)
     messages = await fetch_session(session_id)
+    allowed = False
+    for msg in messages:
+        from_did = msg.get("from")
+        to_did = msg.get("to")
+        if (
+            from_did == actor_did
+            or to_did == actor_did
+            or (to_did and await _actor_owns_did(actor_did, to_did))
+            or (from_did and await _actor_owns_did(actor_did, from_did))
+        ):
+            allowed = True
+            break
+    if not allowed:
+        raise HTTPException(403, "Actor is not a participant in this session")
     return {"messages": messages, "count": len(messages), "session_id": session_id}
 
 
@@ -109,11 +206,13 @@ async def api_deliver(payload: dict):
     content = payload.get("content")
     if not all([from_did, to_did, content]):
         raise HTTPException(400, "Missing fields")
+    await _verify_deliver_signature(payload)
     return await msg_router.route_message(
         from_did, to_did, content,
         payload.get("session_id", ""), payload.get("reply_to"),
         message_type=payload.get("message_type"),
         protocol=payload.get("protocol"),
+        content_encoding=payload.get("content_encoding"),
     )
 
 
@@ -122,10 +221,13 @@ async def api_deliver(payload: dict):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/owner/messages/inbox")
-async def api_owner_inbox(owner_did: str, limit: int = 50, offset: int = 0):
+async def api_owner_inbox(owner_did: str, actor_did: str, limit: int = 50, offset: int = 0, _=Depends(_require_token)):
     """
     聚合主 DID 下所有子 Agent 的未读消息。
     """
+    await _verify_actor_is_owner(actor_did)
+    if actor_did != owner_did:
+        raise HTTPException(403, "Actor cannot access another owner's inbox")
     owner = await get_owner(owner_did)
     if not owner:
         raise HTTPException(404, "Owner not found")
@@ -133,10 +235,13 @@ async def api_owner_inbox(owner_did: str, limit: int = 50, offset: int = 0):
 
 
 @router.get("/owner/messages/all")
-async def api_owner_messages(owner_did: str, limit: int = 100, offset: int = 0):
+async def api_owner_messages(owner_did: str, actor_did: str, limit: int = 100, offset: int = 0, _=Depends(_require_token)):
     """
     聚合主 DID 下所有子 Agent 的全部消息（分页）。
     """
+    await _verify_actor_is_owner(actor_did)
+    if actor_did != owner_did:
+        raise HTTPException(403, "Actor cannot access another owner's messages")
     owner = await get_owner(owner_did)
     if not owner:
         raise HTTPException(404, "Owner not found")
@@ -144,10 +249,13 @@ async def api_owner_messages(owner_did: str, limit: int = 100, offset: int = 0):
 
 
 @router.get("/owner/messages/stats")
-async def api_owner_stats(owner_did: str):
+async def api_owner_stats(owner_did: str, actor_did: str, _=Depends(_require_token)):
     """
     各子 Agent 的消息统计。
     """
+    await _verify_actor_is_owner(actor_did)
+    if actor_did != owner_did:
+        raise HTTPException(403, "Actor cannot access another owner's stats")
     owner = await get_owner(owner_did)
     if not owner:
         raise HTTPException(404, "Owner not found")

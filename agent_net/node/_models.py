@@ -37,6 +37,7 @@ class ResolveRequest(BaseModel):
 
 
 class UpdateCardRequest(BaseModel):
+    actor_did: Optional[str] = None
     name: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[list[str]] = None
@@ -87,6 +88,7 @@ class CreateEnclaveRequest(BaseModel):
 
 
 class UpdateEnclaveRequest(BaseModel):
+    actor_did: str | None = None
     name: str | None = None
     status: str | None = None
     vault_backend: str | None = None
@@ -94,6 +96,7 @@ class UpdateEnclaveRequest(BaseModel):
 
 
 class AddMemberRequest(BaseModel):
+    actor_did: str
     did: str
     role: str
     permissions: str = "rw"
@@ -101,6 +104,7 @@ class AddMemberRequest(BaseModel):
 
 
 class UpdateMemberRequest(BaseModel):
+    actor_did: str | None = None
     role: str | None = None
     permissions: str | None = None
     handbook: str | None = None
@@ -113,6 +117,7 @@ class VaultPutRequest(BaseModel):
 
 
 class CreatePlaybookRunRequest(BaseModel):
+    actor_did: str
     playbook_id: str | None = None
     playbook: dict | None = None
 

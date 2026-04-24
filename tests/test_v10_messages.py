@@ -70,7 +70,10 @@ def test_v10_msg_01_owner_inbox(isolated_env):
     asyncio.run(store_message("did:external:sender3", agent1, "Another message"))
 
     # 查询聚合未读
-    resp = client.get(f"/owner/messages/inbox?owner_did={owner}")
+    resp = client.get(
+        f"/owner/messages/inbox?owner_did={owner}&actor_did={owner}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["owner_did"] == owner
@@ -108,7 +111,10 @@ def test_v10_msg_02_owner_messages_all(isolated_env):
     asyncio.run(store_message("did:external:sender", agent, "New unread"))
 
     # 查询全部消息
-    resp = client.get(f"/owner/messages/all?owner_did={owner}&limit=10")
+    resp = client.get(
+        f"/owner/messages/all?owner_did={owner}&actor_did={owner}&limit=10",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 6
@@ -143,7 +149,10 @@ def test_v10_msg_03_owner_stats(isolated_env):
     asyncio.run(store_message("did:external", agent2, "Msg3"))
 
     # 查询统计
-    resp = client.get(f"/owner/messages/stats?owner_did={owner}")
+    resp = client.get(
+        f"/owner/messages/stats?owner_did={owner}&actor_did={owner}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["stats"]) == 2
@@ -168,8 +177,25 @@ def test_v10_msg_04_owner_not_found(isolated_env):
     agent = client.post("/agents/register", json={"name": "Agent"}, headers={"Authorization": f"Bearer {token}"}).json()["did"]
 
     # 尝试查询
-    resp = client.get(f"/owner/messages/inbox?owner_did={agent}")
-    assert resp.status_code == 404
+    resp = client.get(
+        f"/owner/messages/inbox?owner_did={agent}&actor_did={agent}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
 
-    resp2 = client.get(f"/owner/messages/stats?owner_did={agent}")
-    assert resp2.status_code == 404
+    resp2 = client.get(
+        f"/owner/messages/stats?owner_did={agent}&actor_did={agent}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp2.status_code == 403
+
+
+def test_v10_msg_05_owner_messages_require_token(isolated_env):
+    """Owner 消息中心读接口需要 Token"""
+    client = isolated_env
+    from agent_net.node._auth import init_daemon_token
+    token = init_daemon_token()
+
+    owner = client.post("/owner/register", json={"name": "Owner"}, headers={"Authorization": f"Bearer {token}"}).json()["did"]
+    resp = client.get(f"/owner/messages/inbox?owner_did={owner}&actor_did={owner}")
+    assert resp.status_code == 401

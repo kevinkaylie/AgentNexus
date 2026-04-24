@@ -6,6 +6,7 @@ GitVaultBackend 测试
 import asyncio
 import os
 import pytest
+import subprocess
 import tempfile
 import shutil
 from pathlib import Path
@@ -19,7 +20,9 @@ def temp_git_repo():
     repo_path.mkdir()
 
     # 初始化 Git 仓库
-    os.system(f"cd {repo_path} && git init && git config user.email 'test@test.com' && git config user.name 'Test'")
+    subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_path, check=True)
 
     yield repo_path
 

@@ -183,7 +183,10 @@ def test_v10_ct_04_list_tokens_by_did(isolated_env):
         )
 
     # 查询
-    list_resp = client.get(f"/capability-tokens/by-did/{subject}")
+    list_resp = client.get(
+        f"/capability-tokens/by-did/{subject}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert list_resp.status_code == 200
     data = list_resp.json()
     assert data["did"] == subject

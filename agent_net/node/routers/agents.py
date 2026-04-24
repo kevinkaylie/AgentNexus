@@ -6,7 +6,12 @@ import aiohttp
 from fastapi import APIRouter, Depends, HTTPException
 
 from agent_net.common.did import DIDGenerator, AgentProfile, DIDResolver, DIDError, build_services_from_profile
-from agent_net.node._auth import _require_token, bind_token_to_did
+from agent_net.node._auth import (
+    _require_token,
+    _verify_actor,
+    _verify_actor_is_owner,
+    bind_token_to_did,
+)
 from agent_net.node._config import (
     get_relay_url, get_public_endpoint_cached,
     announce_to_relay, federation_announce,
@@ -99,7 +104,7 @@ async def api_register_agent(req: RegisterRequest, _=Depends(_require_token)):
 
 
 @router.get("/agents/local")
-async def api_list_local_agents():
+async def api_list_local_agents(_=Depends(_require_token)):
     agents = await list_local_agents()
     return {"agents": agents, "count": len(agents)}
 
@@ -201,6 +206,11 @@ async def api_get_nexus_profile(did: str):
 
 @router.patch("/agents/{did}/card")
 async def api_update_card(did: str, req: UpdateCardRequest, _=Depends(_require_token)):
+    if not req.actor_did:
+        raise HTTPException(400, "Missing actor_did")
+    await _verify_actor(req.actor_did)
+    if req.actor_did != did:
+        raise HTTPException(403, "Actor can only update its own card")
     agent = await get_agent(did)
     if not agent:
         raise HTTPException(404, "Agent not found")
@@ -261,7 +271,10 @@ async def api_get_certifications(did: str):
 
 
 @router.get("/agents/{did}/export")
-async def api_export_agent(did: str, password: str, _=Depends(_require_token)):
+async def api_export_agent(did: str, password: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor(actor_did)
+    if actor_did != did:
+        raise HTTPException(403, "Actor can only export its own identity")
     from agent_net.common.keystore import export_agent as _export_agent
     agent = await get_agent(did)
     if not agent:
@@ -325,6 +338,7 @@ async def api_bind_agent(req: dict, _=Depends(_require_token)):
     agent_did = req.get("agent_did")
     if not owner_did or not agent_did:
         raise HTTPException(400, "Missing owner_did or agent_did")
+    await _verify_actor_is_owner(owner_did)
 
     # 验证 owner 存在且是 owner 类型
     owner = await get_owner(owner_did)
@@ -352,6 +366,7 @@ async def api_unbind_agent(req: dict, _=Depends(_require_token)):
     agent_did = req.get("agent_did")
     if not owner_did or not agent_did:
         raise HTTPException(400, "Missing owner_did or agent_did")
+    await _verify_actor_is_owner(owner_did)
 
     success = await unbind_agent(owner_did, agent_did)
     if not success:
@@ -360,10 +375,13 @@ async def api_unbind_agent(req: dict, _=Depends(_require_token)):
 
 
 @router.get("/owner/agents/{owner_did}")
-async def api_list_owned_agents(owner_did: str):
+async def api_list_owned_agents(owner_did: str, actor_did: str, _=Depends(_require_token)):
     """
     列出主 DID 下的所有子 Agent。
     """
+    await _verify_actor_is_owner(actor_did)
+    if actor_did != owner_did:
+        raise HTTPException(403, "Actor cannot list another owner's agents")
     owner = await get_owner(owner_did)
     if not owner:
         raise HTTPException(404, "Owner not found")

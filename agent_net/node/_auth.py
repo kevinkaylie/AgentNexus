@@ -91,3 +91,66 @@ def verify_token_did_binding(did: str) -> bool:
         return True
     token_hash = hashlib.sha256(_daemon_token.encode()).hexdigest()
     return did in _TOKEN_DID_BINDINGS.get(token_hash, [])
+
+
+async def _verify_actor(actor_did: str) -> dict:
+    """校验 actor_did 是本 Daemon 管理的 DID。"""
+    if not actor_did:
+        raise HTTPException(400, "Missing actor DID")
+    from agent_net.storage import get_agent
+    agent = await get_agent(actor_did)
+    if not agent:
+        raise HTTPException(403, f"DID not managed by this daemon: {actor_did}")
+    return agent
+
+
+async def _verify_actor_is_owner(actor_did: str) -> dict:
+    """校验 actor_did 是本 Daemon 管理的 Owner DID。"""
+    if not actor_did:
+        raise HTTPException(400, "Missing owner DID")
+    from agent_net.storage import get_owner
+    owner = await get_owner(actor_did)
+    if not owner:
+        raise HTTPException(403, f"Not a registered owner: {actor_did}")
+    return owner
+
+
+async def _verify_actor_can_access_did(actor_did: str, target_did: str) -> dict:
+    """允许 DID 本人或其 Owner 访问目标 DID。"""
+    actor = await _verify_actor(actor_did)
+    if actor_did == target_did:
+        return actor
+
+    from agent_net.storage import get_agent
+    target = await get_agent(target_did)
+    if not target:
+        raise HTTPException(404, f"Agent not found: {target_did}")
+    if target.get("owner_did") == actor_did:
+        await _verify_actor_is_owner(actor_did)
+        return actor
+    raise HTTPException(403, f"{actor_did} cannot access {target_did}")
+
+
+async def _verify_actor_is_enclave_member(enclave_id: str, actor_did: str) -> dict:
+    """校验 actor_did 是 Enclave 成员。"""
+    await _verify_actor(actor_did)
+    from agent_net.storage import get_enclave, get_enclave_member
+    enclave = await get_enclave(enclave_id)
+    if not enclave:
+        raise HTTPException(404, f"Enclave not found: {enclave_id}")
+    member = await get_enclave_member(enclave_id, actor_did)
+    if not member:
+        raise HTTPException(403, f"Not a member of enclave {enclave_id}: {actor_did}")
+    return member
+
+
+async def _verify_actor_is_enclave_owner(enclave_id: str, actor_did: str) -> dict:
+    """校验 actor_did 是 Enclave owner。"""
+    await _verify_actor(actor_did)
+    from agent_net.storage import get_enclave
+    enclave = await get_enclave(enclave_id)
+    if not enclave:
+        raise HTTPException(404, f"Enclave not found: {enclave_id}")
+    if enclave["owner_did"] != actor_did:
+        raise HTTPException(403, f"Not the owner of enclave {enclave_id}")
+    return enclave

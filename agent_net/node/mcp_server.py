@@ -331,7 +331,7 @@ async def list_tools() -> list[Tool]:
                               "enclave_id": {"type": "string", "description": "Enclave ID"},
                               "key": {"type": "string", "description": "Document key (e.g. 'requirements', 'design_doc')"},
                               "version": {"type": "string", "description": "Specific version (omit for latest)"},
-                              "author_did": {"type": "string", "description": "Requester DID (for permission check)"},
+                              "actor_did": {"type": "string", "description": "Requester DID (for permission check)"},
                           }, "required": ["enclave_id", "key"]}),
         Tool(name="vault_put",
              description="Write a document to Enclave Vault. Creates new or updates existing.",
@@ -349,7 +349,7 @@ async def list_tools() -> list[Tool]:
                           "properties": {
                               "enclave_id": {"type": "string", "description": "Enclave ID"},
                               "prefix": {"type": "string", "description": "Filter by key prefix (e.g. 'design_')"},
-                              "author_did": {"type": "string", "description": "Requester DID (for permission check)"},
+                              "actor_did": {"type": "string", "description": "Requester DID (for permission check)"},
                           }, "required": ["enclave_id"]}),
         Tool(name="run_playbook",
              description="Start a Playbook in an Enclave. Automatically assigns tasks to role-bound Agents.",
@@ -479,8 +479,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 did = arguments.get("did") or _MY_DID
                 if not did:
                     result = {"error": "No DID bound — provide did or start with --name"}
+                elif not _MY_DID:
+                    result = {"error": "No DID bound — actor_did is required"}
                 else:
-                    result = await _call("get", f"/messages/inbox/{did}")
+                    result = await _call("get", f"/messages/inbox/{did}",
+                                         params={"actor_did": arguments.get("actor_did") or _MY_DID})
 
             case "search_agents":
                 result = await _call("get", f"/agents/search/{arguments['keyword']}")
@@ -509,14 +512,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 if not did:
                     result = {"error": "No DID bound — provide did or start with --name"}
                 else:
+                    arguments.setdefault("actor_did", _MY_DID)
                     result = await _call("patch", f"/agents/{did}/card", json=arguments)
 
             case "get_session":
                 sid = arguments.get("session_id", "")
                 if not sid:
                     result = {"error": "session_id is required"}
+                elif not _MY_DID:
+                    result = {"error": "No DID bound — actor_did is required"}
                 else:
-                    result = await _call("get", f"/messages/session/{sid}")
+                    result = await _call("get", f"/messages/session/{sid}",
+                                         params={"actor_did": arguments.get("actor_did") or _MY_DID})
 
             case "certify_agent":
                 issuer = arguments.get("issuer_did") or _MY_DID
@@ -547,7 +554,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         result = {"error": "password is required for export_agent"}
                     else:
                         result = await _call("get", f"/agents/{did}/export",
-                                             params={"password": password})
+                                             params={"password": password, "actor_did": arguments.get("actor_did") or did})
 
             case "import_agent":
                 data = arguments.get("data", "")
@@ -765,10 +772,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 params = {}
                 if arguments.get("version"):
                     params["version"] = arguments["version"]
-                if arguments.get("author_did"):
-                    params["author_did"] = arguments["author_did"]
+                if arguments.get("actor_did"):
+                    params["actor_did"] = arguments["actor_did"]
                 elif _MY_DID:
-                    params["author_did"] = _MY_DID
+                    params["actor_did"] = _MY_DID
                 result = await _call("get", f"/enclaves/{enclave_id}/vault/{key}",
                                      params=params if params else None)
 
@@ -789,10 +796,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 params = {}
                 if arguments.get("prefix"):
                     params["prefix"] = arguments["prefix"]
-                if arguments.get("author_did"):
-                    params["author_did"] = arguments["author_did"]
+                if arguments.get("actor_did"):
+                    params["actor_did"] = arguments["actor_did"]
                 elif _MY_DID:
-                    params["author_did"] = _MY_DID
+                    params["actor_did"] = _MY_DID
                 result = await _call("get", f"/enclaves/{enclave_id}/vault",
                                      params=params if params else None)
 
@@ -801,16 +808,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 result = await _call("post", f"/enclaves/{enclave_id}/runs", json={
                     "playbook": arguments.get("playbook"),
                     "playbook_id": arguments.get("playbook_id"),
+                    "actor_did": arguments.get("actor_did") or _MY_DID,
                 })
 
             case "get_run_status":
                 enclave_id = arguments["enclave_id"]
                 run_id = arguments.get("run_id")
+                params = {"actor_did": arguments.get("actor_did") or _MY_DID}
                 if run_id:
-                    result = await _call("get", f"/enclaves/{enclave_id}/runs/{run_id}")
+                    result = await _call("get", f"/enclaves/{enclave_id}/runs/{run_id}", params=params)
                 else:
                     # 省略 run_id 时获取最新 run
-                    result = await _call("get", f"/enclaves/{enclave_id}/runs")
+                    result = await _call("get", f"/enclaves/{enclave_id}/runs", params=params)
 
             # Governance & Trust (ADR-014)
             case "validate_governance":

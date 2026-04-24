@@ -62,6 +62,10 @@ class GitVaultBackend(VaultBackend):
             raise VaultBackendError(f"Invalid key: {key}")
         return self._vault_path / key
 
+    def _git_path(self, path: Path) -> str:
+        """Git pathspecs use POSIX separators even on Windows."""
+        return path.relative_to(self.repo_path).as_posix()
+
     async def _run_git(self, *args: str, check: bool = True) -> tuple[int, str, str]:
         """
         异步执行 git 命令。
@@ -93,8 +97,8 @@ class GitVaultBackend(VaultBackend):
         执行 git add + git commit，返回 commit hash。
         """
         # git add
-        rel_path = file_path.relative_to(self.repo_path)
-        returncode, _, stderr = await self._run_git("add", str(rel_path))
+        rel_path = self._git_path(file_path)
+        returncode, _, stderr = await self._run_git("add", rel_path)
         if returncode != 0:
             raise VaultBackendError(f"git add failed: {stderr}")
 
@@ -157,7 +161,7 @@ class GitVaultBackend(VaultBackend):
 
         if version:
             # 读取指定版本
-            rel_path = file_path.relative_to(self.repo_path)
+            rel_path = self._git_path(file_path)
             returncode, stdout, stderr = await self._run_git(
                 "show", f"{version}:{rel_path}",
             )
@@ -198,9 +202,9 @@ class GitVaultBackend(VaultBackend):
             content = file_path.read_text()
 
             # 获取文件最后修改的 commit 信息
-            rel_path = file_path.relative_to(self.repo_path)
+            rel_path = self._git_path(file_path)
             returncode, stdout, _ = await self._run_git(
-                "log", "-1", "--format=%H%n%ct%n%an%n%s", "--", str(rel_path),
+                "log", "-1", "--format=%H%n%ct%n%an%n%s", "--", rel_path,
             )
 
             if returncode == 0 and stdout.strip():
@@ -283,12 +287,12 @@ class GitVaultBackend(VaultBackend):
                 continue
 
             # 计算相对 key
-            rel_key = str(file_path.relative_to(self._vault_path))
+            rel_key = file_path.relative_to(self._vault_path).as_posix()
 
             # 获取文件元数据
-            rel_path = file_path.relative_to(self.repo_path)
+            rel_path = self._git_path(file_path)
             returncode, stdout, _ = await self._run_git(
-                "log", "-1", "--format=%H%n%ct%n%an", "--", str(rel_path),
+                "log", "-1", "--format=%H%n%ct%n%an", "--", rel_path,
             )
 
             if returncode == 0 and stdout.strip():
@@ -322,19 +326,19 @@ class GitVaultBackend(VaultBackend):
         file_path = self._key_to_path(key)
         if not file_path.exists():
             # 检查文件是否曾经存在（被删除）
-            rel_path = file_path.relative_to(self.repo_path)
+            rel_path = self._git_path(file_path)
             returncode, stdout, _ = await self._run_git(
-                "log", "--follow", "-1", "--format=%H", "--", str(rel_path),
+                "log", "--follow", "-1", "--format=%H", "--", rel_path,
             )
             if returncode != 0 or not stdout.strip():
                 raise VaultKeyNotFoundError(f"Key not found: {key}")
 
-        rel_path = file_path.relative_to(self.repo_path)
+        rel_path = self._git_path(file_path)
         returncode, stdout, stderr = await self._run_git(
             "log", "--follow",
             f"-n", str(limit),
             "--format=%H%n%ct%n%an%n%s",
-            "--", str(rel_path),
+            "--", rel_path,
         )
 
         if returncode != 0:
@@ -371,8 +375,8 @@ class GitVaultBackend(VaultBackend):
             return False
 
         # git rm（已经 stage 了删除操作）
-        rel_path = file_path.relative_to(self.repo_path)
-        returncode, _, stderr = await self._run_git("rm", str(rel_path))
+        rel_path = self._git_path(file_path)
+        returncode, _, stderr = await self._run_git("rm", rel_path)
         if returncode != 0:
             raise VaultBackendError(f"git rm failed: {stderr}")
 

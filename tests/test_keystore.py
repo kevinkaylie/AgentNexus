@@ -84,7 +84,7 @@ def test_tk03_export_via_daemon(daemon_client):
 
     resp2 = client.get(
         f"/agents/{did}/export",
-        params={"password": "test_export_pass"},
+        params={"password": "test_export_pass", "actor_did": did},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp2.status_code == 200
@@ -115,7 +115,7 @@ def test_tk04_import_via_daemon(daemon_client):
 
     resp2 = client.get(
         f"/agents/{did}/export",
-        params={"password": password},
+        params={"password": password, "actor_did": did},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp2.status_code == 200
@@ -172,7 +172,7 @@ def test_tk05_export_preserves_certifications(daemon_client):
 
     resp5 = client.get(
         f"/agents/{target_did}/export",
-        params={"password": password},
+        params={"password": password, "actor_did": target_did},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp5.status_code == 200

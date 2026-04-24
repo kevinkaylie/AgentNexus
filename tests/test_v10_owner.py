@@ -186,7 +186,10 @@ def test_v10_own_05_list_owned_agents(isolated_env):
     client.post("/owner/bind", json={"owner_did": owner, "agent_did": agent2}, headers={"Authorization": f"Bearer {token}"})
 
     # 列出
-    resp = client.get(f"/owner/agents/{owner}")
+    resp = client.get(
+        f"/owner/agents/{owner}?actor_did={owner}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["owner_did"] == owner

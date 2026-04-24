@@ -42,6 +42,26 @@ def _register(client, token_file, name="TestAgent", **kw):
     return resp.json()["did"]
 
 
+def _headers(token_file):
+    return {"Authorization": f"Bearer {_token(token_file)}"}
+
+
+def _send(client, token_file, payload):
+    return client.post("/messages/send", json=payload, headers=_headers(token_file))
+
+
+def _inbox(client, token_file, did, actor_did=None):
+    actor = actor_did or did
+    return client.get(f"/messages/inbox/{did}?actor_did={actor}", headers=_headers(token_file))
+
+
+def _session(client, token_file, session_id, actor_did):
+    return client.get(
+        f"/messages/session/{session_id}?actor_did={actor_did}",
+        headers=_headers(token_file),
+    )
+
+
 # ── 会话管理测试 ──────────────────────────────────────────────
 
 def test_tv01_send_auto_generates_session_id(daemon_client):
@@ -49,7 +69,7 @@ def test_tv01_send_auto_generates_session_id(daemon_client):
     client, d, tf = daemon_client
     did_a = _register(client, tf, "AgentA")
     did_b = _register(client, tf, "AgentB")
-    resp = client.post("/messages/send", json={
+    resp = _send(client, tf, {
         "from_did": did_a, "to_did": did_b, "content": "hello",
     })
     data = resp.json()
@@ -63,7 +83,7 @@ def test_tv02_send_with_explicit_session_id(daemon_client):
     client, d, tf = daemon_client
     did_a = _register(client, tf, "AgentA")
     did_b = _register(client, tf, "AgentB")
-    resp = client.post("/messages/send", json={
+    resp = _send(client, tf, {
         "from_did": did_a, "to_did": did_b, "content": "hello",
         "session_id": "sess_custom123",
     })
@@ -77,19 +97,19 @@ def test_tv03_reply_to_in_inbox(daemon_client):
     did_a = _register(client, tf, "AgentA")
     did_b = _register(client, tf, "AgentB")
     # 第一条消息
-    r1 = client.post("/messages/send", json={
+    r1 = _send(client, tf, {
         "from_did": did_a, "to_did": did_b, "content": "hello",
         "session_id": "sess_test",
     })
     # 查询 inbox 拿到 msg_id（离线存储）
-    inbox = client.get(f"/messages/inbox/{did_b}").json()
+    inbox = _inbox(client, tf, did_b).json()
     msg_id = inbox["messages"][0]["id"]
     # 回复
-    client.post("/messages/send", json={
+    _send(client, tf, {
         "from_did": did_b, "to_did": did_a, "content": "hi back",
         "session_id": "sess_test", "reply_to": msg_id,
     })
-    inbox2 = client.get(f"/messages/inbox/{did_a}").json()
+    inbox2 = _inbox(client, tf, did_a).json()
     assert inbox2["messages"][0]["reply_to"] == msg_id
     assert inbox2["messages"][0]["session_id"] == "sess_test"
 
@@ -100,16 +120,16 @@ def test_tv04_fetch_session(daemon_client):
     did_a = _register(client, tf, "AgentA")
     did_b = _register(client, tf, "AgentB")
     sid = "sess_history"
-    client.post("/messages/send", json={
+    _send(client, tf, {
         "from_did": did_a, "to_did": did_b, "content": "msg1", "session_id": sid,
     })
-    client.post("/messages/send", json={
+    _send(client, tf, {
         "from_did": did_b, "to_did": did_a, "content": "msg2", "session_id": sid,
     })
-    client.post("/messages/send", json={
+    _send(client, tf, {
         "from_did": did_a, "to_did": did_b, "content": "msg3", "session_id": sid,
     })
-    resp = client.get(f"/messages/session/{sid}")
+    resp = _session(client, tf, sid, did_a)
     data = resp.json()
     assert data["session_id"] == sid
     assert data["count"] == 3
@@ -123,20 +143,20 @@ def test_tv05_session_across_reply_chain(daemon_client):
     did_a = _register(client, tf, "AgentA")
     did_b = _register(client, tf, "AgentB")
     # A sends to B
-    r1 = client.post("/messages/send", json={
+    r1 = _send(client, tf, {
         "from_did": did_a, "to_did": did_b, "content": "请翻译",
     }).json()
     sid = r1["session_id"]
     # B reads inbox
-    inbox = client.get(f"/messages/inbox/{did_b}").json()
+    inbox = _inbox(client, tf, did_b).json()
     msg_id = inbox["messages"][0]["id"]
     # B replies to A with same session
-    client.post("/messages/send", json={
+    _send(client, tf, {
         "from_did": did_b, "to_did": did_a, "content": "翻译完成",
         "session_id": sid, "reply_to": msg_id,
     })
     # Full session should have 2 messages
-    session = client.get(f"/messages/session/{sid}").json()
+    session = _session(client, tf, sid, did_a).json()
     assert session["count"] == 2
     assert session["messages"][0]["from"] == did_a
     assert session["messages"][1]["from"] == did_b

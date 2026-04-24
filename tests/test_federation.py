@@ -393,7 +393,7 @@ def test_tf12_patch_card_updates_and_resigns(daemon_client):
     # PATCH 更新名片
     resp2 = client.patch(
         f"/agents/{did}/card",
-        json={"description": "更新后的描述", "tags": ["updated", "v2"]},
+        json={"actor_did": did, "description": "更新后的描述", "tags": ["updated", "v2"]},
         headers=headers,
     )
     assert resp2.status_code == 200
@@ -440,7 +440,7 @@ def test_tf13_local_relay_unreachable_register_succeeds(daemon_client, monkeypat
     assert "did" in data
 
     # agent 已写入本地 DB
-    local = client.get("/agents/local")
+    local = client.get("/agents/local", headers={"Authorization": f"Bearer {token}"})
     assert any(a["did"] == data["did"] for a in local.json()["agents"])
 
 
@@ -495,7 +495,7 @@ def test_tf15_patch_card_old_sig_invalid_on_new_content(daemon_client):
 
     resp2 = client.patch(
         f"/agents/{did}/card",
-        json={"description": "modified after patch"},
+        json={"actor_did": did, "description": "modified after patch"},
         headers=headers,
     )
     assert resp2.status_code == 200
@@ -539,7 +539,7 @@ def test_tf16_patch_card_updated_at_advances(daemon_client):
 
     resp2 = client.patch(
         f"/agents/{did}/card",
-        json={"description": "updated description"},
+        json={"actor_did": did, "description": "updated description"},
         headers=headers,
     )
     assert resp2.status_code == 200

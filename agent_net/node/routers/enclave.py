@@ -1,7 +1,12 @@
 """Enclave API (ADR-013)"""
 from fastapi import APIRouter, Depends, HTTPException
 
-from agent_net.node._auth import _require_token
+from agent_net.node._auth import (
+    _require_token,
+    _verify_actor,
+    _verify_actor_is_enclave_member,
+    _verify_actor_is_enclave_owner,
+)
 from agent_net.node._models import (
     CreateEnclaveRequest, UpdateEnclaveRequest,
     AddMemberRequest, UpdateMemberRequest,
@@ -52,6 +57,7 @@ def _build_stages_status(stage_executions: list, playbook: dict) -> dict:
 @router.post("/enclaves")
 async def api_create_enclave(req: CreateEnclaveRequest, _=Depends(_require_token)):
     from agent_net.enclave.models import Enclave
+    await _verify_actor(req.owner_did)
     enclave_id = Enclave.gen_id()
     await create_enclave(
         enclave_id=enclave_id, name=req.name, owner_did=req.owner_did,
@@ -73,8 +79,9 @@ async def api_create_enclave(req: CreateEnclaveRequest, _=Depends(_require_token
 
 
 @router.get("/enclaves")
-async def api_list_enclaves(did: str = None, status: str = None):
-    enclaves = await list_enclaves(did=did, status=status)
+async def api_list_enclaves(actor_did: str, status: str = None, _=Depends(_require_token)):
+    await _verify_actor(actor_did)
+    enclaves = await list_enclaves(did=actor_did, status=status)
     result = []
     for enc in enclaves:
         members = await list_enclave_members(enc["enclave_id"])
@@ -84,7 +91,8 @@ async def api_list_enclaves(did: str = None, status: str = None):
 
 
 @router.get("/enclaves/{enclave_id}")
-async def api_get_enclave(enclave_id: str):
+async def api_get_enclave(enclave_id: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_member(enclave_id, actor_did)
     enc = await get_enclave(enclave_id)
     if not enc:
         raise HTTPException(404, "Enclave not found")
@@ -94,7 +102,11 @@ async def api_get_enclave(enclave_id: str):
 
 @router.patch("/enclaves/{enclave_id}")
 async def api_update_enclave(enclave_id: str, req: UpdateEnclaveRequest, _=Depends(_require_token)):
+    if not req.actor_did:
+        raise HTTPException(400, "Missing actor_did")
+    await _verify_actor_is_enclave_owner(enclave_id, req.actor_did)
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    updates.pop("actor_did", None)
     if not updates:
         raise HTTPException(400, "No fields to update")
     ok = await update_enclave(enclave_id, **updates)
@@ -104,7 +116,8 @@ async def api_update_enclave(enclave_id: str, req: UpdateEnclaveRequest, _=Depen
 
 
 @router.delete("/enclaves/{enclave_id}")
-async def api_delete_enclave(enclave_id: str, _=Depends(_require_token)):
+async def api_delete_enclave(enclave_id: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_owner(enclave_id, actor_did)
     ok = await delete_enclave(enclave_id)
     if not ok:
         raise HTTPException(404, "Enclave not found")
@@ -115,6 +128,7 @@ async def api_delete_enclave(enclave_id: str, _=Depends(_require_token)):
 
 @router.post("/enclaves/{enclave_id}/members")
 async def api_add_member(enclave_id: str, req: AddMemberRequest, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_owner(enclave_id, req.actor_did)
     if not await get_enclave(enclave_id):
         raise HTTPException(404, "Enclave not found")
     ok = await add_enclave_member(
@@ -127,7 +141,8 @@ async def api_add_member(enclave_id: str, req: AddMemberRequest, _=Depends(_requ
 
 
 @router.delete("/enclaves/{enclave_id}/members/{did}")
-async def api_remove_member(enclave_id: str, did: str, _=Depends(_require_token)):
+async def api_remove_member(enclave_id: str, did: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_owner(enclave_id, actor_did)
     ok = await remove_enclave_member(enclave_id, did)
     if not ok:
         raise HTTPException(404, "Member not found")
@@ -136,7 +151,11 @@ async def api_remove_member(enclave_id: str, did: str, _=Depends(_require_token)
 
 @router.patch("/enclaves/{enclave_id}/members/{did}")
 async def api_update_member(enclave_id: str, did: str, req: UpdateMemberRequest, _=Depends(_require_token)):
+    if not req.actor_did:
+        raise HTTPException(400, "Missing actor_did")
+    await _verify_actor_is_enclave_owner(enclave_id, req.actor_did)
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    updates.pop("actor_did", None)
     if not updates:
         raise HTTPException(400, "No fields to update")
     ok = await update_enclave_member(enclave_id, did, **updates)
@@ -148,25 +167,15 @@ async def api_update_member(enclave_id: str, did: str, req: UpdateMemberRequest,
 # ── Vault ─────────────────────────────────────────────────────
 
 @router.get("/enclaves/{enclave_id}/vault")
-async def api_vault_list(enclave_id: str, prefix: str = "", author_did: str = None):
-    if not await get_enclave(enclave_id):
-        raise HTTPException(404, "Enclave not found")
-    if author_did:
-        member = await get_enclave_member(enclave_id, author_did)
-        if not member:
-            raise HTTPException(403, "Not a member of this enclave")
+async def api_vault_list(enclave_id: str, actor_did: str, prefix: str = "", _=Depends(_require_token)):
+    await _verify_actor_is_enclave_member(enclave_id, actor_did)
     entries = await vault_list(enclave_id, prefix)
     return {"status": "ok", "entries": entries, "count": len(entries)}
 
 
 @router.get("/enclaves/{enclave_id}/vault/{key:path}")
-async def api_vault_get(enclave_id: str, key: str, version: str = None, author_did: str = None):
-    if not await get_enclave(enclave_id):
-        raise HTTPException(404, "Enclave not found")
-    if author_did:
-        member = await get_enclave_member(enclave_id, author_did)
-        if not member:
-            raise HTTPException(403, "Not a member of this enclave")
+async def api_vault_get(enclave_id: str, key: str, actor_did: str, version: str = None, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_member(enclave_id, actor_did)
     entry = await vault_get(enclave_id, key, version=int(version) if version else None)
     if not entry:
         raise HTTPException(404, f"Key not found: {key}")
@@ -175,9 +184,7 @@ async def api_vault_get(enclave_id: str, key: str, version: str = None, author_d
 
 @router.put("/enclaves/{enclave_id}/vault/{key:path}")
 async def api_vault_put(enclave_id: str, key: str, req: VaultPutRequest, _=Depends(_require_token)):
-    if not await get_enclave(enclave_id):
-        raise HTTPException(404, "Enclave not found")
-    member = await get_enclave_member(enclave_id, req.author_did)
+    member = await _verify_actor_is_enclave_member(enclave_id, req.author_did)
     _check_vault_permission(member, "rw")
     result = await vault_put(
         enclave_id=enclave_id, key=key, value=req.value,
@@ -187,25 +194,18 @@ async def api_vault_put(enclave_id: str, key: str, req: VaultPutRequest, _=Depen
 
 
 @router.delete("/enclaves/{enclave_id}/vault/{key:path}")
-async def api_vault_delete(enclave_id: str, key: str, author_did: str, _=Depends(_require_token)):
-    if not await get_enclave(enclave_id):
-        raise HTTPException(404, "Enclave not found")
-    member = await get_enclave_member(enclave_id, author_did)
+async def api_vault_delete(enclave_id: str, key: str, actor_did: str, _=Depends(_require_token)):
+    member = await _verify_actor_is_enclave_member(enclave_id, actor_did)
     _check_vault_permission(member, "rw")
-    ok = await vault_delete(enclave_id, key, author_did)
+    ok = await vault_delete(enclave_id, key, actor_did)
     if not ok:
         raise HTTPException(404, f"Key not found: {key}")
     return {"status": "ok", "deleted": True}
 
 
 @router.get("/enclaves/{enclave_id}/vault/{key:path}/history")
-async def api_vault_history(enclave_id: str, key: str, limit: int = 10, author_did: str = None):
-    if not await get_enclave(enclave_id):
-        raise HTTPException(404, "Enclave not found")
-    if author_did:
-        member = await get_enclave_member(enclave_id, author_did)
-        if not member:
-            raise HTTPException(403, "Not a member of this enclave")
+async def api_vault_history(enclave_id: str, key: str, actor_did: str, limit: int = 10, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_member(enclave_id, actor_did)
     history = await vault_history(enclave_id, key, limit)
     return {"status": "ok", "history": history}
 
@@ -216,8 +216,8 @@ async def api_vault_history(enclave_id: str, key: str, limit: int = 10, author_d
 async def api_create_playbook_run(enclave_id: str, req: CreatePlaybookRunRequest, _=Depends(_require_token)):
     from agent_net.enclave.models import Playbook, PlaybookRun, Stage
 
-    if not await get_enclave(enclave_id):
-        raise HTTPException(404, "Enclave not found")
+    member = await _verify_actor_is_enclave_member(enclave_id, req.actor_did)
+    _check_vault_permission(member, "rw")
 
     if req.playbook_id:
         playbook = await get_playbook(req.playbook_id)
@@ -267,7 +267,8 @@ async def api_create_playbook_run(enclave_id: str, req: CreatePlaybookRunRequest
 
 
 @router.get("/enclaves/{enclave_id}/runs")
-async def api_get_latest_playbook_run(enclave_id: str):
+async def api_get_latest_playbook_run(enclave_id: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_member(enclave_id, actor_did)
     run = await get_latest_playbook_run(enclave_id)
     if not run:
         raise HTTPException(404, "No playbook runs found for this enclave")
@@ -286,7 +287,8 @@ async def api_get_latest_playbook_run(enclave_id: str):
 
 
 @router.get("/enclaves/{enclave_id}/runs/{run_id}")
-async def api_get_playbook_run(enclave_id: str, run_id: str):
+async def api_get_playbook_run(enclave_id: str, run_id: str, actor_did: str, _=Depends(_require_token)):
+    await _verify_actor_is_enclave_member(enclave_id, actor_did)
     run = await get_playbook_run(run_id)
     if not run:
         raise HTTPException(404, "Run not found")
