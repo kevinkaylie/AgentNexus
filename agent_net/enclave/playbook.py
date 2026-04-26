@@ -43,9 +43,11 @@ class PlaybookEngine:
     def __init__(self, daemon_url: str = "http://localhost:8765", token: str = ""):
         self.daemon_url = daemon_url
         self.token = token
+        self.max_retries = 2
 
     async def _send_task_propose(
         self,
+        from_did: str,
         to_did: str,
         title: str,
         task_id: str,
@@ -78,7 +80,7 @@ class PlaybookEngine:
             async with session.post(
                 f"{self.daemon_url}/messages/send",
                 json={
-                    "from_did": "playbook_engine",
+                    "from_did": from_did,
                     "to_did": to_did,
                     "content": content,
                     "message_type": "task_propose",
@@ -161,7 +163,10 @@ class PlaybookEngine:
         )
 
         # 发送任务提案
+        enclave = await get_enclave(enclave_id)
+        from_did = enclave["owner_did"] if enclave else assigned_did
         await self._send_task_propose(
+            from_did=from_did,
             to_did=assigned_did,
             title=stage.description or stage.name,
             task_id=task_id,
@@ -183,13 +188,6 @@ class PlaybookEngine:
 
         更新阶段状态，推进到下一阶段。
         """
-        # 更新阶段执行状态
-        await update_stage_execution(
-            run_id, stage_name,
-            status="completed",
-            output_ref=output_ref,
-        )
-
         # 获取 run 和 playbook 信息
         run = await get_playbook_run(run_id)
         if not run:
@@ -211,6 +209,41 @@ class PlaybookEngine:
         if not current_stage:
             return
 
+        # 更新阶段执行状态
+        await update_stage_execution(
+            run_id, stage_name,
+            status="completed",
+            output_ref=output_ref,
+        )
+
+        # D-SEC-05: 生成 Stage Delivery Manifest，并将 output_ref 更新为 Vault key
+        vault_key = f"manifests/{run_id}/{stage_name}"
+        stage_exec = await get_stage_execution(run_id, stage_name)
+        if stage_exec:
+            from agent_net.storage import store_stage_manifest
+            artifacts = []
+            if output_ref:
+                artifacts.append({
+                    "kind": stage_name,
+                    "ref": output_ref,
+                    "produced_by": stage_exec.get("assigned_did", ""),
+                    "summary": f"Stage {stage_name} completed",
+                })
+            required_outputs = [stage_name]
+            manifest = await store_stage_manifest(
+                run_id=run_id,
+                stage_name=stage_name,
+                status="completed",
+                artifacts=artifacts,
+                required_outputs=required_outputs,
+                produced_by=stage_exec.get("assigned_did", ""),
+            )
+            # 将 output_ref 更新为 Vault key（可解析的 Artifact Ref）
+            await update_stage_execution(
+                run_id, stage_name,
+                output_ref=vault_key,
+            )
+
         # 推进到下一阶段
         if current_stage.next:
             # 找到下一阶段
@@ -225,18 +258,38 @@ class PlaybookEngine:
                 await update_playbook_run(run_id, current_stage=next_stage.name)
             else:
                 # 下一阶段不存在，标记完成
-                await update_playbook_run(
-                    run_id,
-                    status="completed",
-                    completed_at=time.time(),
-                )
+                await self._mark_playbook_completed(run_id, run)
         else:
             # 没有下一阶段，Playbook 完成
-            await update_playbook_run(
-                run_id,
-                status="completed",
-                completed_at=time.time(),
-            )
+            await self._mark_playbook_completed(run_id, run)
+
+    async def _mark_playbook_completed(self, run_id: str, run: dict) -> None:
+        """
+        Playbook 完成回调，生成 Final Delivery Manifest（D-SEC-05）。
+        """
+        await update_playbook_run(run_id, status="completed", completed_at=time.time())
+
+        # D-SEC-05: 生成 Final Delivery Manifest
+        from agent_net.storage import store_final_manifest, get_stage_executions_for_run
+        executions = await get_stage_executions_for_run(run_id)
+        stage_manifest_ids = [f"manifest_{e['stage_name']}_{run_id}" for e in executions if e["status"] == "completed"]
+        final_artifacts = []
+        for e in executions:
+            if e["status"] == "completed" and e.get("output_ref"):
+                final_artifacts.append({
+                    "kind": e["stage_name"],
+                    "ref": e["output_ref"],
+                    "produced_by": e.get("assigned_did", ""),
+                })
+
+        await store_final_manifest(
+            run_id=run_id,
+            status="completed",
+            summary=f"Playbook run {run_id} completed",
+            stage_manifest_ids=stage_manifest_ids,
+            final_artifacts=final_artifacts,
+            produced_by=run.get("owner_did", ""),
+        )
 
     async def on_stage_rejected(
         self,
@@ -286,6 +339,15 @@ class PlaybookEngine:
                     break
 
             if reject_stage:
+                existing = await get_stage_execution(run_id, reject_stage.name)
+                retry_count = existing.get("retry_count", 0) if existing else 0
+                if retry_count >= self.max_retries:
+                    await update_playbook_run(
+                        run_id,
+                        status="failed",
+                        completed_at=time.time(),
+                    )
+                    return
                 await self._start_stage(run["enclave_id"], run_id, reject_stage)
                 await update_playbook_run(run_id, current_stage=reject_stage.name)
             else:
@@ -329,6 +391,7 @@ class PlaybookEngine:
                     "assigned_did": exec_record["assigned_did"] if exec_record else "",
                     "task_id": exec_record["task_id"] if exec_record else "",
                     "output_ref": exec_record["output_ref"] if exec_record else "",
+                    "retry_count": exec_record["retry_count"] if exec_record else 0,
                 }
 
         return {

@@ -85,8 +85,14 @@ class Router:
                             session_id: str = "", reply_to: int | None = None,
                             message_type: str | None = None,
                             protocol: str | None = None,
-                            content_encoding: str | None = None) -> dict:
+                            content_encoding: str | None = None,
+                            message_id: str | None = None) -> dict:
         """路由消息：本地直投 -> 意图路由 -> 远程P2P -> Relay -> 离线存储"""
+        # P2_2: 生成 message_id（如未提供）
+        import uuid
+        if not message_id:
+            message_id = f"msg_{uuid.uuid4().hex[:16]}"
+
         # 1. 本地直投
         if self.is_local(to_did):
             await self._local_sessions[to_did].put({
@@ -97,8 +103,9 @@ class Router:
                 "message_type": message_type,
                 "protocol": protocol,
                 "content_encoding": content_encoding,
+                "message_id": message_id,
             })
-            return {"status": "delivered", "method": "local", "session_id": session_id}
+            return {"status": "delivered", "method": "local", "session_id": session_id, "message_id": message_id}
 
         # 2. 意图路由（v1.0-05，P1 修复）：如果 to_did 是主 DID 且不在本地，尝试转发到子 Agent
         #    这样外部发消息给离线的主 DID 时，可以先转发到在线的子 Agent
@@ -109,7 +116,7 @@ class Router:
                 # 递归路由到子 Agent（保留原始 from_did）
                 result = await self.route_message(
                     from_did, target, content, session_id, reply_to,
-                    message_type, protocol, content_encoding,
+                    message_type, protocol, content_encoding, message_id,
                 )
                 # 如果转发成功，返回结果；否则继续尝试其他路由方式
                 if result["status"] == "delivered":
@@ -120,9 +127,9 @@ class Router:
         if contact and contact.get("endpoint"):
             try:
                 result = await self._send_remote(from_did, to_did, content, contact["endpoint"],
-                                                 session_id, reply_to, message_type, protocol, content_encoding)
+                                                 session_id, reply_to, message_type, protocol, content_encoding, message_id)
                 if result:
-                    return {"status": "delivered", "method": "p2p", "session_id": session_id}
+                    return {"status": "delivered", "method": "p2p", "session_id": session_id, "message_id": message_id}
             except Exception:
                 pass
 
@@ -130,15 +137,15 @@ class Router:
         if contact and contact.get("relay"):
             try:
                 result = await self._send_relay(from_did, to_did, content, contact["relay"],
-                                                session_id, reply_to, message_type, protocol, content_encoding)
+                                                session_id, reply_to, message_type, protocol, content_encoding, message_id)
                 if result:
-                    return {"status": "delivered", "method": "relay", "session_id": session_id}
+                    return {"status": "delivered", "method": "relay", "session_id": session_id, "message_id": message_id}
             except Exception:
                 pass
 
         # 5. 离线存储
         await storage.store_message(from_did, to_did, content, session_id, reply_to,
-                                    message_type, protocol, content_encoding)
+                                    message_type, protocol, content_encoding, message_id)
 
         # 5. Playbook 消息拦截（ADR-013 §4）
         if message_type == "state_notify":
@@ -247,14 +254,15 @@ class Router:
                            session_id: str = "", reply_to: int | None = None,
                            message_type: str | None = None,
                            protocol: str | None = None,
-                           content_encoding: str | None = None) -> bool:
+                           content_encoding: str | None = None,
+                           message_id: str | None = None) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{endpoint}/deliver",
                 json={"from": from_did, "to": to_did, "content": content,
                       "session_id": session_id, "reply_to": reply_to,
                       "message_type": message_type, "protocol": protocol,
-                      "content_encoding": content_encoding},
+                      "content_encoding": content_encoding, "message_id": message_id},
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 return resp.status == 200
@@ -263,14 +271,15 @@ class Router:
                           session_id: str = "", reply_to: int | None = None,
                           message_type: str | None = None,
                           protocol: str | None = None,
-                          content_encoding: str | None = None) -> bool:
+                          content_encoding: str | None = None,
+                          message_id: str | None = None) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{relay}/relay",
                 json={"from": from_did, "to": to_did, "content": content,
                       "session_id": session_id, "reply_to": reply_to,
                       "message_type": message_type, "protocol": protocol,
-                      "content_encoding": content_encoding},
+                      "content_encoding": content_encoding, "message_id": message_id},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
                 return resp.status == 200

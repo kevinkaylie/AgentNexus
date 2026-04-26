@@ -13,6 +13,7 @@ class RegisterRequest(BaseModel):
     description: str = ""
     tags: list[str] = []
     did_format: str = "agentnexus"
+    worker_type: str = "resident"
 
 
 class SendMessageRequest(BaseModel):
@@ -23,6 +24,7 @@ class SendMessageRequest(BaseModel):
     reply_to: int | None = None
     message_type: Optional[str] = None
     protocol: Optional[str] = None
+    message_id: Optional[str] = None  # D-SEC-09: 客户端可传入自定义 message_id；未传时服务端生成
 
 
 class AddContactRequest(BaseModel):
@@ -82,6 +84,7 @@ class PushRefreshRequest(BaseModel):
 class CreateEnclaveRequest(BaseModel):
     name: str
     owner_did: str
+    actor_did: str | None = None
     vault_backend: str = "local"
     vault_config: dict = {}
     members: dict = {}
@@ -114,6 +117,10 @@ class VaultPutRequest(BaseModel):
     value: str
     author_did: str
     message: str = ""
+
+
+class VaultDeleteRequest(BaseModel):
+    author_did: str
 
 
 class CreatePlaybookRunRequest(BaseModel):

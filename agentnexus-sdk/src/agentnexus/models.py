@@ -17,6 +17,7 @@ class Message:
     reply_to: Optional[int] = None
     message_type: Optional[str] = None
     protocol: Optional[str] = None
+    message_id: Optional[str] = None
 
     @property
     def datetime(self) -> datetime:

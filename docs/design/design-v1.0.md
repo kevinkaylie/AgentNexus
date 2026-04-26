@@ -1407,3 +1407,22 @@ async def api_deliver(req: dict):
 | R7 | `/deliver` 签名验证缺防重放：无 message_id/timestamp/nonce，抓包可重复投递已签名消息 | ✅ 补齐受签字段集合、确定性 JSON 序列化规则、message_id + timestamp 窗口（±60s）+ LRU 去重 | 已回应 |
 | R8 | 原则 5 写"必须携带 actor_did"，但矩阵实际用 from_did/owner_did/author_did 等不同字段名 | ✅ 改为"必须显式携带调用方 DID，字段名按领域语义命名" | 已回应 |
 | R9 | design.md 说"v3 已回应"，但 wip.md 仍标"待处理/待修复"，跨文档状态矛盾 | ✅ wip.md 状态更新为"设计 v3 已定稿，待实现"，明确区分设计通过 vs 实现待落地 | 已回应 |
+
+---
+
+### 代码评审记录（鉴权矩阵 v3 实现）
+
+> 评审日期：2026-04-24 | 评审者：评审 Agent | 测试结果：388 passed, 8 skipped ✅
+
+#### 评审结论：通过
+
+无阻塞性问题。实现与鉴权矩阵 v3 设计高度一致。
+
+#### 建议性问题
+
+| # | 问题 | 严重性 | 状态 |
+|---|------|--------|------|
+| S1 | `/messages/session/{sid}` 参与方校验遍历全部消息逐条 `await _actor_owns_did`，每条一次 DB 查询。建议先收集 from_did/to_did 去重后批量校验 | 🟡 | ✅ 已修复 — 先收集去重 DIDs，再用本地 agent 对象匹配 |
+| S2 | `_SEEN_MESSAGE_IDS` 是进程内 OrderedDict，多 worker 部署时重放检测不跨 worker。当前单 worker 没问题 | 🟢 | ⬚ 多 worker 时改为 DB/Redis |
+| S3 | `/deliver` 无签名时 soft-enforce 放行但未记录 warning log，与设计文档不一致 | 🟢 | ✅ 已补 `logger.warning` |
+| S4 | `api_vault_put` 用 `req.author_did`，`api_vault_delete` 用 `actor_did` query param，同一资源写删字段名不一致 | 🟢 | ✅ 已统一 — `api_vault_delete` 改用 `VaultDeleteRequest.author_did` |

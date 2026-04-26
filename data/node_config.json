@@ -1,6 +1,7 @@
 {
   "local_relay": "http://localhost:9000",
   "seed_relays": [
-    "https://relay.agentnexus.top"
+    "http://unreachable-seed.invalid:9999",
+    "http://new-seed.example.com:9000"
   ]
 }

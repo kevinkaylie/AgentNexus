@@ -164,6 +164,9 @@ class StateNotify:
     task_id: Optional[str] = None
     progress: Optional[float] = None
     error: Optional[str] = None
+    output_ref: Optional[dict | str] = None
+    reason: Optional[str] = None
+    context: Optional[dict] = None
 
     def to_content(self) -> dict:
         content = {"status": self.status}
@@ -173,6 +176,12 @@ class StateNotify:
             content["progress"] = self.progress
         if self.error:
             content["error"] = self.error
+        if self.output_ref is not None:
+            content["output_ref"] = self.output_ref
+        if self.reason:
+            content["reason"] = self.reason
+        if self.context:
+            content["context"] = self.context
         return content
 
     @classmethod
@@ -182,6 +191,9 @@ class StateNotify:
             task_id=content.get("task_id"),
             progress=content.get("progress"),
             error=content.get("error"),
+            output_ref=content.get("output_ref"),
+            reason=content.get("reason"),
+            context=content.get("context"),
         )
 
     def is_terminal(self) -> bool:

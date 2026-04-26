@@ -25,6 +25,7 @@ from agent_net.storage import (
     register_agent, list_local_agents, get_agent, search_agents_by_capability,
     get_private_key, update_agent_profile, add_certification, get_certifications,
     register_owner, bind_agent, unbind_agent, list_owned_agents, get_owner,
+    list_workers, set_worker_type, list_workers_v2, get_worker_presence, set_worker_blocked,
 )
 
 router = APIRouter()
@@ -67,7 +68,7 @@ async def api_register_agent(req: RegisterRequest, _=Depends(_require_token)):
 
     from nacl.encoding import HexEncoder
     pk_hex = signing_key.encode(HexEncoder).decode()
-    await register_agent(did, profile_dict, is_local=True, private_key_hex=pk_hex)
+    await register_agent(did, profile_dict, is_local=True, private_key_hex=pk_hex, worker_type=req.worker_type)
 
     bind_token_to_did(did)
 
@@ -398,3 +399,80 @@ async def api_get_owner_profile(owner_did: str):
     if not owner:
         raise HTTPException(404, "Owner not found")
     return owner["profile"]
+
+
+@router.get("/owner/workers/{owner_did}")
+async def api_list_workers(owner_did: str, actor_did: str, _=Depends(_require_token)):
+    """D-SEC-01: 返回 owner 下所有非秘书子 Agent 的 Worker Registry 信息。"""
+    await _verify_actor_is_owner(actor_did)
+    if actor_did != owner_did:
+        raise HTTPException(403, "Actor cannot list another owner's workers")
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found")
+    workers = await list_workers(owner_did)
+    return {"owner_did": owner_did, "workers": workers, "count": len(workers)}
+
+
+@router.get("/owner/workers/v2/{owner_did}")
+async def api_list_workers_v2(
+    owner_did: str,
+    actor_did: str,
+    role: str = None,
+    presence: str = None,
+    _=Depends(_require_token),
+):
+    """D-SEC-01 Phase B: 返回 Worker Registry（含 presence 状态），支持按角色和状态过滤。"""
+    await _verify_actor_is_owner(actor_did)
+    if actor_did != owner_did:
+        raise HTTPException(403, "Actor cannot list another owner's workers")
+    owner = await get_owner(owner_did)
+    if not owner:
+        raise HTTPException(404, "Owner not found")
+    if presence and presence not in ("available", "busy", "offline", "blocked", "needs_human"):
+        raise HTTPException(400, "Invalid presence. Must be: available, busy, offline, blocked, needs_human")
+    workers = await list_workers_v2(owner_did, role=role, presence=presence)
+    return {"owner_did": owner_did, "workers": workers, "count": len(workers)}
+
+
+@router.get("/workers/{did}/presence")
+async def api_get_worker_presence(did: str, actor_did: str, _=Depends(_require_token)):
+    """D-SEC-01 Phase B: 获取单个 Worker 的 presence 状态。"""
+    await _verify_actor(actor_did)
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    presence = await get_worker_presence(did)
+    return {"did": did, **presence}
+
+
+@router.patch("/workers/{did}/blocked")
+async def api_set_worker_blocked(did: str, blocked: bool, actor_did: str, reason: str = "", _=Depends(_require_token)):
+    """D-SEC-01 Phase B: 手动标记 Worker 为 blocked 或解除。"""
+    await _verify_actor(actor_did)
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    owner_did = agent.get("owner_did")
+    if not owner_did:
+        raise HTTPException(403, "Worker is not bound to an owner")
+    if actor_did != owner_did:
+        raise HTTPException(403, "Actor is not the owner of this worker")
+    await set_worker_blocked(did, blocked, reason)
+    return {"status": "ok", "did": did, "blocked": blocked}
+
+
+@router.patch("/agents/{did}/worker-type")
+async def api_set_worker_type(did: str, worker_type: str, actor_did: str, _=Depends(_require_token)):
+    """D-SEC-01: 设置 Agent 的 worker_type（resident / interactive_cli / service_worker）。"""
+    await _verify_actor(actor_did)
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    owner_did = agent.get("owner_did")
+    if owner_did and actor_did != owner_did:
+        raise HTTPException(403, "Actor is not the owner of this agent")
+    if worker_type not in ("resident", "interactive_cli", "service_worker"):
+        raise HTTPException(400, "Invalid worker_type. Must be: resident, interactive_cli, service_worker")
+    await set_worker_type(did, worker_type)
+    return {"status": "ok", "did": did, "worker_type": worker_type}

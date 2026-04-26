@@ -46,6 +46,12 @@ from .discussion import (
 )
 from .emergency import EmergencyController, EmergencyConfig
 from .enclave import EnclaveManager, EnclaveProxy, EnclaveInfo, VaultEntry
+from .owner import OwnerClient
+from .team import TeamClient
+from .secretary import SecretaryClient
+from .runs import RunClient
+from .worker import WorkerRuntime
+from .orchestration import OrchestrationClient
 
 
 # Default Push callback URL for SDK (local webhook server)
@@ -135,10 +141,58 @@ class AgentNexusClient:
         # Enclave Manager
         self._enclave_manager: Optional[EnclaveManager] = None
 
+        # Orchestration SDK facades
+        self.owner = OwnerClient(self)
+        self.team = TeamClient(self)
+        self.secretary = SecretaryClient(self)
+        self.runs = RunClient(self)
+        self.worker = WorkerRuntime(self)
+        self.orchestration = OrchestrationClient(self)
+
         # Polling state
         self._poll_interval = 2.0  # seconds
         self._poll_backoff = 1.0   # multiplier
         self._max_backoff = 30.0   # max interval
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Optional[dict] = None,
+        params: Optional[dict] = None,
+        auth: bool = True,
+    ) -> dict:
+        """Internal HTTP helper used by higher-level SDK facades."""
+        if not self._session:
+            raise RuntimeError("Client not connected")
+
+        headers = {}
+        if auth and self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        url = f"{self.daemon_url}{path}"
+        async with self._session.request(
+            method.upper(),
+            url,
+            headers=headers,
+            json=json,
+            params=params,
+        ) as resp:
+            if resp.status == 401:
+                raise AuthenticationError("Invalid or missing token")
+            if resp.status == 403:
+                raise PermissionError(await resp.text())
+            if resp.status == 404:
+                raise KeyError(await resp.text())
+            if resp.status < 200 or resp.status >= 300:
+                raise AgentNexusError(await resp.text())
+            if resp.status == 204:
+                return {}
+            try:
+                return await resp.json()
+            except Exception:
+                return {}
 
     def configure_emergency(
         self,
@@ -435,6 +489,7 @@ class AgentNexusClient:
         message_type: Optional[str] = None,
         protocol: Optional[str] = None,
         session_id: Optional[str] = None,
+        message_id: Optional[str] = None,
     ) -> dict:
         """
         Send a message to another Agent.
@@ -471,6 +526,8 @@ class AgentNexusClient:
 
         if session_id:
             payload["session_id"] = session_id
+        if message_id:
+            payload["message_id"] = message_id
 
         async with self._session.post(
             f"{self.daemon_url}/messages/send",
@@ -656,6 +713,9 @@ class AgentNexusClient:
         task_id: Optional[str] = None,
         progress: Optional[float] = None,
         error: Optional[str] = None,
+        output_ref: Optional[dict | str] = None,
+        reason: Optional[str] = None,
+        context: Optional[dict] = None,
     ) -> None:
         """Notify state/progress."""
         action = StateNotify(
@@ -663,6 +723,9 @@ class AgentNexusClient:
             status=status,
             progress=progress,
             error=error,
+            output_ref=output_ref,
+            reason=reason,
+            context=context,
         )
 
         await self.send(
@@ -818,11 +881,14 @@ class AgentNexusClient:
 
         async with self._session.get(
             f"{self.daemon_url}/messages/inbox/{self.agent_info.did}",
+            params={"actor_did": self.agent_info.did},
+            headers={"Authorization": f"Bearer {self.token}"} if self.token else None,
         ) as resp:
             if resp.status != 200:
                 raise MessageDeliveryError(f"Poll failed: {resp.status}")
 
-            messages = await resp.json()
+            payload = await resp.json()
+            messages = payload.get("messages", payload) if isinstance(payload, dict) else payload
 
             for msg_data in messages:
                 msg = Message(
@@ -834,6 +900,7 @@ class AgentNexusClient:
                     reply_to=msg_data.get("reply_to"),
                     message_type=msg_data.get("message_type"),
                     protocol=msg_data.get("protocol"),
+                    message_id=msg_data.get("message_id"),
                 )
 
                 await self._dispatch_message(msg)
@@ -849,7 +916,8 @@ class AgentNexusClient:
 
         async with self._session.get(
             f"{self.daemon_url}/messages/all/{self.agent_info.did}",
-            params={"limit": 1000},
+            params={"limit": 1000, "actor_did": self.agent_info.did},
+            headers={"Authorization": f"Bearer {self.token}"} if self.token else None,
         ) as resp:
             if resp.status != 200:
                 return []
@@ -866,6 +934,7 @@ class AgentNexusClient:
                     reply_to=msg_data.get("reply_to"),
                     message_type=msg_data.get("message_type"),
                     protocol=msg_data.get("protocol"),
+                    message_id=msg_data.get("message_id"),
                 )
                 for msg_data in messages
             ]
@@ -946,6 +1015,7 @@ class AgentNexusClient:
             and msg.message_type in self._action_callbacks
         ):
             callbacks = self._action_callbacks[msg.message_type]
+            content = None
             # Check for emergency_halt (state_notify with status="emergency_halt")
             if msg.message_type == ActionType.STATE_NOTIFY:
                 try:
@@ -964,10 +1034,28 @@ class AgentNexusClient:
                 except (json.JSONDecodeError, TypeError):
                     pass
 
+            if msg.message_type == ActionType.TASK_PROPOSE:
+                try:
+                    content = content if content is not None else (
+                        json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                    )
+                    action_msg = ActionMessage(
+                        from_did=msg.from_did,
+                        message_type=msg.message_type,
+                        content=content,
+                    )
+                    handled = await self.worker.handle_task_propose(action_msg)
+                    if handled:
+                        return
+                except json.JSONDecodeError:
+                    pass
+
             if callbacks:
                 # Parse content as action
                 try:
-                    content = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                    content = content if content is not None else (
+                        json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                    )
                     action_msg = ActionMessage(
                         from_did=msg.from_did,
                         message_type=msg.message_type,

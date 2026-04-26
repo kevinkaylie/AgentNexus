@@ -10,7 +10,7 @@ from agent_net.node._auth import (
 from agent_net.node._models import (
     CreateEnclaveRequest, UpdateEnclaveRequest,
     AddMemberRequest, UpdateMemberRequest,
-    VaultPutRequest, CreatePlaybookRunRequest,
+    VaultPutRequest, VaultDeleteRequest, CreatePlaybookRunRequest,
 )
 from agent_net.storage import (
     create_enclave, get_enclave, list_enclaves, update_enclave, delete_enclave,
@@ -23,6 +23,23 @@ from agent_net.storage import (
 )
 
 router = APIRouter()
+
+
+async def _verify_actor_can_create_enclave(owner_did: str, actor_did: str) -> None:
+    """Allow an owner, or that owner's secretary sub-agent, to create an Enclave."""
+    owner = await _verify_actor(owner_did)
+    if actor_did == owner_did:
+        return
+
+    actor = await _verify_actor(actor_did)
+    profile = actor.get("profile", {}) or {}
+    if actor.get("owner_did") == owner_did and profile.get("type") == "secretary":
+        return
+
+    raise HTTPException(
+        403,
+        f"{actor_did} cannot create an enclave for owner {owner['did']}",
+    )
 
 
 def _check_vault_permission(member: dict, required: str) -> None:
@@ -48,6 +65,7 @@ def _build_stages_status(stage_executions: list, playbook: dict) -> dict:
                 "assigned_did": exec_record["assigned_did"] if exec_record else "",
                 "task_id": exec_record["task_id"] if exec_record else "",
                 "output_ref": exec_record["output_ref"] if exec_record else "",
+                "retry_count": exec_record["retry_count"] if exec_record else 0,
             }
     return stages_status
 
@@ -57,7 +75,8 @@ def _build_stages_status(stage_executions: list, playbook: dict) -> dict:
 @router.post("/enclaves")
 async def api_create_enclave(req: CreateEnclaveRequest, _=Depends(_require_token)):
     from agent_net.enclave.models import Enclave
-    await _verify_actor(req.owner_did)
+    actor_did = req.actor_did or req.owner_did
+    await _verify_actor_can_create_enclave(req.owner_did, actor_did)
     enclave_id = Enclave.gen_id()
     await create_enclave(
         enclave_id=enclave_id, name=req.name, owner_did=req.owner_did,
@@ -74,6 +93,12 @@ async def api_create_enclave(req: CreateEnclaveRequest, _=Depends(_require_token
         await add_enclave_member(
             enclave_id=enclave_id, did=req.owner_did,
             role="owner", permissions="admin", handbook="Enclave owner",
+        )
+    actor_member = await get_enclave_member(enclave_id, actor_did)
+    if actor_did != req.owner_did and not actor_member:
+        await add_enclave_member(
+            enclave_id=enclave_id, did=actor_did,
+            role="secretary", permissions="rw", handbook="Owner secretary",
         )
     return {"status": "ok", "enclave_id": enclave_id}
 
@@ -194,10 +219,10 @@ async def api_vault_put(enclave_id: str, key: str, req: VaultPutRequest, _=Depen
 
 
 @router.delete("/enclaves/{enclave_id}/vault/{key:path}")
-async def api_vault_delete(enclave_id: str, key: str, actor_did: str, _=Depends(_require_token)):
-    member = await _verify_actor_is_enclave_member(enclave_id, actor_did)
+async def api_vault_delete(enclave_id: str, key: str, req: VaultDeleteRequest, _=Depends(_require_token)):
+    member = await _verify_actor_is_enclave_member(enclave_id, req.author_did)
     _check_vault_permission(member, "rw")
-    ok = await vault_delete(enclave_id, key, actor_did)
+    ok = await vault_delete(enclave_id, key, req.author_did)
     if not ok:
         raise HTTPException(404, f"Key not found: {key}")
     return {"status": "ok", "deleted": True}

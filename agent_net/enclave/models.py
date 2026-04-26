@@ -250,6 +250,7 @@ class StageExecution:
     status: str = "pending"             # pending / active / completed / rejected / skipped
     task_id: str = ""                   # 关联的 task_id
     output_ref: str = ""                # 产出物引用（vault key）
+    retry_count: int = 0
     started_at: float = 0.0
     completed_at: float = 0.0
 
@@ -261,6 +262,7 @@ class StageExecution:
             "status": self.status,
             "task_id": self.task_id,
             "output_ref": self.output_ref,
+            "retry_count": self.retry_count,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
         }
@@ -274,6 +276,7 @@ class StageExecution:
             status=d.get("status", "pending"),
             task_id=d.get("task_id", ""),
             output_ref=d.get("output_ref", ""),
+            retry_count=d.get("retry_count", 0),
             started_at=d.get("started_at", 0.0),
             completed_at=d.get("completed_at", 0.0),
         )

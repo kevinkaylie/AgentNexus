@@ -447,6 +447,7 @@ class TestPlaybookOperations:
         assert exec_record is not None
         assert exec_record["status"] == "active"
         assert exec_record["assigned_did"] == "did:agentnexus:architect"
+        assert exec_record["retry_count"] == 0
 
         # 更新状态
         await update_stage_execution(run_id, "design", status="completed", output_ref="design_doc")
@@ -454,6 +455,33 @@ class TestPlaybookOperations:
         exec_record2 = await get_stage_execution(run_id, "design")
         assert exec_record2["status"] == "completed"
         assert exec_record2["output_ref"] == "design_doc"
+
+        # 重复创建同一阶段应重新分配并递增 retry_count
+        ok2 = await create_stage_execution(
+            run_id=run_id,
+            stage_name="design",
+            assigned_did="did:agentnexus:architect2",
+            task_id="task_002",
+        )
+        assert ok2
+
+        exec_record3 = await get_stage_execution(run_id, "design")
+        assert exec_record3["status"] == "active"
+        assert exec_record3["assigned_did"] == "did:agentnexus:architect2"
+        assert exec_record3["task_id"] == "task_002"
+        assert exec_record3["output_ref"] == ""
+        assert exec_record3["retry_count"] == 1
+
+        await update_stage_execution(
+            run_id, "design",
+            retry_count=2,
+            task_id="task_003",
+            assigned_did="did:agentnexus:architect3",
+        )
+        exec_record4 = await get_stage_execution(run_id, "design")
+        assert exec_record4["retry_count"] == 2
+        assert exec_record4["task_id"] == "task_003"
+        assert exec_record4["assigned_did"] == "did:agentnexus:architect3"
 
 
 class TestLocalVaultBackend:

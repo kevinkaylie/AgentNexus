@@ -70,6 +70,7 @@
 | 设计文档索引 | [docs/design.md](docs/design.md) | 生效 |
 | 设计 v1.0+（活跃） | [docs/design/design-v1.0.md](docs/design/design-v1.0.md) | 生效 |
 | 设计 v0.x（归档） | [docs/design/design-v0.x.md](docs/design/design-v0.x.md) | 归档 |
+| 秘书与 Agent 团队协作编排专题 | [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | 活跃 |
 
 ### 变更追踪
 

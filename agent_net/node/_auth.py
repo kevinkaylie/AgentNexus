@@ -115,6 +115,15 @@ async def _verify_actor_is_owner(actor_did: str) -> dict:
     return owner
 
 
+async def _verify_actor_is_secretary(actor_did: str) -> dict:
+    """校验 actor_did 是本地注册的 Secretary 子 Agent。"""
+    from agent_net.storage import is_secretary
+    sec = await is_secretary(actor_did)
+    if not sec:
+        raise HTTPException(403, f"Not a registered secretary: {actor_did}")
+    return sec
+
+
 async def _verify_actor_can_access_did(actor_did: str, target_did: str) -> dict:
     """允许 DID 本人或其 Owner 访问目标 DID。"""
     actor = await _verify_actor(actor_did)

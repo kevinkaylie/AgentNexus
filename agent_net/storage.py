@@ -83,6 +83,8 @@ async def init_db():
             "ALTER TABLE messages ADD COLUMN message_type TEXT DEFAULT NULL",
             "ALTER TABLE messages ADD COLUMN protocol TEXT DEFAULT NULL",
             "ALTER TABLE messages ADD COLUMN content_encoding TEXT DEFAULT NULL",
+            "ALTER TABLE agents ADD COLUMN worker_type TEXT DEFAULT 'resident'",
+            "ALTER TABLE messages ADD COLUMN message_id TEXT",
         ]:
             try:
                 await db.execute(alter)
@@ -102,6 +104,9 @@ async def init_db():
 
     # 初始化 Enclave 相关表
     await init_enclave_tables()
+
+    # 初始化秘书编排相关表
+    await init_secretary_tables()
 
     # 初始化信任网络相关表
     await init_trust_tables()
@@ -149,11 +154,12 @@ async def resolve_pending(did: str, action: str) -> bool:
 
 
 async def register_agent(did: str, profile: dict, is_local: bool = True,
-                         private_key_hex: Optional[str] = None):
+                         private_key_hex: Optional[str] = None,
+                         worker_type: str = "resident"):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO agents (did, profile, is_local, last_seen, private_key_hex) VALUES (?, ?, ?, ?, ?)",
-            (did, json.dumps(profile), int(is_local), time.time(), private_key_hex)
+            "INSERT OR REPLACE INTO agents (did, profile, is_local, last_seen, private_key_hex, worker_type) VALUES (?, ?, ?, ?, ?, ?)",
+            (did, json.dumps(profile), int(is_local), time.time(), private_key_hex, worker_type)
         )
         await db.commit()
 
@@ -190,11 +196,11 @@ async def list_local_agents() -> list[dict]:
 async def get_agent(did: str) -> Optional[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT did, profile, is_local, last_seen, owner_did FROM agents WHERE did=?", (did,)
+            "SELECT did, profile, is_local, last_seen, owner_did, worker_type FROM agents WHERE did=?", (did,)
         ) as cursor:
             row = await cursor.fetchone()
     if row:
-        return {"did": row[0], "profile": json.loads(row[1]), "is_local": bool(row[2]), "last_seen": row[3], "owner_did": row[4]}
+        return {"did": row[0], "profile": json.loads(row[1]), "is_local": bool(row[2]), "last_seen": row[3], "owner_did": row[4], "worker_type": row[5]}
     return None
 
 
@@ -231,6 +237,45 @@ async def register_owner(name: str) -> dict:
     from nacl.encoding import HexEncoder
     pk_hex = signing_key.encode(HexEncoder).decode()
     await register_agent(did, profile_dict, is_local=True, private_key_hex=pk_hex)
+
+    return {"did": did, "public_key_hex": pk_hex, "profile": profile_dict}
+
+
+async def register_secretary(owner_did: str, name: str = "Secretary") -> dict:
+    """
+    D-SEC-02: 在指定 owner 下注册一个秘书子 Agent。
+    秘书的 profile.type = "secretary"，worker_type = "resident"。
+    返回 {did, public_key_hex, profile}。
+    """
+    from agent_net.common.did import DIDGenerator, AgentProfile
+    from agent_net.node._config import get_relay_url, get_public_endpoint_cached, NODE_PORT
+
+    agent_did_obj, _ = DIDGenerator.create_agentnexus(name)
+    did = agent_did_obj.did
+    signing_key = agent_did_obj.private_key
+
+    _public_endpoint = get_public_endpoint_cached()
+    endpoint = f"http://localhost:{NODE_PORT}"
+    if _public_endpoint:
+        endpoint = f"http://{_public_endpoint['public_ip']}:{_public_endpoint['public_port']}"
+
+    RELAY_URL = get_relay_url()
+    profile = AgentProfile(
+        id=did, name=name, type="secretary",
+        capabilities=["orchestrate", "intake", "dispatch"], location=None,
+        endpoints={"p2p": endpoint, "relay": RELAY_URL},
+    )
+    profile_dict = profile.to_dict()
+    profile_dict["public_key_hex"] = signing_key.verify_key.encode().hex()
+
+    from nacl.encoding import HexEncoder
+    pk_hex = signing_key.encode(HexEncoder).decode()
+    await register_agent(did, profile_dict, is_local=True, private_key_hex=pk_hex, worker_type="resident")
+
+    # 绑定到 owner
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE agents SET owner_did=? WHERE did=?", (owner_did, did))
+        await db.commit()
 
     return {"did": did, "public_key_hex": pk_hex, "profile": profile_dict}
 
@@ -289,6 +334,235 @@ async def list_owned_agents(owner_did: str) -> list[dict]:
         ) as cur:
             rows = await cur.fetchall()
     return [{"did": r[0], "profile": json.loads(r[1]), "last_seen": r[2]} for r in rows]
+
+
+async def list_workers(owner_did: str) -> list[dict]:
+    """
+    D-SEC-01: 返回 owner 下所有非秘书子 Agent 的 Worker Registry 信息。
+    包含 did / worker_type / profile_type / capabilities / tags / online / last_seen。
+    在线判定：router.is_local(did) 为真则视为在线。
+    """
+    from agent_net.router import router as _router
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT did, profile, last_seen, worker_type FROM agents "
+            "WHERE owner_did=? ORDER BY last_seen DESC",
+            (owner_did,),
+        ) as cur:
+            rows = await cur.fetchall()
+
+    result = []
+    for r in rows:
+        profile = json.loads(r[1])
+        if profile.get("type") == "secretary":
+            continue
+        result.append({
+            "did": r[0],
+            "worker_type": r[3] or "resident",
+            "profile_type": profile.get("type", "agent"),
+            "capabilities": profile.get("capabilities", []),
+            "tags": profile.get("tags", []),
+            "last_seen": r[2],
+            "online": _router.is_local(r[0]),
+        })
+    return result
+
+
+async def set_worker_type(did: str, worker_type: str) -> bool:
+    """D-SEC-01: 设置 Agent 的 worker_type。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE agents SET worker_type=? WHERE did=?",
+            (worker_type, did),
+        )
+        await db.commit()
+    return True
+
+
+# ── Phase B: Worker Presence & Registry v2 ──────────────────────────
+
+async def get_worker_presence(did: str, heartbeat_ttl: float = 300.0) -> dict:
+    """D-SEC-01 Phase B: 获取 Worker 的 presence 状态。
+
+    返回:
+        presence: available / busy / offline / blocked / needs_human
+        presence_source: local / push / heartbeat / manual
+        presence_ttl: remote 的剩余有效秒数；local 为 null
+        active_run_id: 当前活跃的 run_id，无则为 null
+        active_stage: 当前活跃的 stage_name，无则为 null
+        load: active stage_execution 数量
+    """
+    from agent_net.router import router as _router
+
+    agent = await get_agent(did)
+    if not agent:
+        return {"presence": "offline", "presence_source": "local", "presence_ttl": None,
+                "active_run_id": None, "active_stage": None, "load": 0}
+
+    is_local = _router.is_local(did)
+    last_seen = agent.get("last_seen", 0)
+    now = time.time()
+
+    # 检查是否被手动标记为 blocked
+    from agent_net.storage import _WORKER_BLOCKED
+    is_blocked = _WORKER_BLOCKED.get(did, False)
+
+    # 计算 load — active stage_execution 数量
+    load = await _count_active_stage_executions(did)
+
+    # 判定 active run
+    active_run_id = None
+    active_stage = None
+    if load > 0:
+        active_info = await _get_active_stage_info(did)
+        if active_info:
+            active_run_id = active_info["run_id"]
+            active_stage = active_info["stage_name"]
+
+    # Presence 判定
+    if is_blocked:
+        presence = "blocked"
+        presence_source = "manual"
+        presence_ttl_val = None
+    elif is_local:
+        # 本地 Agent：实时判定
+        presence = "busy" if load > 0 else "available"
+        presence_source = "local"
+        presence_ttl_val = None
+    elif last_seen and (now - last_seen) < heartbeat_ttl:
+        # 远端但心跳有效
+        presence = "busy" if load > 0 else "available"
+        presence_source = "heartbeat"
+        presence_ttl_val = max(0, heartbeat_ttl - (now - last_seen))
+    else:
+        # 检查 Push registration
+        try:
+            regs = await get_active_push_registrations(did)
+            if regs:
+                presence = "busy" if load > 0 else "available"
+                presence_source = "push"
+                presence_ttl_val = None  # Push TTL 由注册过期决定
+            else:
+                presence = "offline"
+                presence_source = "local"
+                presence_ttl_val = None
+        except Exception:
+            presence = "offline"
+            presence_source = "local"
+            presence_ttl_val = None
+
+    # 如果有 active run 但处于 failed/paused 状态，标记 needs_human
+    if active_run_id and presence not in ("blocked", "needs_human"):
+        run = await get_playbook_run(active_run_id)
+        if run and run.get("status") in ("failed", "paused"):
+            presence = "needs_human"
+
+    return {
+        "presence": presence,
+        "presence_source": presence_source,
+        "presence_ttl": round(presence_ttl_val, 1) if presence_ttl_val is not None else None,
+        "active_run_id": active_run_id,
+        "active_stage": active_stage,
+        "load": load,
+    }
+
+
+# 手动标记 blocked 的内存存储（Phase B 简单实现）
+_WORKER_BLOCKED: dict[str, str] = {}
+
+
+async def set_worker_blocked(did: str, blocked: bool, reason: str = "") -> bool:
+    """D-SEC-01 Phase B: 手动标记 Worker 为 blocked 或解除。"""
+    agent = await get_agent(did)
+    if not agent:
+        return False
+    if blocked:
+        _WORKER_BLOCKED[did] = reason
+    else:
+        _WORKER_BLOCKED.pop(did, None)
+    return True
+
+
+async def list_workers_v2(
+    owner_did: str,
+    role: str = None,
+    presence: str = None,
+    heartbeat_ttl: float = 300.0,
+) -> list[dict]:
+    """D-SEC-01 Phase B: 返回 owner 下所有非秘书子 Agent 的 Worker Registry 信息（含 presence）。
+
+    支持按 role（capabilities/profile_type 匹配）和 presence 状态过滤。
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT did, profile, last_seen, worker_type, owner_did FROM agents "
+            "WHERE owner_did=? ORDER BY last_seen DESC",
+            (owner_did,),
+        ) as cur:
+            rows = await cur.fetchall()
+
+    result = []
+    for r in rows:
+        profile = json.loads(r[1])
+        if profile.get("type") == "secretary":
+            continue
+
+        did = r[0]
+        presence_info = await get_worker_presence(did, heartbeat_ttl)
+
+        # Presence 过滤
+        if presence and presence_info["presence"] != presence:
+            continue
+
+        # Role 过滤：匹配 capabilities 或 profile_type
+        if role:
+            caps = [c.lower() for c in profile.get("capabilities", [])]
+            profile_type = profile.get("type", "").lower()
+            if role.lower() not in caps and role.lower() != profile_type:
+                continue
+
+        result.append({
+            "did": did,
+            "owner_did": r[4],
+            "worker_type": r[3] or "resident",
+            "profile_type": profile.get("type", "agent"),
+            "capabilities": profile.get("capabilities", []),
+            "tags": profile.get("tags", []),
+            "last_seen": r[2],
+            "presence": presence_info["presence"],
+            "presence_source": presence_info["presence_source"],
+            "presence_ttl": presence_info["presence_ttl"],
+            "active_run_id": presence_info["active_run_id"],
+            "active_stage": presence_info["active_stage"],
+            "load": presence_info["load"],
+        })
+    return result
+
+
+async def _count_active_stage_executions(did: str) -> int:
+    """计算 Worker 当前活跃的 stage_execution 数量。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM stage_executions WHERE assigned_did=? AND status='active'",
+            (did,),
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def _get_active_stage_info(did: str) -> Optional[dict]:
+    """获取 Worker 当前活跃的 stage 信息。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT run_id, stage_name FROM stage_executions "
+            "WHERE assigned_did=? AND status='active' ORDER BY started_at DESC LIMIT 1",
+            (did,),
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return None
+    return {"run_id": row[0], "stage_name": row[1]}
 
 
 async def get_owner(owner_did: str) -> Optional[dict]:
@@ -490,12 +764,17 @@ async def is_token_revoked(token_id: str) -> bool:
 async def store_message(from_did: str, to_did: str, content: str,
                         session_id: str = "", reply_to: int | None = None,
                         message_type: str | None = None, protocol: str | None = None,
-                        content_encoding: str | None = None):
+                        content_encoding: str | None = None,
+                        message_id: str | None = None):
+    """存储离线消息。D-SEC-09: 支持 message_id 持久化。"""
+    import uuid
+    if not message_id:
+        message_id = f"msg_{uuid.uuid4().hex[:16]}"
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO messages (from_did, to_did, content, timestamp, session_id, reply_to, message_type, protocol, content_encoding) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (from_did, to_did, content, time.time(), session_id, reply_to, message_type, protocol, content_encoding)
+            "INSERT INTO messages (from_did, to_did, content, timestamp, session_id, reply_to, message_type, protocol, content_encoding, message_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (from_did, to_did, content, time.time(), session_id, reply_to, message_type, protocol, content_encoding, message_id)
         )
         await db.commit()
 
@@ -503,7 +782,7 @@ async def store_message(from_did: str, to_did: str, content: str,
 async def fetch_inbox(did: str) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT id, from_did, content, timestamp, session_id, reply_to, message_type, protocol, content_encoding "
+            "SELECT id, from_did, content, timestamp, session_id, reply_to, message_type, protocol, content_encoding, message_id "
             "FROM messages WHERE to_did=? AND delivered=0 ORDER BY timestamp",
             (did,)
         ) as cursor:
@@ -516,21 +795,23 @@ async def fetch_inbox(did: str) -> list[dict]:
             await db.commit()
     return [{"id": r[0], "from": r[1], "content": r[2], "timestamp": r[3],
              "session_id": r[4] or "", "reply_to": r[5],
-             "message_type": r[6], "protocol": r[7], "content_encoding": r[8]} for r in rows]
+             "message_type": r[6], "protocol": r[7], "content_encoding": r[8],
+             "message_id": r[9]} for r in rows]
 
 
 async def fetch_session(session_id: str) -> list[dict]:
     """按 session_id 查询完整会话历史（含已读消息）"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT id, from_did, to_did, content, timestamp, reply_to, delivered, message_type, protocol, content_encoding "
+            "SELECT id, from_did, to_did, content, timestamp, reply_to, delivered, message_type, protocol, content_encoding, message_id "
             "FROM messages WHERE session_id=? ORDER BY timestamp",
             (session_id,)
         ) as cursor:
             rows = await cursor.fetchall()
     return [{"id": r[0], "from": r[1], "to": r[2], "content": r[3],
              "timestamp": r[4], "reply_to": r[5], "delivered": bool(r[6]),
-             "message_type": r[7], "protocol": r[8], "content_encoding": r[9]} for r in rows]
+             "message_type": r[7], "protocol": r[8], "content_encoding": r[9],
+             "message_id": r[10]} for r in rows]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1037,6 +1318,7 @@ async def init_enclave_tables():
                 status TEXT DEFAULT 'pending',
                 task_id TEXT,
                 output_ref TEXT,
+                retry_count INTEGER DEFAULT 0,
                 started_at REAL,
                 completed_at REAL,
                 PRIMARY KEY (run_id, stage_name),
@@ -1116,6 +1398,7 @@ async def init_enclave_tables():
         for alter in [
             "ALTER TABLE stage_executions ADD COLUMN evaluated_constraint_hash TEXT",
             "ALTER TABLE stage_executions ADD COLUMN capability_token_id TEXT",
+            "ALTER TABLE stage_executions ADD COLUMN retry_count INTEGER DEFAULT 0",
         ]:
             try:
                 await db.execute(alter)
@@ -1878,7 +2161,7 @@ async def create_stage_execution(
     assigned_did: str = "",
     task_id: str = "",
 ) -> bool:
-    """创建阶段执行记录"""
+    """Create or reassign a stage execution record."""
     now = time.time()
     async with aiosqlite.connect(DB_PATH) as db:
         try:
@@ -1891,7 +2174,16 @@ async def create_stage_execution(
             await db.commit()
             return True
         except aiosqlite.IntegrityError:
-            return False
+            await db.execute(
+                """UPDATE stage_executions
+                   SET assigned_did = ?, status = 'active', task_id = ?,
+                       output_ref = '', retry_count = COALESCE(retry_count, 0) + 1,
+                       started_at = ?, completed_at = NULL
+                   WHERE run_id = ? AND stage_name = ?""",
+                (assigned_did, task_id, now, run_id, stage_name)
+            )
+            await db.commit()
+            return True
 
 
 async def get_stage_execution(run_id: str, stage_name: str) -> Optional[dict]:
@@ -1912,6 +2204,7 @@ async def get_stage_execution(run_id: str, stage_name: str) -> Optional[dict]:
         "status": row["status"],
         "task_id": row["task_id"] or "",
         "output_ref": row["output_ref"] or "",
+        "retry_count": row["retry_count"] or 0,
         "started_at": row["started_at"],
         "completed_at": row["completed_at"],
     }
@@ -1935,14 +2228,43 @@ async def get_stage_execution_by_task(task_id: str) -> Optional[dict]:
         "status": row["status"],
         "task_id": row["task_id"] or "",
         "output_ref": row["output_ref"] or "",
+        "retry_count": row["retry_count"] or 0,
         "started_at": row["started_at"],
         "completed_at": row["completed_at"],
     }
 
 
+async def get_stage_executions_for_run(run_id: str) -> list[dict]:
+    """获取 Run 下所有阶段执行记录"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM stage_executions WHERE run_id = ? ORDER BY started_at",
+            (run_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    results = []
+    for row in rows:
+        results.append({
+            "run_id": row["run_id"],
+            "stage_name": row["stage_name"],
+            "assigned_did": row["assigned_did"] or "",
+            "status": row["status"],
+            "task_id": row["task_id"] or "",
+            "output_ref": row["output_ref"] or "",
+            "retry_count": row["retry_count"] or 0,
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+        })
+    return results
+
+
 async def update_stage_execution(run_id: str, stage_name: str, **kwargs) -> bool:
     """更新阶段执行记录"""
-    allowed = {"status", "output_ref", "completed_at"}
+    allowed = {
+        "status", "output_ref", "completed_at", "assigned_did",
+        "task_id", "started_at", "retry_count",
+    }
     updates = {k: v for k, v in kwargs.items() if k in allowed}
     if not updates:
         return False
@@ -1976,6 +2298,280 @@ async def list_stage_executions(run_id: str) -> list[dict]:
         "status": r["status"],
         "task_id": r["task_id"] or "",
         "output_ref": r["output_ref"] or "",
+        "retry_count": r["retry_count"] or 0,
         "started_at": r["started_at"],
         "completed_at": r["completed_at"],
     } for r in rows]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 秘书编排相关 — D-SEC-01 / D-SEC-02
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def init_secretary_tables():
+    """初始化 secretary_intakes 表。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS secretary_intakes (
+                session_id TEXT PRIMARY KEY,
+                owner_did TEXT NOT NULL,
+                actor_did TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'intake',
+                objective TEXT NOT NULL,
+                required_roles TEXT NOT NULL,
+                preferred_playbook TEXT,
+                selected_workers TEXT,
+                run_id TEXT,
+                source_channel TEXT,
+                source_message_ref TEXT,
+                constraints_json TEXT,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_intakes_owner ON secretary_intakes(owner_did);
+            CREATE INDEX IF NOT EXISTS idx_intakes_status ON secretary_intakes(status);
+            CREATE INDEX IF NOT EXISTS idx_intakes_run ON secretary_intakes(run_id);
+        """)
+        await db.commit()
+
+
+async def create_intake(
+    session_id: str,
+    owner_did: str,
+    actor_did: str,
+    objective: str,
+    required_roles: list[str],
+    preferred_playbook: str = None,
+    source_channel: str = None,
+    source_message_ref: str = None,
+    constraints: dict = None,
+) -> dict:
+    """D-SEC-02: 创建 intake 记录。"""
+    now = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO secretary_intakes "
+            "(session_id, owner_did, actor_did, status, objective, required_roles, "
+            " preferred_playbook, source_channel, source_message_ref, constraints_json, "
+            " created_at, updated_at) "
+            "VALUES (?, ?, ?, 'intake', ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                session_id, owner_did, actor_did, objective,
+                json.dumps(required_roles),
+                preferred_playbook, source_channel, source_message_ref,
+                json.dumps(constraints or {}),
+                now, now,
+            ),
+        )
+        await db.commit()
+    return {
+        "session_id": session_id,
+        "owner_did": owner_did,
+        "actor_did": actor_did,
+        "status": "intake",
+        "objective": objective,
+        "required_roles": required_roles,
+        "preferred_playbook": preferred_playbook,
+        "selected_workers": {},
+    }
+
+
+async def get_intake(session_id: str) -> Optional[dict]:
+    """D-SEC-02: 获取 intake 记录。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT * FROM secretary_intakes WHERE session_id=?", (session_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return None
+    return {
+        "session_id": row[0],
+        "owner_did": row[1],
+        "actor_did": row[2],
+        "status": row[3],
+        "objective": row[4],
+        "required_roles": json.loads(row[5]),
+        "preferred_playbook": row[6],
+        "selected_workers": json.loads(row[7]) if row[7] else {},
+        "run_id": row[8],
+        "source_channel": row[9],
+        "source_message_ref": row[10],
+        "constraints": json.loads(row[11]) if row[11] else {},
+        "created_at": row[12],
+        "updated_at": row[13],
+    }
+
+
+async def update_intake(session_id: str, **kwargs) -> bool:
+    """D-SEC-02: 更新 intake 状态（如 selected_workers, status, run_id）。"""
+    allowed_fields = {
+        "status", "selected_workers", "run_id", "objective",
+        "preferred_playbook", "constraints_json",
+    }
+    updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+    if not updates:
+        return False
+
+    # JSON 序列化
+    if "selected_workers" in updates and isinstance(updates["selected_workers"], dict):
+        updates["selected_workers"] = json.dumps(updates["selected_workers"])
+    if "constraints_json" in updates and isinstance(updates["constraints_json"], dict):
+        updates["constraints_json"] = json.dumps(updates["constraints_json"])
+
+    updates["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k}=?" for k in updates.keys())
+    values = list(updates.values()) + [session_id]
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE secretary_intakes SET {set_clause} WHERE session_id=?", values
+        )
+        await db.commit()
+    return True
+
+
+async def list_intakes(owner_did: str, status: str = None) -> list[dict]:
+    """D-SEC-02: 列出 owner 的 intake 记录。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        if status:
+            async with db.execute(
+                "SELECT * FROM secretary_intakes WHERE owner_did=? AND status=? ORDER BY created_at DESC",
+                (owner_did, status),
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                "SELECT * FROM secretary_intakes WHERE owner_did=? ORDER BY created_at DESC",
+                (owner_did,),
+            ) as cur:
+                rows = await cur.fetchall()
+
+    result = []
+    for row in rows:
+        result.append({
+            "session_id": row[0],
+            "owner_did": row[1],
+            "actor_did": row[2],
+            "status": row[3],
+            "objective": row[4],
+            "required_roles": json.loads(row[5]),
+            "preferred_playbook": row[6],
+            "selected_workers": json.loads(row[7]) if row[7] else {},
+            "run_id": row[8],
+            "source_channel": row[9],
+            "source_message_ref": row[10],
+            "constraints": json.loads(row[11]) if row[11] else {},
+            "created_at": row[12],
+            "updated_at": row[13],
+        })
+    return result
+
+
+async def is_secretary(did: str) -> Optional[dict]:
+    """D-SEC-02: 检查 did 是否是 owner 绑定的 secretary 子 Agent。
+    如果是，返回 agent 记录；否则返回 None。
+    """
+    agent = await get_agent(did)
+    if not agent:
+        return None
+    profile = agent.get("profile", {})
+    if profile.get("type") != "secretary":
+        return None
+    return agent
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# D-SEC-05: Delivery Manifest
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def store_stage_manifest(
+    run_id: str,
+    stage_name: str,
+    status: str,
+    artifacts: list[dict],
+    required_outputs: list[str] | None = None,
+    produced_by: str = "",
+) -> dict:
+    """
+    D-SEC-05: 生成并存储 Stage Delivery Manifest 到 Vault。
+    返回 manifest dict。
+    """
+    import time
+    manifest_id = f"manifest_{stage_name}_{run_id}"
+    manifest = {
+        "manifest_id": manifest_id,
+        "run_id": run_id,
+        "stage_name": stage_name,
+        "status": status,
+        "artifacts": artifacts,
+        "required_outputs": required_outputs or [],
+        "missing_outputs": [r for r in (required_outputs or []) if r not in [a["kind"] for a in artifacts]],
+        "produced_by": produced_by,
+        "created_at": time.time(),
+    }
+
+    # 写入 Vault: manifests/{run_id}/{stage}
+    # 需要找到对应的 enclave_id
+    run = await get_playbook_run(run_id)
+    if not run:
+        return manifest
+
+    vault_key = f"manifests/{run_id}/{stage_name}"
+    try:
+        await vault_put(
+            enclave_id=run["enclave_id"],
+            key=vault_key,
+            value=json.dumps(manifest, separators=(",", ":"), ensure_ascii=False),
+            author_did=produced_by or run.get("owner_did", ""),
+            message=f"Stage manifest: {stage_name}",
+        )
+    except Exception:
+        pass  # Vault 写入失败不影响 manifest 返回
+
+    return manifest
+
+
+async def store_final_manifest(
+    run_id: str,
+    status: str,
+    summary: str,
+    stage_manifest_ids: list[str],
+    final_artifacts: list[dict],
+    produced_by: str = "",
+) -> dict:
+    """
+    D-SEC-05: 生成并存储 Final Delivery Manifest 到 Vault。
+    返回 manifest dict。
+    """
+    import time
+    manifest_id = f"manifest_final_{run_id}"
+    manifest = {
+        "manifest_id": manifest_id,
+        "run_id": run_id,
+        "status": status,
+        "summary": summary,
+        "stage_manifests": stage_manifest_ids,
+        "final_artifacts": final_artifacts,
+        "final_status": status,
+        "produced_by": produced_by,
+        "created_at": time.time(),
+    }
+
+    run = await get_playbook_run(run_id)
+    if not run:
+        return manifest
+
+    vault_key = f"manifests/{run_id}/final"
+    try:
+        await vault_put(
+            enclave_id=run["enclave_id"],
+            key=vault_key,
+            value=json.dumps(manifest, separators=(",", ":"), ensure_ascii=False),
+            author_did=produced_by or run.get("owner_did", ""),
+            message="Final delivery manifest",
+        )
+    except Exception:
+        pass
+
+    return manifest

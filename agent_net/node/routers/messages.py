@@ -1,11 +1,14 @@
 """消息收发、通讯录、STUN、deliver"""
 import json
+import logging
 import time
 import uuid
 from collections import OrderedDict
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 
 from agent_net.node._auth import (
     _require_token,
@@ -78,6 +81,8 @@ async def _actor_owns_did(actor_did: str, did: str) -> bool:
 async def _verify_deliver_signature(payload: dict) -> None:
     signature = payload.get("signature")
     if not signature:
+        logger.warning("Unsigned delivery from %s to %s (message_id=%s)",
+                       payload.get("from"), payload.get("to"), payload.get("message_id"))
         return
     message_id = payload.get("message_id")
     timestamp = payload.get("timestamp")
@@ -114,7 +119,7 @@ async def api_send_message(req: SendMessageRequest, _=Depends(_require_token)):
     result = await msg_router.route_message(
         req.from_did, req.to_did, content_str, session_id, req.reply_to,
         message_type=req.message_type, protocol=req.protocol,
-        content_encoding=content_encoding,
+        content_encoding=content_encoding, message_id=req.message_id,
     )
 
     # 自动记录交互（0.9-05）
@@ -136,7 +141,7 @@ async def api_send_message(req: SendMessageRequest, _=Depends(_require_token)):
 async def api_fetch_inbox(did: str, actor_did: str, _=Depends(_require_token)):
     await _verify_actor_can_access_did(actor_did, did)
     messages = await fetch_inbox(did)
-    return {"messages": messages, "count": len(messages)}
+    return {"messages": messages, "count": len(messages), "note": "message_id included for replay protection"}
 
 
 @router.get("/messages/all/{did}")
@@ -147,7 +152,7 @@ async def api_all_messages(did: str, actor_did: str, limit: int = 100, _=Depends
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT id, from_did, content, timestamp, session_id, reply_to, "
-            "message_type, protocol, content_encoding "
+            "message_type, protocol, content_encoding, message_id "
             "FROM messages WHERE to_did=? ORDER BY timestamp DESC LIMIT ?",
             (did, limit),
         ) as cursor:
@@ -156,6 +161,7 @@ async def api_all_messages(did: str, actor_did: str, limit: int = 100, _=Depends
         "id": r[0], "from": r[1], "content": r[2], "timestamp": r[3],
         "session_id": r[4] or "", "reply_to": r[5],
         "message_type": r[6], "protocol": r[7], "content_encoding": r[8],
+        "message_id": r[9],
     } for r in rows]
     return {"messages": messages, "count": len(messages)}
 
@@ -164,21 +170,41 @@ async def api_all_messages(did: str, actor_did: str, limit: int = 100, _=Depends
 async def api_fetch_session(session_id: str, actor_did: str, _=Depends(_require_token)):
     await _verify_actor(actor_did)
     messages = await fetch_session(session_id)
+
+    # S1 优化：收集去重后的 DIDs 再批量校验，避免每条消息一次 DB 查询
+    related_dids: set[str] = set()
+    related_dids.add(actor_did)
+    for msg in messages:
+        fd = msg.get("from")
+        td = msg.get("to")
+        if fd:
+            related_dids.add(fd)
+        if td:
+            related_dids.add(td)
+
+    from agent_net.storage import get_agent
+    did_cache: dict[str, dict | None] = {}
+    for did in related_dids:
+        if did == actor_did:
+            did_cache[did] = {"did": did}
+            continue
+        did_cache[did] = await get_agent(did)
+
     allowed = False
     for msg in messages:
         from_did = msg.get("from")
         to_did = msg.get("to")
-        if (
-            from_did == actor_did
-            or to_did == actor_did
-            or (to_did and await _actor_owns_did(actor_did, to_did))
-            or (from_did and await _actor_owns_did(actor_did, from_did))
-        ):
+        if from_did == actor_did or to_did == actor_did:
+            allowed = True
+            break
+        target_did = from_did or to_did
+        target = did_cache.get(target_did)
+        if target and target.get("owner_did") == actor_did:
             allowed = True
             break
     if not allowed:
         raise HTTPException(403, "Actor is not a participant in this session")
-    return {"messages": messages, "count": len(messages), "session_id": session_id}
+    return {"messages": messages, "count": len(messages), "session_id": session_id, "note": "message_id included for replay protection"}
 
 
 @router.post("/contacts/add")
@@ -213,6 +239,7 @@ async def api_deliver(payload: dict):
         message_type=payload.get("message_type"),
         protocol=payload.get("protocol"),
         content_encoding=payload.get("content_encoding"),
+        message_id=payload.get("message_id"),
     )
 
 
