@@ -9,7 +9,7 @@
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
-  [![Tests](https://img.shields.io/badge/Tests-415%20passed-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
+  [![Tests](https://img.shields.io/badge/Tests-421%20passed-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
   [![CI](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml)
 
   **[中文](#中文) | [English](#english)**
@@ -171,56 +171,97 @@ nexus = await agentnexus.connect("Developer", caps=["Code", "Review"])
 await nexus.send(to_did="did:agentnexus:z6Mk...", content="Hello")
 ```
 
+Orchestration SDK:
+
+```python
+import agentnexus
+
+admin = await agentnexus.connect("Team Admin", caps=["Admin"])
+owner = await admin.owner.register("Kevin")
+
+secretary = await admin.secretary.register(owner.did, name="Team Secretary")
+
+developer = await agentnexus.connect("Developer", caps=["developer", "code"])
+await admin.owner.bind(owner.did, developer.agent_info.did)
+
+result = await admin.secretary.dispatch(
+    session_id="sess_login_001",
+    owner_did=owner.did,
+    actor_did=secretary.did,
+    objective="完成登录模块设计、实现、测试和评审",
+    required_roles=["developer"],
+)
+
+print(result.run_id, result.enclave_id)
+```
+
 完整教程见 [docs/quickstart.md](docs/quickstart.md)。
 
 ---
 
 ### 团队协作示例
 
-AgentNexus 支持从简单消息协作逐步升级到项目组编排。
+AgentNexus 当前推荐的团队协作入口是 Orchestration SDK：Owner DID 管理团队成员，Secretary Agent 代表 Owner 接单和调度，Worker Runtime 负责阶段执行与产物交付。
 
-#### 1. Action Layer：任务委派
+#### 1. Owner + Secretary + Worker
 
 ```python
-task_id = await nexus.propose_task(
-    to_did=developer_did,
-    title="实现登录接口",
-    required_caps=["Code"],
+admin = await agentnexus.connect("Team Admin", caps=["Admin"])
+owner = await admin.owner.register("Kevin")
+
+secretary = await admin.secretary.register(owner.did, name="Team Secretary")
+
+developer = await agentnexus.connect("Developer", caps=["developer", "code"])
+await admin.owner.bind(owner.did, developer.agent_info.did)
+
+result = await admin.secretary.dispatch(
+    session_id="sess_login_001",
+    owner_did=owner.did,
+    actor_did=secretary.did,
+    objective="完成登录模块设计、实现、测试和评审",
+    required_roles=["developer"],
+    source={"channel": "sdk", "message_ref": "msg_001"},
+)
+```
+
+#### 2. Worker Runtime：阶段执行
+
+```python
+worker = await agentnexus.connect(did=developer.agent_info.did)
+
+@worker.worker.on_stage(role="developer")
+async def handle_stage(ctx):
+    spec = await ctx.vault.get("design/spec.md")
+    patch = implement(spec.value)
+    await ctx.deliver(
+        kind="code_diff",
+        key="impl/diff.patch",
+        value=patch,
+        summary="完成登录模块实现",
+    )
+```
+
+每个阶段只接收必要的 Context Snapshot 和 Artifact Ref。正文产物写入 Enclave Vault，最终由 Delivery Manifest 汇总，避免 PM Agent 在上下文里携带完整聊天历史。
+
+#### 3. Run 查询与 Owner 接管
+
+```python
+status = await admin.runs.get_status(
+    result.enclave_id,
+    result.run_id,
+    actor_did=secretary.did,
 )
 
-await nexus.notify_state(
-    to_did=pm_did,
-    task_id=task_id,
-    status="completed",
-    output_ref="vault://artifact-ref",
+await admin.secretary.abort(
+    session_id="sess_login_001",
+    actor_did=owner.did,
+    reason="需求变更，终止本次 run",
 )
 ```
 
-#### 2. Enclave + Playbook：流程编排
+旧的 `send / propose_task / notify_state` Action Layer 仍然兼容，适合轻量点对点协作；复杂团队流程建议使用 Secretary + Enclave + Playbook 主链路。
 
-```text
-requirements
-  -> design
-  -> review_design
-  -> implement
-  -> review_code
-  -> final_delivery
-```
-
-每个阶段只接收必要的 Context Snapshot 和 Artifact Ref。正文产物写入 Vault，最终由 Delivery Manifest 汇总。
-
-#### 3. Secretary Agent：外部入口接单
-
-```text
-Webhook request
-  -> Secretary validates owner_did + actor_did
-  -> selects architect / developer / reviewer
-  -> creates Enclave
-  -> starts Playbook
-  -> returns run_id and final manifest
-```
-
-专题设计见 [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md)。
+专题设计见 [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) 和 [docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md)。
 
 ---
 
@@ -233,6 +274,7 @@ Webhook request
 | [docs/architecture.md](docs/architecture.md) | DID、Relay、路由、Gatekeeper、信任架构 |
 | [docs/design.md](docs/design.md) | 设计文档索引 |
 | [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | 常驻秘书与 Agent 团队协作编排 |
+| [docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md) | Orchestration SDK 改造 |
 | [docs/api-reference.md](docs/api-reference.md) | Daemon / Relay API |
 | [docs/mcp-setup.md](docs/mcp-setup.md) | MCP 工具和客户端配置 |
 | [docs/scenarios.md](docs/scenarios.md) | 单机、局域网、多应用、公网协作场景 |
@@ -316,6 +358,25 @@ nexus = await agentnexus.connect("Developer", caps=["Code", "Review"])
 await nexus.send(to_did="did:agentnexus:z6Mk...", content="Hello")
 ```
 
+Orchestration SDK:
+
+```python
+admin = await agentnexus.connect("Team Admin", caps=["Admin"])
+owner = await admin.owner.register("Kevin")
+secretary = await admin.secretary.register(owner.did, name="Team Secretary")
+
+developer = await agentnexus.connect("Developer", caps=["developer", "code"])
+await admin.owner.bind(owner.did, developer.agent_info.did)
+
+result = await admin.secretary.dispatch(
+    session_id="sess_login_001",
+    owner_did=owner.did,
+    actor_did=secretary.did,
+    objective="Implement and review login module",
+    required_roles=["developer"],
+)
+```
+
 ### Documentation
 
 | Doc | Content |
@@ -325,6 +386,7 @@ await nexus.send(to_did="did:agentnexus:z6Mk...", content="Hello")
 | [Architecture](docs/architecture.md) | DID, Relay, routing, trust |
 | [Design Index](docs/design.md) | Design documents |
 | [Secretary Orchestration](docs/design/design-secretary-orchestration.md) | Teamwork orchestration design |
+| [Orchestration SDK](docs/design/design-sdk-orchestration.md) | Owner, Secretary, Team, Run and Worker Runtime SDK design |
 | [API Reference](docs/api-reference.md) | Daemon and Relay APIs |
 | [MCP Setup](docs/mcp-setup.md) | MCP tools and client config |
 | [Scenarios](docs/scenarios.md) | Local, LAN and public collaboration scenarios |

@@ -40,12 +40,13 @@ class StageContext:
             if not self.vault:
                 raise RuntimeError("StageContext has no vault proxy")
             await self.vault.put(key, value, message=summary)
-        artifact_ref = {"enclave_id": self.enclave_id, "key": key, "kind": kind, "summary": summary}
+        artifact_ref = {"enclave_id": self.enclave_id, "key": key}
         await self._client.notify_state(
             to_did=self.from_did,
             task_id=self.task_id,
             status=status,
             output_ref=artifact_ref,
+            context={"kind": kind, "summary": summary} if kind or summary else None,
         )
 
     async def reject(self, reason: str) -> None:
@@ -82,6 +83,8 @@ class WorkerRuntime:
         if not all(content.get(k) for k in required):
             return False
 
+        # Prefer the explicit Playbook role. stage_name fallback is only for
+        # legacy task_propose messages sent before PlaybookEngine included role.
         role = content.get("role") or content.get("stage_role") or content.get("stage_name", "")
         callbacks = list(self._stage_callbacks.get(role, [])) + list(self._stage_callbacks.get("*", []))
         if not callbacks:

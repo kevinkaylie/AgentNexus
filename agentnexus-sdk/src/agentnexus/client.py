@@ -814,6 +814,9 @@ class AgentNexusClient:
         members: dict[str, dict],
         vault_backend: str = "local",
         vault_config: Optional[dict] = None,
+        *,
+        owner_did: Optional[str] = None,
+        actor_did: Optional[str] = None,
     ) -> EnclaveProxy:
         """
         Create an Enclave (project team).
@@ -827,12 +830,25 @@ class AgentNexusClient:
         Returns:
             EnclaveProxy
         """
-        return await self.enclaves.create(name, members, vault_backend, vault_config)
+        return await self.enclaves.create(
+            name,
+            members,
+            vault_backend,
+            vault_config,
+            owner_did=owner_did,
+            actor_did=actor_did,
+        )
 
-    async def vault_get(self, enclave_id: str, key: str) -> VaultEntry:
+    async def vault_get(
+        self,
+        enclave_id: str,
+        key: str,
+        *,
+        actor_did: Optional[str] = None,
+    ) -> VaultEntry:
         """Direct access to read from a Vault."""
         from .enclave import VaultProxy
-        proxy = VaultProxy(self, enclave_id)
+        proxy = VaultProxy(self, enclave_id, actor_did=actor_did)
         return await proxy.get(key)
 
     async def vault_put(
@@ -841,11 +857,13 @@ class AgentNexusClient:
         key: str,
         value: str,
         message: str = "",
+        *,
+        author_did: Optional[str] = None,
     ):
         """Direct access to write to a Vault."""
         from .enclave import VaultProxy
-        proxy = VaultProxy(self, enclave_id)
-        return await proxy.put(key, value, message)
+        proxy = VaultProxy(self, enclave_id, actor_did=author_did)
+        return await proxy.put(key, value, message, author_did=author_did)
 
     # ── Polling ──────────────────────────────────────────────────
 

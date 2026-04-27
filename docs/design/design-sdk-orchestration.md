@@ -89,7 +89,7 @@ agentnexus/
 client.py       # Core AgentNexusClient
 actions.py      # Action Layer，需小幅扩展 StateNotify
 enclave.py      # Enclave/Vault API，需小幅补 actor_did/owner_did 语义
-sync.py         # 同步 wrapper，Phase SDK-B1 可暂不覆盖全部新 API
+sync.py         # 同步 wrapper，覆盖 Owner / Team / Secretary / Run / Enclave 主链路
 ```
 
 `AgentNexusClient.__init__` 初始化高层 facade：
@@ -245,6 +245,7 @@ secretary = await nexus.secretary.register(owner_did, name="Secretary")
 2. `POST /owner/bind`
    - `owner_did`
    - `agent_did = secretary.did`
+3. 如果第 2 步绑定失败，SDK 必须 best-effort 调用 `DELETE /agents/{secretary_did}?actor_did=<secretary_did>` 回滚刚注册的 Secretary，避免留下未绑定孤儿 Agent。
 
 > 后续如果 Daemon 增加 `POST /secretary/register`，SDK 内部实现可切换，外部 API 不变。
 
@@ -360,6 +361,8 @@ class RunStatus:
 | `runs.abort(...)` | `POST /secretary/intake/{session_id}/abort` |
 
 注意：当前 Daemon 没有按 `run_id` 直接查询的全局端点，因此 SDK 必须保存或传入 `enclave_id`。`SecretaryClient.dispatch()` 返回值必须保留 `enclave_id`。
+
+不新增 `runs.get_status(session_id=...)` 的原因：当前 `secretary_intakes` 不持久化 `enclave_id`，仅有 `run_id` 不足以调用现有 Enclave Run 查询端点。Phase SDK-B1 采用 `DispatchResult.enclave_id + run_id` 作为稳定查询句柄；如后续 Intake 表补 `enclave_id`，可再增加 session-based 便捷查询。
 
 ---
 
@@ -622,7 +625,7 @@ await nexus.secretary.abort(
 
 ## 13. 实现顺序
 
-Phase SDK-B1 建议按以下顺序实现：
+Phase SDK-B1 按以下顺序实现：
 
 1. `AgentNexusClient._request()` 内部通用 HTTP helper。
 2. `owner.py` + `OwnerClient` + 数据模型。
@@ -633,7 +636,7 @@ Phase SDK-B1 建议按以下顺序实现：
 7. `worker.py` + `WorkerRuntime` + `StageContext.deliver/reject`。
 8. 修正 `EnclaveManager.create(owner_did, actor_did)`。
 9. 更新 `__init__.py` 导出和 `agentnexus-sdk/README.md` 示例。
-10. 再补同步 wrapper；同步 API 不阻塞 B1 主链路。
+10. 同步 wrapper 暴露 Owner / Team / Secretary / Runs / Enclaves 主链路。
 
 ---
 
@@ -681,6 +684,10 @@ SDK-B1 实现前，Daemon 侧至少应先修复以下代码评审问题，否则
 
 这些不是 SDK 自身问题，但会影响 SDK 端到端验收。
 
+当前代码评审后已确认 1、2、3、5 已在 Daemon 侧修复；4 仍需在端到端联调时确认 Manifest Ref 语义。
+
+补充确认：Manifest Ref 语义已闭环。Worker 原始 `output_ref` 保留在 Stage Delivery Manifest 中；`stage_executions.output_ref` 指向 run-scoped stage manifest artifact ref；Final Delivery Manifest 从 stage manifest 汇总真实交付产物。
+
 ---
 
 ## 16. 评审标准
@@ -693,3 +700,57 @@ SDK-B1 可进入开发完成态的条件：
 - `deliver()` 默认产出 `{enclave_id, key}` Artifact Ref。
 - 所有 Secretary API 都显式要求 `owner_did / actor_did`。
 - 至少一个 SDK 集成测试跑通完整链路：dispatch -> worker deliver -> run status。
+
+---
+
+## 17. 设计评审记录（2026-04-27）
+
+> 评审者：评审 Agent
+
+### 评审结论：通过，可进入开发
+
+设计方向正确：Core SDK + Orchestration SDK 分层保留旧 API 兼容，Worker Runtime 的 StageContext 是最有价值的抽象。API 与 Daemon 端点映射清晰，兼容性考虑充分。
+
+### 建议性问题
+
+| # | 问题 | 严重性 | 处理决定 | 状态 |
+|---|------|--------|----------|------|
+| S1 | §6.3 Team SDK 的 4 个 Daemon 端点（`/owner/workers/v2`、`/workers/{did}/presence`、`/workers/{did}/blocked`、`/agents/{did}/worker-type`）尚未在 Daemon 侧实现，SDK-B1 开发前需先补 | 🟡 | 接受 | ✅ 已实现并对齐 SDK |
+| S2 | §9.4 task_propose 解析依赖 `role` 和 `context_snapshot`，但 PlaybookEngine 发送的 content 缺少这两个字段 | 🟡 | 接受 | ✅ PlaybookEngine 已补 `role/context_snapshot` |
+| S3 | §7.2 Secretary 注册两步组合（register + bind）中间失败会留孤儿 Agent，建议 SDK 内部做 rollback | 🟢 | 接受 | ✅ SDK 绑定失败会调用 `DELETE /agents/{did}` 回滚 |
+| S4 | §8 `runs.get_status` 需要 `enclave_id` 但 `runs.abort` 不需要，参数风格不一致。建议支持通过 `session_id` 查询或在 DispatchResult 中保存 enclave_id | 🟢 | 部分接受 | ✅ 已采用 `DispatchResult.enclave_id`；暂不接受 session 查询，原因是 Intake 当前不持久化 `enclave_id` |
+| S5 | §10.2 `output_ref` 可能是 dict 或 str，Daemon 侧 `_intercept_playbook_state` 需兼容两种类型 | 🟢 | 接受 | ✅ PlaybookEngine 已兼容 dict/string 并序列化存储 |
+
+---
+
+## 18. 代码评审记录（2026-04-27）
+
+> 评审者：评审 Agent
+
+### 评审结论：通过
+
+SDK 实现与设计文档高度一致。5 个新模块 + StateNotify 扩展 + _request() helper + Worker Runtime StageContext 全部到位。Secretary 注册 rollback 已实现。
+
+### 实现覆盖
+
+| 设计项 | 实现文件 | 状态 |
+|--------|---------|------|
+| §4 _request() | client.py | ✅ |
+| §5 Owner SDK | owner.py + OwnerClient | ✅ |
+| §6 Team SDK | team.py + TeamClient + WorkerInfo | ✅ |
+| §7 Secretary SDK | secretary.py + SecretaryClient + DispatchResult + IntakeInfo | ✅ |
+| §8 Run SDK | runs.py + RunClient + RunStatus | ✅ |
+| §9 Worker Runtime | worker.py + WorkerRuntime + StageContext + deliver/reject | ✅ |
+| §10 StateNotify 扩展 | actions.py（output_ref/reason/context） | ✅ |
+| §11 EnclaveManager 修正 | enclave.py（owner_did + actor_did） | ✅ |
+| §13 __init__.py 导出 | __init__.py | ✅ |
+| §15 Daemon 前置修复 | agents.py（4 个 Team 端点） | ✅ |
+
+### 建议性问题
+
+| # | 问题 | 严重性 | 处理决定 | 状态 |
+|---|------|--------|----------|------|
+| S1 | `team.set_blocked/set_worker_type` 用 PATCH + query params，Daemon 端点可能期望 body | 🟡 | 不接受为代码问题 | ✅ Daemon 端点使用 FastAPI scalar params，query params 是正确契约；已补 SDK 测试固定该行为 |
+| S2 | Worker Runtime role fallback 到 stage_name，语义不精确 | 🟢 | 部分接受 | ✅ PlaybookEngine 已发送显式 `role`；SDK 保留 `stage_name` fallback 仅用于旧消息兼容，并已加注释 |
+| S3 | `__version__` 仍为 0.9.6，应更新 | 🟢 | 接受 | ✅ SDK 包版本与 `agentnexus.__version__` 更新为 `1.0.0` |
+| S4 | `test_run_client_abort` 偶发 AttributeError，疑似 import 缓存 | 🟢 | 暂不接受为可复现问题 | ✅ 当前测试稳定通过；`FakeClient` 显式挂载 `RunClient`，保留监控 |

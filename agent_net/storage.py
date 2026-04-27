@@ -2424,11 +2424,11 @@ async def update_intake(session_id: str, **kwargs) -> bool:
     values = list(updates.values()) + [session_id]
 
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+        cur = await db.execute(
             f"UPDATE secretary_intakes SET {set_clause} WHERE session_id=?", values
         )
         await db.commit()
-    return True
+        return cur.rowcount > 0
 
 
 async def list_intakes(owner_did: str, status: str = None) -> list[dict]:

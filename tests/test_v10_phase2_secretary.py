@@ -215,6 +215,13 @@ async def test_v10_sec_02_update_intake_status():
 
 
 @pytest.mark.asyncio
+async def test_v10_sec_02_update_intake_missing_session_returns_false():
+    """更新不存在的 intake 应返回 False。"""
+    ok = await update_intake("sess_missing_update", status="running")
+    assert not ok
+
+
+@pytest.mark.asyncio
 async def test_v10_sec_02_update_intake_selected_workers():
     """更新 intake 的 selected_workers。"""
     owner = await register_owner("TestOwner")

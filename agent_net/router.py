@@ -105,6 +105,8 @@ class Router:
                 "content_encoding": content_encoding,
                 "message_id": message_id,
             })
+            if message_type == "state_notify":
+                asyncio.create_task(self._intercept_playbook_state(from_did, content))
             return {"status": "delivered", "method": "local", "session_id": session_id, "message_id": message_id}
 
         # 2. 意图路由（v1.0-05，P1 修复）：如果 to_did 是主 DID 且不在本地，尝试转发到子 Agent

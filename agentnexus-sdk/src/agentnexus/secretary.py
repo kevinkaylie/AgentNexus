@@ -94,7 +94,18 @@ class SecretaryClient:
             },
         )
         did = data["did"]
-        await self._client.owner.bind(owner_did, did)
+        try:
+            await self._client.owner.bind(owner_did, did)
+        except Exception:
+            try:
+                await self._client._request(
+                    "DELETE",
+                    f"/agents/{did}",
+                    params={"actor_did": did},
+                )
+            except Exception:
+                pass
+            raise
         profile = data.get("profile", {})
         return SecretaryInfo(
             did=did,

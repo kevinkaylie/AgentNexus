@@ -94,110 +94,89 @@ class VaultProxy:
         doc = await enclave.vault.get("requirements")
     """
 
-    def __init__(self, client: "AgentNexusClient", enclave_id: str):
+    def __init__(self, client: "AgentNexusClient", enclave_id: str, actor_did: str | None = None):
         self._client = client
         self._enclave_id = enclave_id
+        self._actor_did = actor_did
 
-    async def get(self, key: str, version: Optional[str] = None) -> VaultEntry:
+    def _actor(self, actor_did: str | None = None) -> str:
+        return actor_did or self._actor_did or self._client.agent_info.did
+
+    async def get(
+        self,
+        key: str,
+        version: Optional[str] = None,
+        *,
+        actor_did: str | None = None,
+    ) -> VaultEntry:
         """读取文档"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        url = f"{self._client.daemon_url}/enclaves/{self._enclave_id}/vault/{key}"
-        params = {"version": version} if version else None
-
-        async with self._client._session.get(url, params=params) as resp:
-            if resp.status == 404:
-                raise KeyError(f"Key not found: {key}")
-            if resp.status != 200:
-                raise RuntimeError(f"Vault get failed: {await resp.text()}")
-
-            data = await resp.json()
-            return VaultEntry.from_dict(data)
+        params = {"actor_did": self._actor(actor_did)}
+        if version:
+            params["version"] = version
+        data = await self._client._request(
+            "GET",
+            f"/enclaves/{self._enclave_id}/vault/{key}",
+            params=params,
+        )
+        return VaultEntry.from_dict(data)
 
     async def put(
         self,
         key: str,
         value: str,
         message: str = "",
+        *,
+        author_did: str | None = None,
     ) -> VaultEntry:
         """写入文档"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        headers = {}
-        if self._client.token:
-            headers["Authorization"] = f"Bearer {self._client.token}"
-
-        async with self._client._session.put(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/vault/{key}",
-            headers=headers,
+        data = await self._client._request(
+            "PUT",
+            f"/enclaves/{self._enclave_id}/vault/{key}",
             json={
                 "value": value,
-                "author_did": self._client.agent_info.did,
+                "author_did": author_did or self._actor(),
                 "message": message,
             },
-        ) as resp:
-            if resp.status == 403:
-                raise PermissionError("No write permission for this vault")
-            if resp.status != 200:
-                raise RuntimeError(f"Vault put failed: {await resp.text()}")
+        )
+        return VaultEntry.from_dict(data)
 
-            data = await resp.json()
-            return VaultEntry.from_dict(data)
-
-    async def list(self, prefix: str = "") -> list[VaultEntry]:
+    async def list(self, prefix: str = "", *, actor_did: str | None = None) -> list[VaultEntry]:
         """列出文档"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        params = {"prefix": prefix} if prefix else None
-        async with self._client._session.get(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/vault",
+        params = {"actor_did": self._actor(actor_did)}
+        if prefix:
+            params["prefix"] = prefix
+        data = await self._client._request(
+            "GET",
+            f"/enclaves/{self._enclave_id}/vault",
             params=params,
-        ) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"Vault list failed: {await resp.text()}")
+        )
+        entries = data.get("entries", [])
+        return [VaultEntry.from_dict(e) for e in entries]
 
-            data = await resp.json()
-            entries = data.get("entries", [])
-            return [VaultEntry.from_dict(e) for e in entries]
-
-    async def history(self, key: str, limit: int = 10) -> list[VaultEntry]:
+    async def history(
+        self,
+        key: str,
+        limit: int = 10,
+        *,
+        actor_did: str | None = None,
+    ) -> list[VaultEntry]:
         """查看历史版本"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
+        data = await self._client._request(
+            "GET",
+            f"/enclaves/{self._enclave_id}/vault/{key}/history",
+            params={"actor_did": self._actor(actor_did), "limit": limit},
+        )
+        history = data.get("history", [])
+        return [VaultEntry.from_dict(e) for e in history]
 
-        async with self._client._session.get(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/vault/{key}/history",
-            params={"limit": limit},
-        ) as resp:
-            if resp.status == 404:
-                raise KeyError(f"Key not found: {key}")
-            if resp.status != 200:
-                raise RuntimeError(f"Vault history failed: {await resp.text()}")
-
-            data = await resp.json()
-            history = data.get("history", [])
-            return [VaultEntry.from_dict(e) for e in history]
-
-    async def delete(self, key: str) -> bool:
+    async def delete(self, key: str, *, author_did: str | None = None) -> bool:
         """删除文档"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        headers = {}
-        if self._client.token:
-            headers["Authorization"] = f"Bearer {self._client.token}"
-
-        async with self._client._session.delete(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/vault/{key}",
-            headers=headers,
-            json={"author_did": self._client.agent_info.did},
-        ) as resp:
-            if resp.status == 403:
-                raise PermissionError("No delete permission for this vault")
-            return resp.status == 200
+        await self._client._request(
+            "DELETE",
+            f"/enclaves/{self._enclave_id}/vault/{key}",
+            json={"author_did": author_did or self._actor()},
+        )
+        return True
 
 
 class PlaybookRunProxy:
@@ -209,30 +188,30 @@ class PlaybookRunProxy:
         status = await run.get_status()
     """
 
-    def __init__(self, client: "AgentNexusClient", enclave_id: str, run_id: str):
+    def __init__(
+        self,
+        client: "AgentNexusClient",
+        enclave_id: str,
+        run_id: str,
+        actor_did: str | None = None,
+    ):
         self._client = client
         self._enclave_id = enclave_id
         self._run_id = run_id
+        self._actor_did = actor_did
 
     @property
     def run_id(self) -> str:
         return self._run_id
 
-    async def get_status(self) -> PlaybookRunInfo:
+    async def get_status(self, *, actor_did: str | None = None) -> PlaybookRunInfo:
         """获取运行状态"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        async with self._client._session.get(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/runs/{self._run_id}",
-        ) as resp:
-            if resp.status == 404:
-                raise KeyError(f"Run not found: {self._run_id}")
-            if resp.status != 200:
-                raise RuntimeError(f"Get run status failed: {await resp.text()}")
-
-            data = await resp.json()
-            return PlaybookRunInfo.from_dict(data)
+        data = await self._client._request(
+            "GET",
+            f"/enclaves/{self._enclave_id}/runs/{self._run_id}",
+            params={"actor_did": actor_did or self._actor_did or self._client.agent_info.did},
+        )
+        return PlaybookRunInfo.from_dict(data)
 
 
 class EnclaveProxy:
@@ -245,11 +224,18 @@ class EnclaveProxy:
         run = await enclave.run_playbook(playbook_def)
     """
 
-    def __init__(self, client: "AgentNexusClient", enclave_id: str, info: EnclaveInfo):
+    def __init__(
+        self,
+        client: "AgentNexusClient",
+        enclave_id: str,
+        info: EnclaveInfo,
+        actor_did: str | None = None,
+    ):
         self._client = client
         self._enclave_id = enclave_id
         self._info = info
-        self._vault = VaultProxy(client, enclave_id)
+        self._actor_did = actor_did
+        self._vault = VaultProxy(client, enclave_id, actor_did=actor_did)
 
     @property
     def enclave_id(self) -> str:
@@ -266,8 +252,10 @@ class EnclaveProxy:
 
     async def run_playbook(
         self,
-        playbook: dict,
+        playbook: Optional[dict] = None,
         playbook_id: Optional[str] = None,
+        *,
+        actor_did: str | None = None,
     ) -> PlaybookRunProxy:
         """
         启动 Playbook。
@@ -279,32 +267,29 @@ class EnclaveProxy:
         Returns:
             PlaybookRunProxy
         """
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        headers = {}
-        if self._client.token:
-            headers["Authorization"] = f"Bearer {self._client.token}"
-
-        payload = {}
+        actor = actor_did or self._actor_did or self._client.agent_info.did
+        payload = {"actor_did": actor}
         if playbook_id:
             payload["playbook_id"] = playbook_id
-        else:
+        elif playbook:
             payload["playbook"] = playbook
+        else:
+            raise ValueError("Either playbook or playbook_id must be provided")
 
-        async with self._client._session.post(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/runs",
-            headers=headers,
+        data = await self._client._request(
+            "POST",
+            f"/enclaves/{self._enclave_id}/runs",
             json=payload,
-        ) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"Run playbook failed: {await resp.text()}")
+        )
+        run_id = data.get("run_id", "")
+        return PlaybookRunProxy(self._client, self._enclave_id, run_id, actor_did=actor)
 
-            data = await resp.json()
-            run_id = data.get("run_id", "")
-            return PlaybookRunProxy(self._client, self._enclave_id, run_id)
-
-    async def get_run(self, run_id: Optional[str] = None) -> PlaybookRunInfo:
+    async def get_run(
+        self,
+        run_id: Optional[str] = None,
+        *,
+        actor_did: str | None = None,
+    ) -> PlaybookRunInfo:
         """
         获取 Playbook 运行状态。
 
@@ -314,22 +299,17 @@ class EnclaveProxy:
         Returns:
             PlaybookRunInfo
         """
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
         if run_id:
-            url = f"{self._client.daemon_url}/enclaves/{self._enclave_id}/runs/{run_id}"
+            path = f"/enclaves/{self._enclave_id}/runs/{run_id}"
         else:
-            url = f"{self._client.daemon_url}/enclaves/{self._enclave_id}/runs"
+            path = f"/enclaves/{self._enclave_id}/runs"
 
-        async with self._client._session.get(url) as resp:
-            if resp.status == 404:
-                raise KeyError(f"Run not found")
-            if resp.status != 200:
-                raise RuntimeError(f"Get run failed: {await resp.text()}")
-
-            data = await resp.json()
-            return PlaybookRunInfo.from_dict(data)
+        data = await self._client._request(
+            "GET",
+            path,
+            params={"actor_did": actor_did or self._actor_did or self._client.agent_info.did},
+        )
+        return PlaybookRunInfo.from_dict(data)
 
     async def add_member(
         self,
@@ -337,41 +317,31 @@ class EnclaveProxy:
         role: str,
         permissions: str = "rw",
         handbook: str = "",
+        *,
+        actor_did: str | None = None,
     ) -> bool:
         """添加成员"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        headers = {}
-        if self._client.token:
-            headers["Authorization"] = f"Bearer {self._client.token}"
-
-        async with self._client._session.post(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/members",
-            headers=headers,
+        await self._client._request(
+            "POST",
+            f"/enclaves/{self._enclave_id}/members",
             json={
+                "actor_did": actor_did or self._actor_did or self._client.agent_info.did,
                 "did": did,
                 "role": role,
                 "permissions": permissions,
                 "handbook": handbook,
             },
-        ) as resp:
-            return resp.status == 200
+        )
+        return True
 
-    async def remove_member(self, did: str) -> bool:
+    async def remove_member(self, did: str, *, actor_did: str | None = None) -> bool:
         """移除成员"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        headers = {}
-        if self._client.token:
-            headers["Authorization"] = f"Bearer {self._client.token}"
-
-        async with self._client._session.delete(
-            f"{self._client.daemon_url}/enclaves/{self._enclave_id}/members/{did}",
-            headers=headers,
-        ) as resp:
-            return resp.status == 200
+        await self._client._request(
+            "DELETE",
+            f"/enclaves/{self._enclave_id}/members/{did}",
+            params={"actor_did": actor_did or self._actor_did or self._client.agent_info.did},
+        )
+        return True
 
 
 class EnclaveManager:
@@ -392,6 +362,9 @@ class EnclaveManager:
         members: dict[str, dict],
         vault_backend: str = "local",
         vault_config: Optional[dict] = None,
+        *,
+        owner_did: str | None = None,
+        actor_did: str | None = None,
     ) -> EnclaveProxy:
         """
         创建 Enclave。
@@ -405,82 +378,55 @@ class EnclaveManager:
         Returns:
             EnclaveProxy
         """
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        headers = {}
-        if self._client.token:
-            headers["Authorization"] = f"Bearer {self._client.token}"
-
-        async with self._client._session.post(
-            f"{self._client.daemon_url}/enclaves",
-            headers=headers,
+        owner = owner_did or self._client.agent_info.did
+        actor = actor_did or self._client.agent_info.did
+        data = await self._client._request(
+            "POST",
+            "/enclaves",
             json={
                 "name": name,
-                "owner_did": self._client.agent_info.did,
+                "owner_did": owner,
+                "actor_did": actor,
                 "vault_backend": vault_backend,
                 "vault_config": vault_config or {},
                 "members": members,
             },
-        ) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"Create enclave failed: {await resp.text()}")
+        )
+        enclave_id = data.get("enclave_id", "")
 
-            data = await resp.json()
-            enclave_id = data.get("enclave_id", "")
+        # 获取完整信息
+        info = await self._get_info(enclave_id, actor_did=actor)
+        return EnclaveProxy(self._client, enclave_id, info, actor_did=actor)
 
-            # 获取完整信息
-            info = await self._get_info(enclave_id)
-            return EnclaveProxy(self._client, enclave_id, info)
-
-    async def get(self, enclave_id: str) -> EnclaveProxy:
+    async def get(self, enclave_id: str, *, actor_did: str | None = None) -> EnclaveProxy:
         """获取 Enclave"""
-        info = await self._get_info(enclave_id)
-        return EnclaveProxy(self._client, enclave_id, info)
+        actor = actor_did or self._client.agent_info.did
+        info = await self._get_info(enclave_id, actor_did=actor)
+        return EnclaveProxy(self._client, enclave_id, info, actor_did=actor)
 
-    async def list(self) -> list[EnclaveInfo]:
+    async def list(self, *, actor_did: str | None = None, status: str | None = None) -> list[EnclaveInfo]:
         """列出我参与的 Enclave"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
+        params = {"actor_did": actor_did or self._client.agent_info.did}
+        if status:
+            params["status"] = status
+        data = await self._client._request("GET", "/enclaves", params=params)
+        enclaves = data.get("enclaves", [])
+        return [EnclaveInfo.from_dict(e) for e in enclaves]
 
-        async with self._client._session.get(
-            f"{self._client.daemon_url}/enclaves",
-            params={"did": self._client.agent_info.did},
-        ) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"List enclaves failed: {await resp.text()}")
-
-            data = await resp.json()
-            enclaves = data.get("enclaves", [])
-            return [EnclaveInfo.from_dict(e) for e in enclaves]
-
-    async def _get_info(self, enclave_id: str) -> EnclaveInfo:
+    async def _get_info(self, enclave_id: str, *, actor_did: str | None = None) -> EnclaveInfo:
         """获取 Enclave 信息"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
+        data = await self._client._request(
+            "GET",
+            f"/enclaves/{enclave_id}",
+            params={"actor_did": actor_did or self._client.agent_info.did},
+        )
+        return EnclaveInfo.from_dict(data)
 
-        async with self._client._session.get(
-            f"{self._client.daemon_url}/enclaves/{enclave_id}",
-        ) as resp:
-            if resp.status == 404:
-                raise KeyError(f"Enclave not found: {enclave_id}")
-            if resp.status != 200:
-                raise RuntimeError(f"Get enclave failed: {await resp.text()}")
-
-            data = await resp.json()
-            return EnclaveInfo.from_dict(data)
-
-    async def archive(self, enclave_id: str) -> bool:
+    async def archive(self, enclave_id: str, *, actor_did: str | None = None) -> bool:
         """归档 Enclave"""
-        if not self._client._session:
-            raise RuntimeError("Client not connected")
-
-        headers = {}
-        if self._client.token:
-            headers["Authorization"] = f"Bearer {self._client.token}"
-
-        async with self._client._session.delete(
-            f"{self._client.daemon_url}/enclaves/{enclave_id}",
-            headers=headers,
-        ) as resp:
-            return resp.status == 200
+        await self._client._request(
+            "DELETE",
+            f"/enclaves/{enclave_id}",
+            params={"actor_did": actor_did or self._client.agent_info.did},
+        )
+        return True

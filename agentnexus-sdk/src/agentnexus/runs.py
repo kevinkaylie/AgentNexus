@@ -44,11 +44,17 @@ class RunClient:
     async def get_intake(self, session_id: str, *, actor_did: str) -> IntakeInfo:
         return await self._client.secretary.get_intake(session_id, actor_did=actor_did)
 
-    async def get_status(self, enclave_id: str, run_id: str) -> RunStatus:
+    async def get_status(
+        self,
+        enclave_id: str,
+        run_id: str,
+        *,
+        actor_did: str | None = None,
+    ) -> RunStatus:
         data = await self._client._request(
             "GET",
             f"/enclaves/{enclave_id}/runs/{run_id}",
-            auth=False,
+            params={"actor_did": actor_did or self._client.agent_info.did},
         )
         return RunStatus.from_dict(data)
 

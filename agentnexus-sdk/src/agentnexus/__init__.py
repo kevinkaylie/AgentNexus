@@ -81,6 +81,12 @@ from .enclave import (
     EnclaveProxy,
     EnclaveManager,
 )
+from .owner import OwnerClient, OwnerInfo, OwnedAgent
+from .team import TeamClient, WorkerInfo
+from .secretary import SecretaryClient, SecretaryInfo, IntakeInfo, DispatchResult
+from .runs import RunClient, RunStatus
+from .worker import WorkerRuntime, StageContext
+from .orchestration import OrchestrationClient
 
 __all__ = [
     # Core
@@ -127,6 +133,21 @@ __all__ = [
     "PlaybookRunProxy",
     "EnclaveProxy",
     "EnclaveManager",
+    # Orchestration
+    "OwnerClient",
+    "OwnerInfo",
+    "OwnedAgent",
+    "TeamClient",
+    "WorkerInfo",
+    "SecretaryClient",
+    "SecretaryInfo",
+    "IntakeInfo",
+    "DispatchResult",
+    "RunClient",
+    "RunStatus",
+    "WorkerRuntime",
+    "StageContext",
+    "OrchestrationClient",
 ]
 
-__version__ = "0.9.6"
+__version__ = "1.0.0"

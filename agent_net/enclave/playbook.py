@@ -30,6 +30,29 @@ from agent_net.storage import (
 from agent_net.enclave.models import Stage, Playbook
 
 
+def _artifact_ref(enclave_id: str, key: str) -> dict:
+    """Canonical Vault artifact reference used in delivery manifests."""
+    return {"enclave_id": enclave_id, "key": key}
+
+
+def _serialize_ref(ref) -> str:
+    """Store artifact references safely in TEXT columns."""
+    if ref is None:
+        return ""
+    if isinstance(ref, (dict, list)):
+        return json.dumps(ref, separators=(",", ":"), ensure_ascii=False)
+    return str(ref)
+
+
+def _deserialize_ref(ref: str):
+    if not ref:
+        return ""
+    try:
+        return json.loads(ref)
+    except (TypeError, json.JSONDecodeError):
+        return ref
+
+
 class PlaybookEngine:
     """
     Playbook 执行引擎。
@@ -49,6 +72,7 @@ class PlaybookEngine:
         self,
         from_did: str,
         to_did: str,
+        role: str,
         title: str,
         task_id: str,
         enclave_id: str,
@@ -56,6 +80,7 @@ class PlaybookEngine:
         stage_name: str,
         input_keys: list[str],
         output_key: str,
+        context_snapshot: dict | None = None,
     ) -> None:
         """发送任务提案给 Agent"""
         import aiohttp
@@ -66,8 +91,10 @@ class PlaybookEngine:
             "enclave_id": enclave_id,
             "run_id": run_id,
             "stage_name": stage_name,
+            "role": role,
             "input_keys": input_keys,
             "output_key": output_key,
+            "context_snapshot": context_snapshot or {},
             "message_type": "task_propose",
             "protocol": "nexus_v1",
         }
@@ -168,6 +195,7 @@ class PlaybookEngine:
         await self._send_task_propose(
             from_did=from_did,
             to_did=assigned_did,
+            role=stage.role,
             title=stage.description or stage.name,
             task_id=task_id,
             enclave_id=enclave_id,
@@ -175,13 +203,17 @@ class PlaybookEngine:
             stage_name=stage.name,
             input_keys=stage.input_keys or [],
             output_key=stage.output_key or "",
+            context_snapshot={
+                "inputs": [_artifact_ref(enclave_id, key) for key in (stage.input_keys or [])],
+                "output": _artifact_ref(enclave_id, stage.output_key) if stage.output_key else None,
+            },
         )
 
     async def on_stage_completed(
         self,
         run_id: str,
         stage_name: str,
-        output_ref: str = "",
+        output_ref: str | dict = "",
     ) -> None:
         """
         阶段完成回调。
@@ -213,11 +245,12 @@ class PlaybookEngine:
         await update_stage_execution(
             run_id, stage_name,
             status="completed",
-            output_ref=output_ref,
+            output_ref=_serialize_ref(output_ref),
         )
 
         # D-SEC-05: 生成 Stage Delivery Manifest，并将 output_ref 更新为 Vault key
         vault_key = f"manifests/{run_id}/{stage_name}"
+        manifest_ref = _artifact_ref(run["enclave_id"], vault_key)
         stage_exec = await get_stage_execution(run_id, stage_name)
         if stage_exec:
             from agent_net.storage import store_stage_manifest
@@ -241,7 +274,7 @@ class PlaybookEngine:
             # 将 output_ref 更新为 Vault key（可解析的 Artifact Ref）
             await update_stage_execution(
                 run_id, stage_name,
-                output_ref=vault_key,
+                output_ref=_serialize_ref(manifest_ref),
             )
 
         # 推进到下一阶段
@@ -275,12 +308,28 @@ class PlaybookEngine:
         stage_manifest_ids = [f"manifest_{e['stage_name']}_{run_id}" for e in executions if e["status"] == "completed"]
         final_artifacts = []
         for e in executions:
-            if e["status"] == "completed" and e.get("output_ref"):
-                final_artifacts.append({
-                    "kind": e["stage_name"],
-                    "ref": e["output_ref"],
-                    "produced_by": e.get("assigned_did", ""),
-                })
+            if e["status"] != "completed" or not e.get("output_ref"):
+                continue
+
+            manifest_ref = _deserialize_ref(e["output_ref"])
+            if isinstance(manifest_ref, dict) and manifest_ref.get("key"):
+                entry = await vault_get(
+                    manifest_ref.get("enclave_id", run["enclave_id"]),
+                    manifest_ref["key"],
+                )
+                if entry:
+                    try:
+                        stage_manifest = json.loads(entry["value"])
+                        final_artifacts.extend(stage_manifest.get("artifacts", []))
+                        continue
+                    except (TypeError, json.JSONDecodeError):
+                        pass
+
+            final_artifacts.append({
+                "kind": e["stage_name"],
+                "ref": manifest_ref,
+                "produced_by": e.get("assigned_did", ""),
+            })
 
         await store_final_manifest(
             run_id=run_id,

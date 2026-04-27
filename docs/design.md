@@ -12,6 +12,7 @@
 | [design/design-v1.0.md](design/design-v1.0.md) | v1.0 Phase 1/2 + v1.5 前瞻 + 鉴权矩阵 | **活跃** | ~1400 |
 | [design/design-v0.x.md](design/design-v0.x.md) | v0.7–v0.9 | 归档 | ~440 |
 | [design/design-secretary-orchestration.md](design/design-secretary-orchestration.md) | 常驻秘书 + 企业 Agent 团队协作编排专题 | 活跃 | ~950 |
+| [design/design-sdk-orchestration.md](design/design-sdk-orchestration.md) | Orchestration SDK 改造专题 | 活跃 | ~700 |
 
 ## 快速导航
 
@@ -35,3 +36,4 @@
 ### 专题设计（活跃）
 
 - [常驻秘书与 Agent 团队协作编排](design/design-secretary-orchestration.md)
+- [Orchestration SDK 改造](design/design-sdk-orchestration.md)

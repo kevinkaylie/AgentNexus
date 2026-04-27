@@ -23,7 +23,7 @@ from agent_net.node._models import (
 )
 from agent_net.storage import (
     register_agent, list_local_agents, get_agent, search_agents_by_capability,
-    get_private_key, update_agent_profile, add_certification, get_certifications,
+    get_private_key, update_agent_profile, add_certification, get_certifications, delete_agent,
     register_owner, bind_agent, unbind_agent, list_owned_agents, get_owner,
     list_workers, set_worker_type, list_workers_v2, get_worker_presence, set_worker_blocked,
 )
@@ -179,6 +179,24 @@ async def api_get_agent(did: str):
     if not agent:
         raise HTTPException(404, "Agent not found")
     return agent
+
+
+@router.delete("/agents/{did}")
+async def api_delete_agent(did: str, actor_did: str, _=Depends(_require_token)):
+    """删除本地 Agent。允许 Agent 自删，或由其 owner 删除。"""
+    await _verify_actor(actor_did)
+    agent = await get_agent(did)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    if actor_did != did:
+        owner_did = agent.get("owner_did")
+        if not owner_did or actor_did != owner_did:
+            raise HTTPException(403, "Actor cannot delete this agent")
+        await _verify_actor_is_owner(actor_did)
+    ok = await delete_agent(did)
+    if not ok:
+        raise HTTPException(404, "Agent not found")
+    return {"status": "ok", "did": did, "deleted": True}
 
 
 @router.get("/agents/{did}/profile")
