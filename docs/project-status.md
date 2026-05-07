@@ -2,18 +2,18 @@
 
 > **唯一状态源**：本文档是 AgentNexus 项目版本、功能状态、关键数字的唯一权威来源。
 > 其他文档（CLAUDE.md、architecture.md、AGENTS.md 等）引用本文档，不重复维护状态。
-> 最后更新：2026-04-26（v1.0 Secretary Orchestration Phase B + Orchestration SDK 收敛中）
+> 最后更新：2026-04-30（Dashboard/Setup 主链路已实现，Secretary Phase B 细节修复完成，代码评审阻塞项已解决）
 
 ## 一句话总结
 
-AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0 正在收敛常驻秘书与 Agent 团队协作场景。
+AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0.0 收敛为“团队协作开发者预览”：Orchestration SDK + 常驻秘书 + Enclave/Playbook + 基础 Web 入口。
 
 ## 关键数字
 
 | 指标 | 值 |
 |------|-----|
-| 当前版本 | v1.0 Secretary Orchestration Phase B + Orchestration SDK 收敛中 |
-| 测试数 | 429 collected, 421 passed, 8 skipped |
+| 当前版本 | v1.0.0 开发中（团队协作开发者预览；Secretary Phase B 已完成开发，Dashboard/Setup 主链路已实现，代码评审阻塞项已解决） |
+| 测试数 | 全量：432 passed, 8 skipped；前端 build 通过 |
 | MCP 工具数 | 37 |
 | Python | 3.10+ |
 | 存储 | SQLite (aiosqlite) |
@@ -29,8 +29,9 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | v0.9.5 | ✅ 已发布 | Enclave 项目组、VaultBackend、Playbook 自动编排 |
 | v0.9.6 | ✅ 已发布 | Governance Attestation、Web of Trust、信任衰减 |
 | v1.0 Phase 1 | ✅ 已实现 | 个人主 DID (1.0-04)、消息中心 (1.0-06)、Capability Token (1.0-08)、委托链收窄 (1.0-10) |
-| v1.0 Phase 2 | 🚧 开发中 | 意图路由 (1.0-05)、Web 仪表盘 (1.0-01)、接入向导 (1.0-03)、鉴权矩阵收紧、Consistency Level L0/L1、Secretary Orchestration Phase B |
-| v1.5 | 📋 规划中 | 企业版 MVP：Admin API、审计日志、多租户、RBAC、统一策略引擎、决策一致性分级 |
+| v1.0.0 | 🚧 开发中 | 团队协作开发者预览：意图路由、鉴权矩阵 v3、Orchestration SDK、Secretary Phase B、Dashboard/Setup 主链路已完成；代码评审阻塞项已解决 |
+| v1.1 | 📋 规划中 | 产品化增强：Dashboard 完整体验、更多 Adapter、CLI Launcher、Tauri 壳和本机通知 |
+| v1.5 | 📋 规划中 | 企业版 MVP：per-agent token、Admin API、审计日志、多租户、RBAC、统一策略引擎、强授权与可信交付 |
 
 ## 模块状态
 
@@ -52,10 +53,18 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | 意图路由 | ✅ | 主 DID → 子 Agent 自动转发 |
 | Consistency Level | ✅ L0, 🚧 L1 | 决策一致性分级 |
 | 秘书编排（Phase A） | ✅ | D-SEC-01 Worker Registry + D-SEC-02 Intake/Dispatch 已实现 |
-| 秘书编排（Phase B） | 🚧 | Presence、Adapter Contract、Message Envelope、Context Budget、Delivery Manifest、Owner takeover，代码评审中 |
-| Web 仪表盘 | 🚧 | Vue 3 + Vite + PrimeVue，Phase B |
-| 鉴权矩阵 v3 | 📋 设计定稿 | actor DID 校验 + /deliver 签名验证，待实现 |
-| did:meeet 桥接 | 📋 设计完成 | ADR-008，待开发 |
+| 秘书编排（Phase B） | ✅ | 已完成开发：Presence、Adapter Contract、Message Envelope、Delivery Manifest、Context Budget & Handoff、Owner abort、SDK/CLI 原生入口 |
+| Web 仪表盘 | ✅ | Setup 六步闭环（Token→Owner→Secretary→Workers→Dispatch→Result）、Dashboard 聚合视图、Agents worker_type/presence、Enclaves Run 详情/manifest/context_budget 已实现并构建同步 |
+| 鉴权矩阵 v3 | ✅ | 已实现 v1.0 阶段性边界：token + actor DID 校验、读接口私有化、/deliver soft-enforce 签名验证；per-agent token 和 hard-enforce 后移 |
+| did:meeet 桥接 | 🚧 部分实现 | Relay/DIDResolver handler、映射端点、x402_score metadata 已实现；真实 Solana API 与外部评分口径待确认 |
+
+## v1.0.0 发布范围
+
+| 类别 | 内容 |
+|------|------|
+| 必交 | Orchestration SDK、Owner/Secretary/Team/Run/Worker Runtime 主链路、Secretary Phase B 基础闭环、Context Budget 基础实现、Delivery Manifest、Dashboard 基础入口、Setup 向导、鉴权矩阵 v3 |
+| 后移到 v1.1 | Tauri 桌面壳、系统托盘通知、CLI Launcher 自动拉起、更多 OpenClaw/Webhook 产品化 Adapter、Dashboard 完整产品体验 |
+| 后移到 v1.5 | per-agent token、Capability 强制覆盖所有 Enclave/Vault/Run/Stage 操作、/deliver hard-enforce、Strict JCS、审计日志、签名交付包 |
 
 ## 活跃外部合作
 
@@ -64,17 +73,18 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | Giskard | CA 认证签发 | 等待对方提供 pubkey hex |
 | OATR | 信任注册表 + JWT Attestation | 对接中 |
 | QNTM WG | DID Resolution 规范 | ✅ 已完成 |
-| MEEET | did:meeet 互操作 | 设计完成，待开发 |
+| MEEET | did:meeet 互操作 | 代码部分完成，外部端点待确认 |
 | APS (aeoess) | agent-governance-vocabulary crosswalk | ✅ PR 已合并 |
 | A2A | Consistency Level Proposal | 📋 草稿待提交 |
 
-## 当前阻塞项
+## 当前待办与风险
 
 > 详见 `docs/wip.md`
 
-1. **鉴权矩阵实现**（P1-P3）：消息面鉴权、actor DID 校验、Enclave 读接口私有化。设计 v3 已定稿，待实现。
-2. **文档单一事实源**（P4）：本文档正在收敛中。
-3. **严格 JCS 实现**（S5）：当前为确定性 JSON 序列化，跨语言互操作需升级为 RFC 8785。
+1. **v1.0.0 发布收口**：同步 README、quickstart、SDK 示例和 CHANGELOG，固定端到端操作路径。
+2. **D-SEC-04 角色选择与回退策略**：改进 dispatch 选人逻辑（按 worker 能力评分排序、离线降级、fallback）。
+3. **D-SEC-06 超时/重试/fallback**：stage 超时检测、retry_count 自动重试、失败后自动 fallback 到下一个匹配 worker。
+4. **严格 JCS 实现**（S5）：当前为确定性 JSON 序列化，跨语言互操作需升级为 RFC 8785；不阻塞 v1.0.0 开发者预览，后移到 v1.5 安全收紧。
 
 ## 新人最小阅读清单
 

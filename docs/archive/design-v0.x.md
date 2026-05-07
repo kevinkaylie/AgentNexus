@@ -1,8 +1,8 @@
 # AgentNexus 设计文档 — v0.7–v0.9（归档）
 
 > 本文件为 v0.7–v0.9 版本的历史设计文档，已归档。
-> 当前活跃设计见 [design-v1.0.md](design-v1.0.md)。
-> 设计索引见 [../design.md](../design.md)。
+> 当前活跃设计见 [design-v1.0.md](../design/design-v1.0.md)。
+> 设计索引见 [design.md](../design.md)。
 
 ---
 
@@ -441,4 +441,3 @@ enclave_config = {
 预估总改动量约 220 行，分两批实现，每批完成后跑全量测试。
 
 ---
-

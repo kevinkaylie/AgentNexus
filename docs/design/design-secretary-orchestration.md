@@ -4,9 +4,9 @@
 > 目标：收敛“社交媒体/外部入口 -> 常驻秘书 Agent -> 本地/局域网 Worker 团队协作 -> 结果回传”的专项设计。
 > 关联文档：
 > - [design-v1.0.md](design-v1.0.md) — Owner DID、消息中心、意图路由、鉴权矩阵
-> - [design-v0.x.md](design-v0.x.md) — SDK、Action Layer、适配器、Enclave/Playbook
+> - [design-v0.x.md](../archive/design-v0.x.md) — SDK、Action Layer、适配器、Enclave/Playbook
 > - [roadmap.md](../roadmap.md) — 版本路线图
-> - [scenarios.md](../scenarios.md) — 跨平台协作场景
+> - [product.md](../product.md) — 产品定位与跨平台协作场景
 
 ---
 
@@ -120,12 +120,12 @@ AgentNexus 仍然是 Agent 原生通信基础设施，但单独表达“Agent �
 
 **验收标准**
 
-- [ ] 外部请求可进入秘书 Agent，且入口可解析或映射到明确的 `owner_did`
-- [ ] 秘书只能代表已绑定的 `owner_did` 发起建单；未绑定 owner 的请求必须拒绝或转人工确认
-- [ ] 建 Enclave、写入需求、启动 Playbook Run 的写操作必须走已鉴权接口，并显式携带 `actor_did`
-- [ ] 至少 3 个角色可协作完成一次链路，并能在 Vault 中读取阶段交付物
-- [ ] 最终回传必须附带 `run_id`、结构化 `summary`、最终状态
-- [ ] 失败、阻塞、拒绝路径在状态上可观测，而不是静默丢失
+- [x] 外部请求可进入秘书 Agent，且入口可解析或映射到明确的 `owner_did`
+- [x] 秘书或已绑定 SDK/CLI Agent 只能代表已绑定的 `owner_did` 发起建单；未绑定 owner 的请求必须拒绝或转人工确认
+- [x] 建 Enclave、启动 Playbook Run、发送任务消息的写操作走已鉴权接口，并显式携带 `actor_did` / `from_did`
+- [x] 至少 3 个角色可协作完成一次链路，并能在 Vault 中读取阶段交付物
+- [x] 最终交付使用 Final Delivery Manifest，携带 `run_id`、结构化 `summary`、最终状态和 `manifest_ref`
+- [x] 失败、阻塞、拒绝路径在状态上可观测，而不是静默丢失
 
 **Phase A 授权边界**
 
@@ -166,15 +166,15 @@ AgentNexus 仍然是 Agent 原生通信基础设施，但单独表达“Agent �
 
 **验收标准**
 
-- [ ] Worker Registry 可返回 `available / busy / offline / blocked / needs_human` 等 presence 状态
-- [ ] 角色选择策略可配置，并能按 capability / 在线状态 / 负载 / 平台偏好排序
-- [ ] OpenClaw、Webhook、SDK Agent 至少两类 Adapter 走统一 intake 契约
-- [ ] 所有 Playbook 相关消息都能用 `run_id` 串回流程状态
-- [ ] 阶段交接默认使用 Context Snapshot + Artifact Ref，不传完整聊天历史
-- [ ] 每个 Playbook stage 可声明 `max_context_tokens` 和 context include/exclude 策略
-- [ ] PM / 秘书汇总时优先读取 Delivery Manifest 和 checkpoint，而不是完整对话日志
-- [ ] 失败后可自动 fallback
-- [ ] 结果包结构稳定，阶段和最终交付都使用 Delivery Manifest
+- [x] Worker Registry 可返回 `available / busy / offline / blocked / needs_human` 等 presence 状态
+- [x] 角色选择基础策略按 capability / profile_type / 在线状态匹配；负载和平台偏好精细排序后移到 v1.1
+- [x] OpenClaw、Webhook、SDK Agent、CLI Worker 共享统一 intake 契约；SDK/CLI 原生入口通过 DID 关系链 / worker profile 解析 `owner_did`
+- [x] 所有 Playbook 相关消息都能用 `session_id + run_id + stage_name` 串回流程状态
+- [x] 阶段交接默认使用 Context Snapshot + Artifact Ref，不传完整聊天历史
+- [x] 每个 Playbook stage 可声明 `max_context_tokens` 和 context include/exclude 策略
+- [x] PM / 秘书汇总时优先读取 Delivery Manifest 和 checkpoint，而不是完整对话日志
+- [x] rejected/blocked 可观测，`on_reject` fallback 和 Owner `abort` 已实现；自动超时重分配后移
+- [x] 结果包结构稳定，阶段和最终交付都使用 Delivery Manifest
 - [ ] 如启用 Launcher，只允许执行白名单命令、固定工作目录、固定环境变量模板
 - [ ] 如启用 Launcher，Worker 凭据和目录访问边界可配置，任务文本不能直接影响命令模板
 
@@ -896,11 +896,65 @@ Intake 记录最小结构：
 
 ### D-SEC-04 角色选择与回退策略
 
-需要定义：
+**目标**：定义 Secretary 在 dispatch 和失败恢复时如何选择 Worker、何时返回 `blocked`、何时回退 Playbook 阶段，以及哪些高级策略后移。
 
-- 按 capability / 平台 / 在线状态 / trust score / 最近负载 选人
-- 首选 Worker 不在线时的 fallback
-- 评审 rejected 时的回退策略
+**Phase B 已实现范围**：
+
+| 场景 | 策略 | 状态落点 |
+|------|------|----------|
+| 初次 dispatch 选人 | 遍历 Owner 绑定 Worker，按 `required_roles` 匹配 `capabilities` 或 `profile_type` | `secretary_intakes.selected_workers` |
+| 在线优先 | 匹配角色时优先选择 `online == true` 的 Worker | `selected_workers[role] = worker_did` |
+| 离线备选 | 若无在线 Worker，但存在角色匹配的离线 Worker，可先作为备选选中 | `selected_workers[role] = worker_did` |
+| 关键角色缺失 | 某个 `required_role` 无任何匹配 Worker | intake 置为 `blocked`，返回 `missing_roles` |
+| Worker blocked | Worker Registry / Presence 可返回 `blocked`，用于 UI 和后续选择策略 | `get_worker_presence()` / `list_workers_v2()` |
+| Stage rejected | `on_stage_rejected` 按 Playbook stage 的 `on_reject` 回退 | `stage_executions.status = rejected` |
+| 回退上限 | 同一 `(run_id, stage_name)` 通过 `retry_count` 限制重复回退 | `retry_count >= max_retries` 时 run 置为 `failed` |
+| Owner 接管 | Phase B 只实现 `abort` | `playbook_runs.status = aborted` |
+
+**Phase B 选择算法（当前契约）**：
+
+```text
+for role in required_roles:
+  candidates = workers where role in capabilities OR role == profile_type
+  if candidates has online worker:
+    select first online worker
+  else if candidates not empty:
+    select first matched worker as offline fallback candidate
+  else:
+    missing_roles.add(role)
+
+if missing_roles not empty:
+  intake.status = blocked
+else:
+  intake.selected_workers = selected_workers
+  create Enclave + Playbook Run
+```
+
+**约束**：
+
+- `required_roles` 是硬约束；缺角色时不降级成“随便找一个 Worker”。
+- Phase B 不做 trust score 排序，不把声誉分作为授权条件。
+- Phase B 不做平台偏好排序；OpenClaw / Webhook / SDK / CLI 只通过统一 intake 进入。
+- Phase B 不做精细负载均衡；`load` 已在 Worker Registry v2 暴露，排序策略后移。
+- Phase B 不做自动 CLI Launcher 拉起；只要求 Worker 已注册或预启动。
+
+**回退策略**：
+
+| 失败类型 | Phase B 行为 | 后移项 |
+|----------|--------------|--------|
+| `rejected` | 按 `on_reject` 回退到指定 stage，并受 `retry_count` 限制 | 多人评审投票裁决 |
+| `blocked` | 状态可见，Owner 可查看并决定处理 | 自动换人、自动补招 Worker |
+| Worker 离线 | Presence 可见；当前不自动重分配正在执行的 stage | reconnect window + timeout reassign |
+| 未 claim / 执行超时 | 设计已定义，但不作为 v1.0.0 必交 | claim timeout、stage timeout 自动 fallback |
+| Owner 人工接管 | `abort` 已实现 | `resume` / `skip` 后移 v1.1 |
+
+**v1.1 增强方向**：
+
+- candidate 排序：`presence > load > platform_preference > trust_score > last_success_at`
+- `list_workers_v2(owner_did, role, presence)` 作为选人数据源，替代基础 `list_workers(owner_did)`
+- `blocked` 自动衰减或人工解除策略持久化
+- 未 claim / 执行超时后的自动重新选人
+- Owner `resume` 指定新 Worker，Owner `skip` 跳过当前阶段
 
 ### D-SEC-05 交付包与结果汇总
 
@@ -1205,12 +1259,16 @@ Phase B 先实现 `abort`；`resume` 和 `skip` 可在 Phase B 后期补充。
 
 ---
 
-## 8. 关键开放问题
+## 8. 关键开放问题与版本归属
 
-- CLI Worker 是“先拉起再收消息”，还是“收消息后再拉起”？
-- 本地命令拉起是由 Daemon 执行，还是由单独的 Launcher sidecar 执行？
-- 结果回传是自由文本、结构化 summary，还是签名交付包？
-- 测试 / 评审角色是否允许多人并行和投票裁决？
+Phase B 设计评审后，v1.0.0 必须回答的问题已经闭环。以下问题不阻塞 v1.0.0 开发者预览，按版本归属处理：
+
+| 问题 | v1.0.0 决策 | 后续归属 |
+|------|-------------|----------|
+| CLI Worker 是“先拉起再收消息”，还是“收消息后再拉起”？ | 不作为必交；v1.0.0 只要求预启动或已注册 Worker 可接单 | v1.1 CLI Launcher 可选适配器 |
+| 本地命令拉起由谁执行？ | 不允许秘书主进程直接拼接并执行命令 | v1.1 独立 Launcher sidecar，白名单命令和固定环境模板 |
+| 结果回传格式是什么？ | 使用结构化回传：`run_id / session_id / status / summary / manifest_ref` | v1.5 增加签名交付包和可验证来源 |
+| 测试 / 评审角色是否允许多人并行和投票裁决？ | v1.0.0 默认单角色单 Worker，保留 Discussion Protocol 作为人工协作补充 | v1.1/v1.5 再引入并行评审、投票裁决和审计 |
 
 ---
 
@@ -1223,32 +1281,33 @@ Phase B 先实现 `abort`；`resume` 和 `skip` 可在 Phase B 后期补充。
 - Enclave / Vault / Playbook 自动推进
 - Owner DID / 消息中心 / 意图路由
 
-### 未正式设计完成
+### v1.0.0 已完成设计
 
-- CLI Launcher
+- Worker Registry + Presence
 - Adapter Contract
 - Message Envelope v1
-- 失败恢复 / 人工接管
-- 社交媒体入口适配器规范
+- Delivery Manifest
+- Context Budget & Handoff
+- 失败恢复 / 人工接管基础版
+
+### 后移设计
+
+- CLI Launcher：后移 v1.1，必须作为独立 sidecar 设计，不能由秘书主进程执行命令。
+- 社交媒体入口适配器规范：后移 v1.1+，先复用 Adapter Contract。
+- per-agent token、hard-enforce `/deliver`、Strict JCS、签名交付包、审计日志：后移 v1.5。
 
 ---
 
 ## 10. 下一步建议
 
-按顺序补文档：
+Phase B 已完成开发候选，可作为 v1.0.0 团队协作主链路。v1.0.0 后续收口建议按以下顺序推进：
 
-1. D-SEC-01 Worker Registry 正式版
-2. D-SEC-08 Adapter Contract
-3. D-SEC-09 Message Envelope v1
-4. D-SEC-10 Context Budget & Handoff
-5. D-SEC-05 交付包与结果汇总
-6. D-SEC-06 失败恢复与人工接管
-7. D-SEC-07 安全边界
-8. D-SEC-03 本地 CLI Launcher
+1. Dashboard / Setup 按 [Dashboard / Setup v1.0 收口设计](design-dashboard-setup-v1.0.md) 接入 Owner + Secretary + Worker + Dispatch 主链路。
+2. README / quickstart / SDK 示例同步新的操作路径。
+3. 补端到端手工验收脚本：SDK/CLI/Webhook -> dispatch -> stage -> manifest。
+4. 发布前全量测试、`CHANGELOG` 和版本标记收口。
 
-其中 `D-SEC-03` 只有在需要自动拉起 CLI Worker 时才是 Phase B 前置；`D-SEC-07` 必须先于任何自动命令执行能力完成。
-
-完成以上文档后，再将 Phase B 拆成可交付的实现批次：Registry/Presence、Adapter、Envelope、Context Budget、Manifest、Fallback、可选 Launcher。
+`D-SEC-03` CLI Launcher、`resume / skip`、完整 `D-SEC-07` 命令执行安全边界后移到 v1.1；per-agent token、hard-enforce `/deliver`、Strict JCS、签名交付包和审计日志后移到 v1.5。
 
 ---
 
@@ -1448,9 +1507,9 @@ Phase B 可以进入实现拆分，建议按 `Registry/Presence → Adapter → 
 | S1 | `D-SEC-09` 要求所有协作消息有 `message_id`，但当前 `SendMessageRequest` 尚未定义由客户端传入还是服务端生成。 | 🟡 | ✅ 已在 D-SEC-09 明确：客户端可传入，未传时服务端生成 `msg_<uuid>` 并持久化 |
 | S2 | `D-SEC-05` 中 `output_ref`、`manifest_ref` 示例已是 run-scoped，但个别示例路径有 `.json` 后缀差异。 | 🟢 | ✅ 已统一：Vault key 不带文件后缀，所有示例已修正 |
 
-### 可开发范围
+### 已开发范围
 
-Phase B 首批开发可直接开始以下内容：
+Phase B 已完成开发候选，覆盖以下内容：
 
 1. `list_workers_v2` / `get_worker_presence` / remote presence TTL。
 2. Adapter Contract 基础框架与 Webhook HMAC intake。
@@ -1458,10 +1517,11 @@ Phase B 首批开发可直接开始以下内容：
 4. Context Snapshot / Handoff Checkpoint / estimated context budget。
 5. Delivery Manifest 写入 Vault 并更新 `stage_executions.output_ref`。
 6. D-SEC-06 Owner 接管端点（abort）。
+7. SDK Agent / CLI Worker 原生入口通过 DID 关系链和 worker profile 解析 `owner_did`。
 
-### 开发状态（2026-04-26）
+### 开发状态（2026-04-29）
 
-Phase B 以下项目已完成开发并通过测试：
+Phase B 以下项目已完成开发候选并通过回归测试：
 
 | D-ID | 功能 | 状态 |
 |------|------|------|
@@ -1469,16 +1529,17 @@ Phase B 以下项目已完成开发并通过测试：
 | D-SEC-02 | Intake 流程 + Secretary Dispatch | ✅ 已完成 |
 | D-SEC-05 | Delivery Manifest（Stage + Final，Vault 写入） | ✅ 已完成 |
 | D-SEC-06 | Owner 接管（abort 端点） | ✅ 已完成 |
+| D-SEC-08 | Adapter Contract（OpenClaw / Webhook / SDK Agent / CLI Worker 统一 intake） | ✅ 已完成 |
 | D-SEC-09 | Message Envelope v1（message_id 持久化） | ✅ 已完成 |
+| D-SEC-10 | Context Snapshot / Handoff / Context Budget | ✅ 已完成 |
 
-测试覆盖：`test_v10_sec_01~09` 共 21 个测试用例全部通过（415 passed, 8 skipped）。
-6. Owner `abort` 接管链路。
+测试覆盖：Phase B 回归 `59 passed`；全量基线 `429 collected, 421 passed, 8 skipped`。
 
 ---
 
-## 18. Phase B 首批代码评审记录（2026-04-26）
+## 18. Phase B 首批代码评审记录（2026-04-26，历史记录）
 
-> 评审者：评审 Agent | 测试结果：417 passed, 8 skipped ✅
+> 评审者：评审 Agent | 当时测试结果：417 passed, 8 skipped ✅。当前完整复评见 §19。
 
 ### 评审结论：通过
 
@@ -1496,6 +1557,46 @@ Phase B 首批实现覆盖 D-SEC-01 Presence 正式版、D-SEC-05 Delivery Manif
 
 | # | 问题 | 严重性 | 状态 |
 |---|------|--------|------|
-| S1 | `store_stage_manifest` Vault 写入失败静默 pass，应记录 warning log | 🟡 | ⬚ 待修复 |
+| S1 | `store_stage_manifest` Vault 写入失败静默 pass，应记录 warning log | 🟡 | ⬚ 非阻塞，后续优化 |
 | S2 | `_WORKER_BLOCKED` 是内存 dict，进程重启后丢失 | 🟢 | ⬚ Phase C 持久化 |
 | S3 | `api_dispatch` pre_authorized 模式下两次 DB 写入可能留孤儿 intake | 🟢 | ⬚ 后续优化 |
+
+---
+
+## 19. Phase B 完整代码复评记录（2026-04-29）
+
+> 评审者：评审 Agent | 测试结果：`59 passed` ✅
+
+### 评审结论：通过，进入 v1.0.0 发布收口
+
+Phase B 当前实现已覆盖 Presence、Adapter Contract、Message Envelope、Context Snapshot/Handoff、Context Budget、Delivery Manifest、Owner abort、SDK/CLI 原生入口 owner 解析。此前复评发现的问题已确认修复：Adapter token fallback、重复 stage execution、缺失 objective、CLI Worker 参数透传、`context_budget` 字段命名不一致。
+
+### 剩余非阻塞项
+
+| 项目 | 版本归属 | 说明 |
+|------|----------|------|
+| Dashboard / Setup 主链路 | v1.0.0 | 产品入口仍需接入 Owner + Secretary + Worker + Dispatch |
+
+---
+
+## 20. Dashboard/Setup + Phase B 收口代码评审（2026-04-30）
+
+> 评审者：评审 Agent
+> 测试结果：相关回归 `56 passed`；全量 `549 passed, 8 skipped, 1 warning`；前端 `npm run build` 通过。
+
+### 评审结论：暂不通过，需修复后复评
+
+Phase B 基础能力仍可作为开发候选，但本轮 Dashboard/Setup 收口实现暴露出一个后端流程问题和两个前端契约问题，影响 v1.0.0 主链路验收。
+
+| 编号 | 问题 | 严重级别 | 修复要求 |
+|------|------|----------|----------|
+| S1 | 默认 Playbook 多角色 stage 未设置 `next` 链，第一阶段完成后 run 会直接 completed，后续角色不会执行。 | 🔴 | `/secretary/dispatch` 生成默认 Playbook 时按 `required_roles` 串联 stage；补两角色端到端推进测试。 |
+| S1 | Dashboard / Messages 的 Owner helper 未携带 `actor_did`。 | 🔴 | 前端 helper 显式传 `actorDid=owner_did`。 |
+| S1 | Setup / Dashboard 使用 `secretary_did` 调 `listWorkers` / `listIntakes`，与后端要求 `owner_did` actor 不一致。 | 🔴 | Owner 管理和查询统一用 `owner_did`，Secretary dispatch 才用 `secretary_did`。 |
+| S2 | 测试覆盖缺少真实 API 闭环和前端 actor 契约。 | 🟡 | 补 API 级 smoke 和前端 helper 测试；覆盖率工具后续引入 `pytest-cov`。 |
+
+本轮复评前不建议进入 v1.0.0 发布收口。
+| 操作示例与发布文档 | v1.0.0 | README、quickstart、SDK 示例和 CHANGELOG 收口 |
+| HTTP E2E Adapter 验收脚本 | v1.0.0 发布前 | 补 SDK/CLI/Webhook -> dispatch -> stage -> manifest 的手工或自动验收 |
+| CLI Launcher、resume / skip | v1.1 | 不阻塞 v1.0.0 开发者预览 |
+| per-agent token、Strict JCS、签名交付包 | v1.5 | 企业安全收紧项 |

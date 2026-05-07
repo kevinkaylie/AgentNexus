@@ -14,7 +14,7 @@ from agent_net.storage import (
     list_workers, get_owner, is_secretary,
     create_enclave, add_enclave_member, get_enclave,
     create_playbook, get_playbook, create_playbook_run, get_playbook_run,
-    create_stage_execution, update_playbook_run,
+    update_playbook_run,
 )
 
 router = APIRouter()
@@ -101,11 +101,21 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
     if not all([session_id, owner_did, actor_did, objective, required_roles]):
         raise HTTPException(400, "Missing required fields")
 
-    # 1. 校验 secretary 身份
-    await _verify_actor_is_secretary(actor_did)
+    # 1. 校验 actor 身份：secretary 或 owner 绑定的 Agent 均可 dispatch
+    is_dispatch_actor = False
     sec = await is_secretary(actor_did)
-    if not sec or sec.get("owner_did") != owner_did:
-        raise HTTPException(403, "Secretary is not bound to this owner")
+    if sec and sec.get("owner_did") == owner_did:
+        is_dispatch_actor = True  # secretary 代表其 owner dispatch
+
+    if not is_dispatch_actor:
+        # D-SEC-08: SDK Agent / CLI Worker 也可 dispatch，只要是 owner 绑定的子 Agent
+        from agent_net.storage import get_agent
+        agent = await get_agent(actor_did)
+        if agent and agent.get("owner_did") == owner_did:
+            is_dispatch_actor = True
+
+    if not is_dispatch_actor:
+        raise HTTPException(403, "Actor is not a secretary or bound agent of this owner")
 
     owner = await get_owner(owner_did)
     if not owner:
@@ -173,11 +183,24 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
         permissions="admin", handbook="Enclave owner",
     )
 
-    # 秘书作为 rw 加入（需要继续写 Vault / 创建 Run）
-    await add_enclave_member(
-        enclave_id=enclave_id, did=actor_did, role="secretary",
-        permissions="rw", handbook="Secretary orchestrator",
-    )
+    # 只有真实 secretary 才以 "secretary" 角色加入
+    # 若 actor 同时是被选中的 worker，跳过（worker 角色会在下面单独加入）
+    is_real_secretary = sec is not None
+    actor_is_selected_worker = actor_did in selected_workers.values()
+
+    if is_real_secretary and not actor_is_selected_worker:
+        # 秘书作为 rw 加入（需要继续写 Vault / 创建 Run）
+        await add_enclave_member(
+            enclave_id=enclave_id, did=actor_did, role="secretary",
+            permissions="rw", handbook="Secretary orchestrator",
+        )
+    elif not is_real_secretary and not actor_is_selected_worker:
+        # 绑定 Agent/SDK Agent 发起 dispatch 但不是 worker，以 initiator 加入
+        await add_enclave_member(
+            enclave_id=enclave_id, did=actor_did, role="initiator",
+            permissions="rw", handbook="Dispatch initiator",
+        )
+    # 若 actor_is_selected_worker，不在此处加入，保留下面 worker role 为准
 
     # Worker 成员加入
     for role, did in selected_workers.items():
@@ -197,8 +220,10 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
         from agent_net.enclave.models import Playbook, PlaybookRun, Stage
         playbook_id = Playbook.gen_id()
         stages = []
-        for role in required_roles:
-            stages.append({"name": role, "role": role, "description": f"{role} stage"})
+        for i, role in enumerate(required_roles):
+            # next 指向下一个 stage，最后一个为空字符串
+            next_stage = required_roles[i + 1] if i + 1 < len(required_roles) else ""
+            stages.append({"name": role, "role": role, "description": f"{role} stage", "next": next_stage})
         await create_playbook(
             playbook_id=playbook_id, name="default-orchestration",
             stages=stages, description="Default secretary playbook",
@@ -240,13 +265,30 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
     }
     await update_playbook_run(run_id, current_stage=stages[0]["name"] if stages else None, context=snapshot)
 
-    # 9. 启动第一个 stage
+    # 9. 启动第一个 stage — 通过 PlaybookEngine 发送 task_propose
     if stages:
         first_stage = stages[0]
         assigned_did = selected_workers.get(first_stage["role"])
         if assigned_did:
-            await create_stage_execution(
-                run_id=run_id, stage_name=first_stage["name"], assigned_did=assigned_did,
+            # D-SEC-02: 调用 PlaybookEngine 启动阶段，发送 task_propose 给 Worker
+            # _start_stage 内部已调用 create_stage_execution，无需在此处重复创建
+            from agent_net.enclave.playbook import get_playbook_engine
+            from agent_net.enclave.models import Stage as StageModel
+
+            engine = get_playbook_engine()
+            stage_model = StageModel(
+                name=first_stage["name"],
+                role=first_stage["role"],
+                description=first_stage.get("description", ""),
+                input_keys=first_stage.get("input_keys", []),
+                output_key=first_stage.get("output_key", ""),
+                next=first_stage.get("next", ""),
+                on_reject=first_stage.get("on_reject", ""),
+            )
+            await engine._start_stage(
+                enclave_id=enclave_id,
+                run_id=run_id,
+                stage=stage_model,
             )
 
     return {

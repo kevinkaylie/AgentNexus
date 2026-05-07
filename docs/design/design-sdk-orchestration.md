@@ -4,7 +4,7 @@
 > 目标：在不推翻现有 SDK 的前提下，快速补齐 Owner / Secretary / Team / Run / Worker Runtime API，让 SDK 适配当前“常驻秘书 + Agent 团队协作编排”主链路。
 > 关联文档：
 > - [design-secretary-orchestration.md](design-secretary-orchestration.md) — 常驻秘书与 Agent 团队协作编排
-> - [design-v0.x.md](design-v0.x.md) — v0.8 SDK、Action Layer、Enclave SDK
+> - [design-v0.x.md](../archive/design-v0.x.md) — v0.8 SDK、Action Layer、Enclave SDK
 > - [ADR-006 SDK 架构与 Daemon 通信协议](../adr/006-sdk-daemon-communication.md)
 > - [ADR-007 Action Layer 协作协议](../adr/007-action-layer-protocol.md)
 

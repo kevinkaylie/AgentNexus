@@ -43,12 +43,12 @@ AGENTS.md              ← 文档总索引，新 Agent 从这里开始
 ├── docs/design.md          ← 设计文档索引（活跃正文：docs/design/design-v1.0.md）
 ├── docs/roadmap.md         ← 产品路线图（版本规划 + 进度，仅本地）
 ├── docs/wip.md             ← 进行中变更追踪（仅本地）
-├── docs/devlog.md          ← 开发提交日志（仅本地）
-├── CHANGELOG.md            ← 已发布版本变更记录
+├── CHANGELOG.md            ← 官方变更记录
 ├── docs/adr/               ← 架构决策记录（ADR-001~005）
 ├── docs/contracts/         ← 跨团队接口契约（Giskard/OATR/QNTM WG）
-├── docs/roles/             ← Agent 角色手册（设计/开发/评审/测试）
-├── docs/processes/         ← 流程文档（设计评审流程）
+├── docs/agent-workflow.md  ← Agent 角色职责与评审流程
+├── docs/integrations/      ← MCP 等集成配置
+├── docs/archive/           ← 历史设计与归档文档
 └── docs/templates/         ← 文档模板（ADR/契约/角色/WIP 条目）
 ```
 
@@ -56,20 +56,19 @@ AGENTS.md              ← 文档总索引，新 Agent 从这里开始
 
 ```
 roadmap（规划什么）→ requirements（做到什么程度）→ design（怎么做）
-→ wip（做到哪了）→ devlog（每次做了什么）→ CHANGELOG（发布了什么）
+→ wip（做到哪了）→ CHANGELOG（完成/发布了什么）
 ```
 
 ### 开发时必读
 
 - 开始新功能前：查 `docs/requirements.md` 确认验收标准，查 `docs/design/design-v1.0.md` 确认技术方案（`docs/design.md` 为索引）
 - 开发过程中：更新 `docs/wip.md` 状态
-- 每次提交后：在 `docs/devlog.md` 记录变更内容和测试结果
-- 功能完成后：从 `docs/wip.md` 移除，更新 `CHANGELOG.md` 和 `docs/roadmap.md`
+- 功能完成或重要评审后：从 `docs/wip.md` 移除，更新 `CHANGELOG.md` 和 `docs/roadmap.md`
 - 新架构决策：写 ADR 到 `docs/adr/`，经评审后标记"已采纳"
 
 ### 仅本地保留（不提交 GitHub）
 
-`docs/roadmap.md`、`docs/wip.md`、`docs/devlog.md`、`docs/giskard-*.md`、`docs/contracts/giskard-ca-certification.md`、`docs/contracts/oatr-jwt-attestation.md`
+`docs/roadmap.md`、`docs/wip.md`、`docs/contracts/giskard-ca-certification.md`、`docs/contracts/oatr-jwt-attestation.md`
 
 ## DID 格式
 
@@ -189,5 +188,5 @@ python scripts/cross_verify_demo.py            # Cross-verify 演示
 
 - **Git push 顺序**：本地测试通过 → 线上测试通过 → 再 commit + push
 - 不能只跑单元测试就 push，需要手动线上联调验证后再提交
-- 新功能开发前查 `docs/requirements.md` + `docs/design/design-v1.0.md`，开发中更新 `docs/wip.md`，完成后更新 `docs/devlog.md` + `CHANGELOG.md` + `docs/roadmap.md`
-- 新架构决策写 ADR（`docs/adr/`），经评审流程（`docs/processes/design-review.md`）后标记"已采纳"
+- 新功能开发前查 `docs/requirements.md` + `docs/design/design-v1.0.md`，开发中更新 `docs/wip.md`，完成后更新 `CHANGELOG.md` + `docs/roadmap.md`
+- 新架构决策写 ADR（`docs/adr/`），经 [Agent 协作流程](docs/agent-workflow.md) 评审后标记"已采纳"

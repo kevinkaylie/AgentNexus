@@ -25,6 +25,12 @@ class ActionType(str, Enum):
     RESOURCE_SYNC = "resource_sync"
     STATE_NOTIFY = "state_notify"
 
+    # D-SEC-09 Phase B: additional orchestration message types
+    ARTIFACT_READY = "artifact_ready"
+    APPROVAL_REQUEST = "approval_request"
+    HANDOFF = "handoff"
+    HUMAN_CONFIRM = "human_confirm"
+
 
 class TaskStatus(str, Enum):
     """Task status values for state_notify."""
@@ -65,7 +71,7 @@ class TaskPropose:
 
     def to_content(self) -> dict:
         """Convert to content dict for send()."""
-        content = {"task_id": self.task_id, "title": self.title}
+        content = {"task_id": self.task_id, "title": self.title, "schema_version": "1"}
         if self.description:
             content["description"] = self.description
         if self.deadline:
@@ -104,7 +110,7 @@ class TaskClaim:
     message: Optional[str] = None
 
     def to_content(self) -> dict:
-        content = {"task_id": self.task_id}
+        content = {"task_id": self.task_id, "schema_version": "1"}
         if self.eta:
             content["eta"] = self.eta
         if self.message:
@@ -135,7 +141,7 @@ class ResourceSync:
     version: Optional[str] = None
 
     def to_content(self) -> dict:
-        content = {"key": self.key, "value": self.value}
+        content = {"key": self.key, "value": self.value, "schema_version": "1"}
         if self.version:
             content["version"] = self.version
         return content
@@ -169,7 +175,7 @@ class StateNotify:
     context: Optional[dict] = None
 
     def to_content(self) -> dict:
-        content = {"status": self.status}
+        content = {"status": self.status, "schema_version": "1"}
         if self.task_id:
             content["task_id"] = self.task_id
         if self.progress is not None:

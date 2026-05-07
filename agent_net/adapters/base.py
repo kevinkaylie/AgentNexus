@@ -133,3 +133,81 @@ class PlatformAdapter(ABC):
         Called when the adapter is being shut down.
         """
         pass
+
+    async def _intake_and_dispatch(
+        self,
+        session_id: str,
+        owner_did: str,
+        actor_did: str,
+        objective: str,
+        required_roles: list[str],
+        source_channel: str,
+        adapter_id: str,
+        message_ref: str = "",
+        preferred_playbook: str = "",
+        entry_mode: str = "owner_pre_authorized",
+        daemon_url: str = "http://localhost:8765",
+        token: str = "",
+    ) -> dict:
+        """
+        D-SEC-08: 统一 Intake 请求格式，交给秘书的 /secretary/dispatch。
+
+        所有适配器通过此方法将外部入口消息转换为统一的 intake 格式，
+        然后转发到 /secretary/dispatch 启动团队协作流程。
+        """
+        import aiohttp
+        import os
+
+        # 自动读取 daemon token（调用方未显式传入时）
+        if not token:
+            from agent_net.common.constants import DAEMON_TOKEN_FILE
+            if os.path.exists(DAEMON_TOKEN_FILE):
+                with open(DAEMON_TOKEN_FILE) as f:
+                    token = f.read().strip()
+            # 备用路径 ~/.agentnexus/daemon_token.txt
+            if not token:
+                alt = os.path.expanduser("~/.agentnexus/daemon_token.txt")
+                if os.path.exists(alt):
+                    with open(alt) as f:
+                        token = f.read().strip()
+
+        intake_payload = {
+            "session_id": session_id,
+            "owner_did": owner_did,
+            "actor_did": actor_did,
+            "objective": objective,
+            "required_roles": required_roles,
+            "preferred_playbook": preferred_playbook,
+            "source": {
+                "channel": source_channel,
+                "adapter_id": adapter_id,
+                "message_ref": message_ref,
+            },
+            "entry_mode": entry_mode,
+        }
+
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{daemon_url}/secretary/dispatch",
+                json=intake_payload,
+                headers=headers,
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    return {
+                        "status": "accepted",
+                        "run_id": result.get("run_id", ""),
+                        "session_id": session_id,
+                        "enclave_id": result.get("enclave_id", ""),
+                    }
+                else:
+                    text = await resp.text()
+                    return {
+                        "status": "dispatch_failed",
+                        "error": text,
+                        "session_id": session_id,
+                    }

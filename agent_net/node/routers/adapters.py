@@ -39,11 +39,11 @@ async def api_adapter_register(platform: str, payload: dict, authorization: str 
 
     import agent_net.storage as _storage
     if platform == "openclaw":
-        adapter = OpenClawAdapter(agent_did, msg_router, _storage)
+        adapter = OpenClawAdapter(agent_did, msg_router, _storage, owner_did=payload.get("owner_did", ""))
     elif platform == "webhook":
         webhook_secret = payload.get("webhook_secret", secrets.token_hex(16))
         callback_url = payload.get("callback_url")
-        adapter = WebhookAdapter(agent_did, msg_router, _storage, webhook_secret, callback_url)
+        adapter = WebhookAdapter(agent_did, msg_router, _storage, webhook_secret, callback_url, owner_did=payload.get("owner_did"))
     else:
         raise HTTPException(400, f"Unknown platform: {platform}")
 

@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [Unreleased]
+
+### Code Review — 已完成（2026-04-30）
+
+#### Dashboard / Setup + Secretary Phase B 收口 — 代码评审通过
+
+**本轮解决项：**
+
+- **API Client 契约修复**：`web/src/api/client.ts` 全部重写，所有需要 `actor_did` 的 helper 显式参数化（§5.2 要求）
+- **Worker API**：新增 `listWorkers`、`setWorkerType`、`getWorkerPresence`
+- **Secretary API**：新增 `dispatchSecretary`、`listIntakes`、`abortIntake`、`getIntake`
+- **Run/Vault API**：新增 `getRun`、`getVaultEntry`、`listVaultKeys`
+- **Phase B 细节修复**：重复 `create_stage_execution`、Context Snapshot objective 来源、`context_budget` 字段名对齐设计文档
+- **CLI worker init**：移除冗余 PATCH（注册已包含 worker_type）
+- **Adapter token**：`_intake_and_dispatch` 自动读取 daemon token
+- **Dashboard**：新增 Worker presence、Active Runs、Recent Intakes 聚合
+- **Setup**：6 步闭环（Token → Owner → Secretary → Workers → Dispatch → Result）
+- **Agents**：worker_type 可编辑下拉、presence 状态列
+- **Enclaves**：Run 详情、Owner abort、面包屑状态清理
+
+**遗留项（后移到 v1.1）：**
+- D-SEC-04 角色选择与回退策略
+- D-SEC-06 超时/重试/fallback 自动化
+- CLI Launcher 自动拉起
+- Playwright / API 级 smoke test
+
+**测试结果：** 432 passed, 8 skipped, TypeScript/vite build 通过
+
+---
+
+### Code Review — 历史（2026-04-30 前）
+
+---
+
 ## [1.0.1] - 2026-04-21
 
 ### Added
@@ -308,7 +342,7 @@ pip install agentnexus-sdk
 - **S3**: `@context` 顺序错误 — DID Core 在前
 - **S4**: dict content 序列化后无标记 — 新增 `content_encoding` 字段
 - **CP1**: `start_discussion` 广播失败无日志 — 添加 `logger.warning`
-- **CP2**: scenarios.md 缺少场景 5 — 补充跨平台协作场景
+- **CP2**: product.md 补充跨平台协作场景
 - **CP3**: 缺少测试覆盖 — 新增 `tests/test_mcp_collaboration.py`（10 个测试）
 
 ### Technical
@@ -450,7 +484,7 @@ pip install agentnexus-sdk
   - New endpoint `GET /agents/{did}/certifications` for listing certifications
   - New MCP tools: `certify_agent` (14th) and `get_certifications` (15th)
   - `GET /agents/{did}/profile` now includes certifications in response
-- **Giskard integration proposal** — `docs/giskard-proposal.md` with technical alignment plan
+- **Giskard integration proposal** — merged into `docs/contracts/giskard-ca-certification.md`
 - 12 new tests (tv01–tv12) in `tests/test_v05.py`
 
 ### Changed

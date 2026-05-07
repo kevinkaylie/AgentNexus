@@ -15,8 +15,12 @@ from agentnexus.runs import RunClient, RunStatus, IntakeInfo
 
 
 class FakeClient:
-    def __init__(self, *, fail_bind: bool = False):
-        self.agent_info = SimpleNamespace(did="did:agentnexus:actor")
+    def __init__(self, *, fail_bind: bool = False, agent_owner_did: str = ""):
+        self.agent_info = SimpleNamespace(
+            did="did:agentnexus:actor",
+            owner_did=agent_owner_did,
+            worker_type="resident",
+        )
         self.requests = []
         self.notifications = []
         self.fail_bind = fail_bind
@@ -562,3 +566,65 @@ async def test_run_client_abort_delegates_to_secretary():
 
     req = client.requests[-1]
     assert req["path"] == "/secretary/intake/sess_1/abort"
+
+
+# ── Tests for newly added code ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatch_as_current_agent_with_owner_did():
+    """dispatch_as_current_agent should auto-fill owner_did and actor_did from agent_info."""
+    client = FakeClient(agent_owner_did="did:agentnexus:owner")
+
+    result = await client.secretary.dispatch_as_current_agent(
+        session_id="sess_auto",
+        objective="Auto dispatch",
+        required_roles=["developer"],
+    )
+
+    req = client.requests[-1]
+    assert req["path"] == "/secretary/dispatch"
+    assert req["json"]["owner_did"] == "did:agentnexus:owner"
+    assert req["json"]["actor_did"] == "did:agentnexus:actor"
+    assert req["json"]["objective"] == "Auto dispatch"
+    assert result.status == "dispatched"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_as_current_agent_without_owner_did():
+    """dispatch_as_current_agent should raise when agent has no owner_did."""
+    client = FakeClient(agent_owner_did="")
+
+    with pytest.raises(RuntimeError, match="no owner_did"):
+        await client.secretary.dispatch_as_current_agent(
+            session_id="sess_fail",
+            objective="No owner",
+            required_roles=["developer"],
+        )
+
+
+def test_action_content_includes_schema_version():
+    """All Action to_content() should include schema_version."""
+    from agentnexus.actions import TaskPropose, TaskClaim, ResourceSync, StateNotify
+
+    tp = TaskPropose(task_id="t1", title="test")
+    assert tp.to_content()["schema_version"] == "1"
+
+    tc = TaskClaim(task_id="t1")
+    assert tc.to_content()["schema_version"] == "1"
+
+    rs = ResourceSync(key="x", value="y")
+    assert rs.to_content()["schema_version"] == "1"
+
+    sn = StateNotify(status="completed")
+    assert sn.to_content()["schema_version"] == "1"
+
+
+def test_action_type_enum_has_orchestration_types():
+    """ActionType should include Phase B orchestration types."""
+    from agentnexus.actions import ActionType
+
+    assert hasattr(ActionType, "ARTIFACT_READY")
+    assert hasattr(ActionType, "APPROVAL_REQUEST")
+    assert hasattr(ActionType, "HANDOFF")
+    assert hasattr(ActionType, "HUMAN_CONFIRM")

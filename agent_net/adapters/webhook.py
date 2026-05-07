@@ -6,6 +6,7 @@ Generic webhook adapter for platforms like Dify, Coze, etc.
 import hashlib
 import hmac
 import json
+import time
 from typing import Dict, Any, Optional
 
 import aiohttp
@@ -35,6 +36,7 @@ class WebhookAdapter(PlatformAdapter):
         storage,  # agent_net.storage module
         webhook_secret: str,
         callback_url: Optional[str] = None,
+        owner_did: Optional[str] = None,
     ):
         """
         Initialize Webhook adapter.
@@ -45,12 +47,14 @@ class WebhookAdapter(PlatformAdapter):
             storage: Daemon's storage module
             webhook_secret: Secret for HMAC signature verification
             callback_url: Default callback URL for outbound webhooks
+            owner_did: D-SEC-08: 预配置 owner_did（Webhook 身份映射）
         """
         self.agent_did = agent_did
         self.router = router
         self.storage = storage
         self.webhook_secret = webhook_secret
         self.callback_url = callback_url
+        self.owner_did = owner_did
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -67,21 +71,10 @@ class WebhookAdapter(PlatformAdapter):
 
     async def inbound(self, request: dict) -> dict:
         """
-        Handle incoming webhook → AgentNexus message.
+        Handle incoming webhook → AgentNexus message or intake→dispatch.
 
-        Args:
-            request: {
-                "signature": HMAC-SHA256 signature,
-                "timestamp": Unix timestamp,
-                "body": {
-                    "to_did": target DID,
-                    "content": message content,
-                    ...
-                }
-            }
-
-        Returns:
-            Response dict
+        D-SEC-08: 如果请求包含 objective + required_roles，识别为编排意图，
+        走 intake→dispatch 流程；否则走普通消息路由（向后兼容）。
         """
         # Verify signature
         signature = request.get("signature", "")
@@ -91,14 +84,34 @@ class WebhookAdapter(PlatformAdapter):
         if not self._verify_signature(signature, timestamp, body):
             return {"error": "Invalid signature", "status": 401}
 
-        # Extract message parameters
+        # D-SEC-08: 检测是否为编排请求（包含 objective + required_roles）
+        objective = body.get("objective")
+        required_roles = body.get("required_roles")
+        if objective and required_roles:
+            if not self.owner_did:
+                return {"error": "Webhook adapter requires owner_did for dispatch", "status": 400}
+
+            session_id = body.get("session_id", f"webhook_{int(time.time())}")
+            return await self._intake_and_dispatch(
+                session_id=session_id,
+                owner_did=self.owner_did,
+                actor_did=self.agent_did,
+                objective=objective,
+                required_roles=required_roles,
+                source_channel="webhook",
+                adapter_id=f"webhook_{self.agent_did[-12:]}",
+                message_ref=body.get("message_ref", ""),
+                preferred_playbook=body.get("preferred_playbook", ""),
+                entry_mode=body.get("entry_mode", "owner_pre_authorized"),
+            )
+
+        # 普通消息路由（向后兼容）
         to_did = body.get("to_did")
         content = body.get("content")
 
         if not to_did or content is None:
             return {"error": "Missing to_did or content", "status": 400}
 
-        # Route message
         try:
             result = await self.router.route_message(
                 from_did=self.agent_did,

@@ -116,6 +116,7 @@ python main.py agent search "Translate"
 ```bash
 curl -X POST http://localhost:8765/messages/send \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(cat data/daemon_token.txt)" \
   -d '{
     "from_did": "did:agent:a1b2c3d4e5f60001",
     "to_did":   "did:agent:b2c3d4e5f6700002",
@@ -129,7 +130,8 @@ curl -X POST http://localhost:8765/messages/send \
 **第七步：TranslateBot 查看收件箱**
 
 ```bash
-curl http://localhost:8765/messages/inbox/did:agent:b2c3d4e5f6700002
+curl "http://localhost:8765/messages/inbox/did:agent:b2c3d4e5f6700002?actor_did=did:agent:b2c3d4e5f6700002" \
+  -H "Authorization: Bearer $(cat data/daemon_token.txt)"
 
 # 返回：
 # {
@@ -149,7 +151,7 @@ curl http://localhost:8765/messages/inbox/did:agent:b2c3d4e5f6700002
 curl -X PATCH http://localhost:8765/agents/did:agent:b2c3d4e5f6700002/card \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $(cat data/daemon_token.txt)" \
-  -d '{"description": "多语言翻译 v2，新增方言支持", "tags": ["translate","multilingual","official","v2"]}'
+  -d '{"actor_did": "did:agent:b2c3d4e5f6700002", "description": "多语言翻译 v2，新增方言支持", "tags": ["translate","multilingual","official","v2"]}'
 
 # 返回重新签名的完整 NexusProfile
 ```
@@ -168,6 +170,40 @@ curl -X PATCH http://localhost:8765/agents/did:agent:b2c3d4e5f6700002/card \
        │  ④ 返回 endpoint ◄───────────────┼─────────────────────────│
        │                                  │                         │
        │  ⑤ 直连发消息 ─────────────────────────────────────────►  │
+```
+
+### CLI 命令速查
+
+```bash
+# 服务启动
+python main.py relay start
+python main.py node start
+python main.py node mcp --name "CoderAgent" --caps "Code,Debug"
+python main.py test
+
+# Agent 管理
+python main.py agent add "MyBot" --type TaskAgent --caps "Chat,Search" \
+  --public --desc "通用助手" --tags "chat,task"
+python main.py agent list
+python main.py agent search "Chat"
+python main.py agent profile <did>
+
+# Worker / 团队编排
+python main.py node worker init "CoderAgent" --type interactive_cli \
+  --owner <owner_did> --caps "developer,code"
+python main.py node worker status <worker_did>
+
+# 访问控制
+python main.py node mode set public|ask|private
+python main.py node whitelist add <did>
+python main.py node blacklist add <did>
+python main.py node status --pending
+python main.py node resolve <did> allow|deny
+
+# Relay 配置
+python main.py node relay list
+python main.py node relay set-local http://192.168.1.100:9000
+python main.py node relay add https://relay.example.com
 ```
 
 ---
@@ -259,6 +295,7 @@ python main.py agent search "Translate"
 ```bash
 curl -X POST http://localhost:8765/messages/send \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(cat data/daemon_token.txt)" \
   -d '{
     "from_did": "did:agent:a1b2c3d4e5f60001",
     "to_did":   "did:agent:b2c3d4e5f6700002",
@@ -270,7 +307,8 @@ curl -X POST http://localhost:8765/messages/send \
 #### Step 7: TranslateBot reads inbox
 
 ```bash
-curl http://localhost:8765/messages/inbox/did:agent:b2c3d4e5f6700002
+curl "http://localhost:8765/messages/inbox/did:agent:b2c3d4e5f6700002?actor_did=did:agent:b2c3d4e5f6700002" \
+  -H "Authorization: Bearer $(cat data/daemon_token.txt)"
 ```
 
 #### Step 8: Update card (re-signed inside Daemon)
@@ -279,5 +317,39 @@ curl http://localhost:8765/messages/inbox/did:agent:b2c3d4e5f6700002
 curl -X PATCH http://localhost:8765/agents/did:agent:b2c3d4e5f6700002/card \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $(cat data/daemon_token.txt)" \
-  -d '{"description": "Translation v2 — now with dialect support", "tags": ["translate","official","v2"]}'
+  -d '{"actor_did": "did:agent:b2c3d4e5f6700002", "description": "Translation v2 — now with dialect support", "tags": ["translate","official","v2"]}'
+```
+
+### CLI Command Cheat Sheet
+
+```bash
+# Service startup
+python main.py relay start
+python main.py node start
+python main.py node mcp --name "CoderAgent" --caps "Code,Debug"
+python main.py test
+
+# Agent management
+python main.py agent add "MyBot" --type TaskAgent --caps "Chat,Search" \
+  --public --desc "General assistant" --tags "chat,task"
+python main.py agent list
+python main.py agent search "Chat"
+python main.py agent profile <did>
+
+# Worker / team orchestration
+python main.py node worker init "CoderAgent" --type interactive_cli \
+  --owner <owner_did> --caps "developer,code"
+python main.py node worker status <worker_did>
+
+# Access control
+python main.py node mode set public|ask|private
+python main.py node whitelist add <did>
+python main.py node blacklist add <did>
+python main.py node status --pending
+python main.py node resolve <did> allow|deny
+
+# Relay configuration
+python main.py node relay list
+python main.py node relay set-local http://192.168.1.100:9000
+python main.py node relay add https://relay.example.com
 ```

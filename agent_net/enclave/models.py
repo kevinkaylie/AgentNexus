@@ -125,6 +125,8 @@ class Stage:
     next: str = ""                      # 成功后的下一阶段
     on_reject: str = ""                 # 被拒绝后回退到的阶段
     timeout_seconds: int = 0            # 超时时间（0=不限）
+    max_context_tokens: int = 0         # 上下文预算（0=不限）
+    context_policy: dict = field(default_factory=dict)  # Phase B D-SEC-10
 
     def to_dict(self) -> dict:
         return {
@@ -136,6 +138,8 @@ class Stage:
             "next": self.next,
             "on_reject": self.on_reject,
             "timeout_seconds": self.timeout_seconds,
+            "max_context_tokens": self.max_context_tokens,
+            "context_policy": self.context_policy,
         }
 
     @classmethod
@@ -149,6 +153,8 @@ class Stage:
             next=d.get("next", ""),
             on_reject=d.get("on_reject", ""),
             timeout_seconds=d.get("timeout_seconds", 0),
+            max_context_tokens=d.get("max_context_tokens", 0),
+            context_policy=d.get("context_policy", {}),
         )
 
 

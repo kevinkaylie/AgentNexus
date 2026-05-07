@@ -27,6 +27,7 @@ class OpenClawAdapter(PlatformAdapter):
         agent_did: str,
         router,  # agent_net.router.Router
         storage,  # agent_net.storage module
+        owner_did: str = "",
     ):
         """
         Initialize OpenClaw adapter.
@@ -35,10 +36,12 @@ class OpenClawAdapter(PlatformAdapter):
             agent_did: The Agent DID this adapter is bound to
             router: Daemon's router module for message sending
             storage: Daemon's storage module for agent info
+            owner_did: D-SEC-08: Skill 注册时绑定的 owner_did
         """
         self.agent_did = agent_did
         self.router = router
         self.storage = storage
+        self.owner_did = owner_did
         self._action_handlers: Dict[str, callable] = {}
 
         # Register default action handlers
@@ -50,6 +53,7 @@ class OpenClawAdapter(PlatformAdapter):
         self._action_handlers["query_status"] = self._handle_query_status
         self._action_handlers["send_message"] = self._handle_send_message
         self._action_handlers["get_profile"] = self._handle_get_profile
+        self._action_handlers["dispatch_intake"] = self._handle_dispatch_intake
 
     async def inbound(self, request: dict) -> dict:
         """
@@ -173,3 +177,30 @@ class OpenClawAdapter(PlatformAdapter):
             "did": agent_info["did"],
             "profile": agent_info["profile"],
         }
+
+    async def _handle_dispatch_intake(self, request: dict) -> dict:
+        """
+        D-SEC-08: OpenClaw Skill 触发 intake→dispatch 流程。
+        请求: {action: "dispatch_intake", objective, required_roles, session_id?, preferred_playbook?}
+        """
+        objective = request.get("objective")
+        required_roles = request.get("required_roles")
+        if not objective or not required_roles:
+            raise ValueError("Missing objective or required_roles for dispatch")
+
+        if not self.owner_did:
+            raise ValueError("OpenClaw adapter not bound to an owner_did")
+
+        import time
+        return await self._intake_and_dispatch(
+            session_id=request.get("session_id", f"openclaw_{int(time.time())}"),
+            owner_did=self.owner_did,
+            actor_did=self.agent_did,
+            objective=objective,
+            required_roles=required_roles,
+            source_channel="openclaw",
+            adapter_id=f"openclaw_{self.agent_did[-12:]}",
+            message_ref=request.get("message_ref", ""),
+            preferred_playbook=request.get("preferred_playbook", ""),
+            entry_mode=request.get("entry_mode", "owner_pre_authorized"),
+        )

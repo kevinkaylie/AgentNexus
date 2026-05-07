@@ -1,8 +1,9 @@
 # AgentNexus 设计文档 — v1.0+（活跃）
 
 > 本文件为 v1.0 及后续版本的活跃设计文档。
-> 历史设计见 [design-v0.x.md](design-v0.x.md)。
+> 历史设计见 [design-v0.x.md](../archive/design-v0.x.md)。
 > 设计索引见 [../design.md](../design.md)。
+> Dashboard / Setup 当前收口设计见 [design-dashboard-setup-v1.0.md](design-dashboard-setup-v1.0.md)，覆盖本文早期 `1.0-01` / `1.0-03` 的产品入口实现细节。
 
 ---
 

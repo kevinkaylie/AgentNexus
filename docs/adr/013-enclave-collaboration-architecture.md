@@ -37,7 +37,7 @@ AgentNexus 已具备完整的通信基础设施（L0-L8 协议栈）和协作原
 |---------|---------|
 | `AGENTS.md` 定义角色和阅读顺序 | Enclave 成员 + 角色 |
 | `docs/` 目录共享文档 | Vault（Git 仓库） |
-| `docs/processes/design-review.md` 定义评审流程 | Playbook |
+| `docs/agent-workflow.md` 定义评审流程 | Playbook |
 | `docs/wip.md` 追踪任务状态 | Enclave 运行时状态 |
 
 ### 需求来源
@@ -1039,7 +1039,7 @@ Playbook 可复用——同一个"标准开发流程"可以用于不同的 Encla
 | `agent_net/storage.py` | 新增 Enclave 相关表和 CRUD |
 | `agent_net/node/daemon.py` | 新增 Enclave / Vault / Playbook 端点 |
 | `agent_net/node/mcp_server.py` | 新增 6 个 MCP 工具（27→33） |
-| `docs/mcp-setup.md` | 更新工具列表 |
+| `docs/integrations/mcp.md` | 更新工具列表 |
 | `docs/architecture.md` | 新增 Enclave 架构说明 |
 | `docs/api-reference.md` | 新增 Enclave 端点 |
 | `docs/requirements.md` | 更新 R-0851/R-0852/R-0853 状态 |

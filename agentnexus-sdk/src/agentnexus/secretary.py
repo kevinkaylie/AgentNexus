@@ -209,3 +209,38 @@ class SecretaryClient:
             f"/secretary/intake/{session_id}/abort",
             json={"actor_did": actor_did, "reason": reason},
         )
+
+    async def dispatch_as_current_agent(
+        self,
+        *,
+        session_id: str,
+        objective: str,
+        required_roles: list[str],
+        preferred_playbook: str | None = None,
+        entry_mode: str = "owner_pre_authorized",
+        source: dict | None = None,
+        constraints: dict | None = None,
+    ) -> DispatchResult:
+        """
+        D-SEC-08: 以当前 SDK Agent 身份 dispatch，自动填充 owner_did 和 actor_did。
+
+        适用于 SDK Agent 或 CLI Worker 场景：当前 Agent 已绑定 owner，
+        无需手动传递 owner_did/actor_did 即可发起编排请求。
+        """
+        info = self._client.agent_info
+        if not info.owner_did:
+            raise RuntimeError(
+                "Current agent has no owner_did. "
+                "Use dispatch(owner_did=..., actor_did=...) or bind this agent to an owner first."
+            )
+        return await self.dispatch(
+            session_id=session_id,
+            owner_did=info.owner_did,
+            actor_did=info.did,
+            objective=objective,
+            required_roles=required_roles,
+            preferred_playbook=preferred_playbook,
+            entry_mode=entry_mode,
+            source=source,
+            constraints=constraints,
+        )

@@ -64,6 +64,8 @@ class AgentInfo:
     did: str
     name: str
     capabilities: list[str]
+    owner_did: str = ""       # D-SEC-08: 身份映射，SDK Agent/CLI Worker 查找 owner
+    worker_type: str = ""     # resident / interactive_cli / service_worker
 
 
 @dataclass
@@ -292,6 +294,8 @@ class AgentNexusClient:
                     did=did,
                     name=profile.get("name", ""),
                     capabilities=profile.get("capabilities", []),
+                    owner_did=data.get("owner_did", ""),
+                    worker_type=data.get("worker_type", ""),
                 )
 
     @staticmethod
@@ -322,6 +326,8 @@ class AgentNexusClient:
                     did=data["did"],
                     name=name,
                     capabilities=caps,
+                    owner_did=data.get("owner_did", ""),
+                    worker_type=data.get("worker_type", ""),
                 )
 
     async def _start(self) -> None:

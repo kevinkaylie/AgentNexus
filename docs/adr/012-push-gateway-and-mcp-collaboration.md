@@ -710,8 +710,8 @@ OpenClaw（秘书 + 评审）— OpenClaw MCP 配置：
 | 文件 | 修改内容 |
 |------|---------|
 | `agent_net/node/mcp_server.py` | 新增 10 个 Tool 定义 + call_tool case 分支 |
-| `docs/mcp-setup.md` | 更新工具列表（17 → 27） |
-| `docs/scenarios.md` | 新增跨平台组队场景 |
+| `docs/integrations/mcp.md` | 更新工具列表（17 → 27） |
+| `docs/product.md` | 新增跨平台组队场景 |
 | `README.md` | Team 实战示例改为 MCP 配置 + 自然语言交互 |
 
 不需要修改：Daemon / Router / Storage（已支持 message_type + protocol）。
@@ -748,7 +748,7 @@ AgentNexus 的各模块（DID、握手、路由、消息、协作）不是独立
 ### v0.8（L7 协作层补全）
 
 - **修改**：`agent_net/node/mcp_server.py` — 新增 10 个 Tool + call_tool 分支
-- **修改**：`docs/mcp-setup.md`、`docs/scenarios.md`、`README.md`
+- **修改**：`docs/integrations/mcp.md`、`docs/product.md`、`README.md`
 - **修改**：`docs/architecture.md` — 架构图更新工具数量（12→27）、补充 Action Layer / Discussion / Adapters 层
 - **新增**：`tests/test_mcp_collaboration.py` — 10 个工具的正常调用、必填参数缺失、start_discussion 多 participant 广播
 - **不修改**：Daemon / Router / Storage
@@ -785,7 +785,7 @@ AgentNexus 的各模块（DID、握手、路由、消息、协作）不是独立
 | 2026-04-06 | 评审 Agent | **批准（第三轮）** | 重写为 ACP 协议栈后重新评审：(1) 影响范围补充 architecture.md ✅ (2) wip.md 补充 0.8-14~17 ✅ (3) §3 补充 SSRF 防护 + DID-Token 绑定 ✅ (4) emergency_halt 补充接收方识别约定 ✅ (5) 补充测试覆盖说明 ✅ |
 | 2026-04-06 | 设计 Agent | **全部修复** | S5 命名约定 ✅ S6 L5描述修正 ✅ S7 PK已改 ✅ S8 SSE三要素 ✅ S1 日志已改 ✅ S3 返回值格式 ✅ C1 seq自动维护 ✅；S2/S4 延后处理 |
 | 2026-04-07 | 设计 Agent（代码评审） | **通过** | v0.8 MCP 协作工具代码实现评审：10 个工具与 ADR-012 §6 设计高度一致，核心逻辑无问题。3 个建议性问题（详见 §7.3） |
-| 2026-04-08 | 设计 Agent（代码复审） | **全部通过** | CP1-CP3 全部修复：日志 ✅ scenarios.md 场景 5 ✅ test_mcp_collaboration.py 10 tests passed ✅ |
+| 2026-04-08 | 设计 Agent（代码复审） | **全部通过** | CP1-CP3 全部修复：日志 ✅ product.md 场景 5 ✅ test_mcp_collaboration.py 10 tests passed ✅ |
 | 2026-04-09 | 设计 Agent（v0.9 代码评审） | **有条件通过** | L3 注册层 + L5 推送层实现评审：设计一致性 ⭐⭐⭐⭐⭐，功能完整性 ⭐⭐⭐⭐。🔴 P1 DID-Token 绑定 TODO 未实现、P2 SSRF 防护 pass 空实现；🟡 S1 MCP 续约硬编码、S2 测试 10/10 ERROR。详见 §7.4 |
 | 2026-04-09 | 设计 Agent（v0.9 复审） | **全部通过** | P1 DID-Token 绑定 ✅ P2 SSRF 防护 ✅ S1 expires//2 ✅ S2 测试 10/10 passed ✅ |
 
@@ -861,14 +861,14 @@ AgentNexus 的各模块（DID、握手、路由、消息、协作）不是独立
 | 9 | 工具名动词前缀 / message_type 名词前缀，符合命名约定 |
 | 10 | `content` dict 经 Daemon `json.dumps()` 正确序列化为 str 存储 |
 | 11 | `wip.md` 0.8-14~17 已标记完成 |
-| 12 | `mcp-setup.md` 已更新（17→27 工具，中英文双语，分类清晰） |
+| 12 | `docs/integrations/mcp.md` 已更新（17→27 工具，中英文双语，分类清晰） |
 
 #### 🟡 建议性问题
 
 | # | 文件 | 问题 | 建议 |
 |---|------|------|------|
 | CP1 | `mcp_server.py` | `start_discussion` 广播失败时 `except Exception: pass` 无日志，调试困难 | 加 `logger.warning(f"Failed to notify {did}: {e}")` | ✅ 已修复 |
-| CP2 | `docs/scenarios.md` | wip.md 0.8-17 标记完成且待同步 scenarios.md，但实际未新增跨平台组队场景 | 补充场景 5：OpenClaw + Kiro + Claude Code 跨平台 MCP 协作 | ✅ 已修复 |
+| CP2 | `docs/product.md` | wip.md 0.8-17 标记完成且待同步跨平台场景，但实际未新增跨平台组队场景 | 补充场景 5：OpenClaw + Kiro + Claude Code 跨平台 MCP 协作 | ✅ 已修复 |
 | CP3 | `tests/` | ADR-012 影响范围要求 `tests/test_mcp_collaboration.py`，但未新增测试文件 | 参考 `test_mcp_bind.py` mock 模式，补充 10 个工具的测试覆盖 | ✅ 已修复（10 tests passed） |
 
 ### §7.4 v0.9 代码评审（2026-04-09）

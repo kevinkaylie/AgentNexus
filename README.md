@@ -86,11 +86,15 @@ AgentNexus 的价值在更底层：
 | Python SDK / MCP / 平台适配器 | 已实现 |
 | Push 注册与通知 | 已实现 |
 | Enclave / Vault / Playbook | 已实现 |
-| Owner DID / 消息中心 / 意图路由 | 已实现或进行中 |
+| Owner DID / 消息中心 / 意图路由 | 已实现 |
 | Capability Token / 委托链 | 已实现 |
+| Orchestration SDK | 已实现 |
+| 鉴权矩阵 v3 | 已实现 v1.0 阶段性边界 |
 | Secretary Orchestration Phase A | 已实现 |
-| Secretary Orchestration Phase B | 开发与代码评审中 |
-| Web Dashboard | 开发中 |
+| Secretary Orchestration Phase B | 已完成开发候选 |
+| Web Dashboard / Setup | 设计完成，开发中 |
+
+当前 `v1.0.0` 范围是团队协作开发者预览：Orchestration SDK + Secretary Phase B 基础闭环 + Web Dashboard 基础入口。Secretary Phase B 已完成开发候选，后续重点是 Dashboard/Setup 和发布文档收口。Tauri 桌面壳、系统通知、CLI Launcher 自动拉起、per-agent token、Strict JCS 和 hard-enforce `/deliver` 后移到后续版本。
 
 项目状态以 [docs/project-status.md](docs/project-status.md) 为准。
 
@@ -261,7 +265,7 @@ await admin.secretary.abort(
 
 旧的 `send / propose_task / notify_state` Action Layer 仍然兼容，适合轻量点对点协作；复杂团队流程建议使用 Secretary + Enclave + Playbook 主链路。
 
-专题设计见 [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) 和 [docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md)。
+专题设计见 [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md)、[docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md) 和 [docs/design/design-dashboard-setup-v1.0.md](docs/design/design-dashboard-setup-v1.0.md)。
 
 ---
 
@@ -275,11 +279,11 @@ await admin.secretary.abort(
 | [docs/design.md](docs/design.md) | 设计文档索引 |
 | [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | 常驻秘书与 Agent 团队协作编排 |
 | [docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md) | Orchestration SDK 改造 |
+| [docs/design/design-dashboard-setup-v1.0.md](docs/design/design-dashboard-setup-v1.0.md) | Dashboard / Setup v1.0 收口 |
 | [docs/api-reference.md](docs/api-reference.md) | Daemon / Relay API |
-| [docs/mcp-setup.md](docs/mcp-setup.md) | MCP 工具和客户端配置 |
-| [docs/scenarios.md](docs/scenarios.md) | 单机、局域网、多应用、公网协作场景 |
+| [docs/product.md](docs/product.md) | 产品定位和典型使用场景 |
+| [docs/integrations/mcp.md](docs/integrations/mcp.md) | MCP 工具和客户端配置 |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
-| [docs/commands.md](docs/commands.md) | CLI 命令速查 |
 
 ---
 
@@ -387,9 +391,10 @@ result = await admin.secretary.dispatch(
 | [Design Index](docs/design.md) | Design documents |
 | [Secretary Orchestration](docs/design/design-secretary-orchestration.md) | Teamwork orchestration design |
 | [Orchestration SDK](docs/design/design-sdk-orchestration.md) | Owner, Secretary, Team, Run and Worker Runtime SDK design |
+| [Dashboard / Setup v1.0](docs/design/design-dashboard-setup-v1.0.md) | v1.0 dashboard and setup closure |
 | [API Reference](docs/api-reference.md) | Daemon and Relay APIs |
-| [MCP Setup](docs/mcp-setup.md) | MCP tools and client config |
-| [Scenarios](docs/scenarios.md) | Local, LAN and public collaboration scenarios |
+| [Product Overview](docs/product.md) | Positioning and usage scenarios |
+| [MCP Integration](docs/integrations/mcp.md) | MCP tools and client config |
 
 ---
 

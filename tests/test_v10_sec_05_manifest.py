@@ -356,7 +356,10 @@ async def test_v10_sec_05_task_propose_includes_role_and_context_snapshot():
     )
 
     assert captured["role"] == "developer"
-    assert captured["context_snapshot"] == {
-        "inputs": [{"enclave_id": "enc_task_propose", "key": "design/spec.md"}],
-        "output": {"enclave_id": "enc_task_propose", "key": "impl/diff.patch"},
-    }
+    snap = captured["context_snapshot"]
+    # Phase B D-SEC-10: Context Snapshot 包含 thread_id、objective、input/output refs 等
+    assert snap["inputs"] == [{"enclave_id": "enc_task_propose", "key": "design/spec.md"}]
+    assert snap["output"] == {"enclave_id": "enc_task_propose", "key": "impl/diff.patch"}
+    assert snap["thread_id"] == "run_task_propose"
+    assert snap["current_stage"] == "impl"
+    assert snap["assigned_role"] == "developer"

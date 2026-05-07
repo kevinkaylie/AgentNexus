@@ -53,6 +53,7 @@ from .actions import (
     TaskClaim,
     ResourceSync,
     StateNotify,
+    ActionType,
 )
 from .discussion import (
     DiscussionStart,
@@ -109,6 +110,7 @@ __all__ = [
     "TaskClaim",
     "ResourceSync",
     "StateNotify",
+    "ActionType",
     # Discussion
     "DiscussionStart",
     "DiscussionReply",
@@ -150,4 +152,4 @@ __all__ = [
     "OrchestrationClient",
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

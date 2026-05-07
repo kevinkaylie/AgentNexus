@@ -8,23 +8,20 @@
 
 | 角色 | 推荐阅读顺序 |
 |------|-------------|
-| 设计 Agent | AGENTS.md → [角色手册](docs/roles/design-agent.md) → [ADR 列表](#架构决策记录adr) → [接口契约](#接口契约) → [架构文档](docs/architecture.md) → [路线图](docs/roadmap.md) |
-| 开发 Agent | AGENTS.md → [角色手册](docs/roles/development-agent.md) → [CLAUDE.md](CLAUDE.md) → [API 参考](docs/api-reference.md) → [接口契约](#接口契约) → [WIP](docs/wip.md) |
-| 评审 Agent | AGENTS.md → [角色手册](docs/roles/review-agent.md) → [设计评审流程](docs/processes/design-review.md) → [ADR 列表](#架构决策记录adr) → [安全文档](SECURITY.md) |
-| 测试 Agent | AGENTS.md → [角色手册](docs/roles/testing-agent.md) → [tests/CLAUDE.md](tests/CLAUDE.md) → [API 参考](docs/api-reference.md) → [WIP](docs/wip.md) |
+| 设计 Agent | AGENTS.md → [Agent 协作流程](docs/agent-workflow.md) → [ADR 列表](#架构决策记录adr) → [接口契约](#接口契约) → [架构文档](docs/architecture.md) → [路线图](docs/roadmap.md) |
+| 开发 Agent | AGENTS.md → [Agent 协作流程](docs/agent-workflow.md) → [CLAUDE.md](CLAUDE.md) → [API 参考](docs/api-reference.md) → [接口契约](#接口契约) → [WIP](docs/wip.md) |
+| 评审 Agent | AGENTS.md → [Agent 协作流程](docs/agent-workflow.md) → [ADR 列表](#架构决策记录adr) → [安全文档](SECURITY.md) |
+| 测试 Agent | AGENTS.md → [Agent 协作流程](docs/agent-workflow.md) → [tests/CLAUDE.md](tests/CLAUDE.md) → [API 参考](docs/api-reference.md) → [WIP](docs/wip.md) |
 
 ---
 
 ## 文档目录
 
-### 角色手册
+### Agent 协作流程
 
 | 文档 | 路径 | 状态 |
 |------|------|------|
-| 设计 Agent 手册 | [docs/roles/design-agent.md](docs/roles/design-agent.md) | 生效 |
-| 开发 Agent 手册 | [docs/roles/development-agent.md](docs/roles/development-agent.md) | 生效 |
-| 评审 Agent 手册 | [docs/roles/review-agent.md](docs/roles/review-agent.md) | 生效 |
-| 测试 Agent 手册 | [docs/roles/testing-agent.md](docs/roles/testing-agent.md) | 生效 |
+| 角色职责与评审流程 | [docs/agent-workflow.md](docs/agent-workflow.md) | 生效 |
 
 ### 架构决策记录（ADR）
 
@@ -54,13 +51,6 @@
 | JWT Attestation 验证 | OATR | 草稿 | [docs/contracts/oatr-jwt-attestation.md](docs/contracts/oatr-jwt-attestation.md) |
 | DID Resolution v1.0 | QNTM WG | 已对齐 | [docs/contracts/qntm-did-resolution.md](docs/contracts/qntm-did-resolution.md) |
 
-### 流程文档
-
-| 文档 | 路径 | 状态 |
-|------|------|------|
-| 设计评审流程 | [docs/processes/design-review.md](docs/processes/design-review.md) | 生效 |
-| 代码评审流程 | [docs/processes/code-review.md](docs/processes/code-review.md) | 生效 |
-
 ### 需求与设计
 
 | 文档 | 路径 | 状态 |
@@ -69,17 +59,17 @@
 | 项目需求文档 | [docs/requirements.md](docs/requirements.md) | 生效 |
 | 设计文档索引 | [docs/design.md](docs/design.md) | 生效 |
 | 设计 v1.0+（活跃） | [docs/design/design-v1.0.md](docs/design/design-v1.0.md) | 生效 |
-| 设计 v0.x（归档） | [docs/design/design-v0.x.md](docs/design/design-v0.x.md) | 归档 |
+| 设计 v0.x（归档） | [docs/archive/design-v0.x.md](docs/archive/design-v0.x.md) | 归档 |
 | 秘书与 Agent 团队协作编排专题 | [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | 活跃 |
 | Orchestration SDK 改造专题 | [docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md) | 活跃 |
+| Dashboard / Setup v1.0 收口专题 | [docs/design/design-dashboard-setup-v1.0.md](docs/design/design-dashboard-setup-v1.0.md) | 活跃 |
 
 ### 变更追踪
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | 进行中变更 | [docs/wip.md](docs/wip.md) | 当前正在开发的功能和阻塞项 |
-| 开发日志 | [docs/devlog.md](docs/devlog.md) | 每次开发提交的内容和测试结果 |
-| 已发布变更 | [CHANGELOG.md](CHANGELOG.md) | 已完成版本的变更记录 |
+| 变更记录 | [CHANGELOG.md](CHANGELOG.md) | 官方变更记录；发布、开发完成、重要评审结论统一写这里 |
 
 ### 模板
 
@@ -101,9 +91,8 @@
 | API 参考 | [docs/api-reference.md](docs/api-reference.md) | 生效 |
 | DID 方法规范 | [docs/did-method-spec.md](docs/did-method-spec.md) | 草稿 |
 | 快速开始 | [docs/quickstart.md](docs/quickstart.md) | 生效 |
-| 使用场景 | [docs/scenarios.md](docs/scenarios.md) | 生效 |
-| MCP 配置 | [docs/mcp-setup.md](docs/mcp-setup.md) | 生效 |
-| CLI 命令 | [docs/commands.md](docs/commands.md) | 生效 |
+| 产品定位与使用场景 | [docs/product.md](docs/product.md) | 生效 |
+| MCP 集成 | [docs/integrations/mcp.md](docs/integrations/mcp.md) | 生效 |
 | 产品路线图 | [docs/roadmap.md](docs/roadmap.md) | 生效（仅本地） |
 | WG DID Resolution | [specs/working-group/did-resolution.md](specs/working-group/did-resolution.md) | 生效（v1.0 RATIFIED） |
 
@@ -114,8 +103,8 @@
 | 合作方 | 集成内容 | 状态 | 契约文档 | 关键待办 | 负责角色 |
 |--------|---------|------|---------|---------|---------|
 | Giskard | CA 认证（payment_verified / entity_verified） | 对接中 | [giskard-ca-certification.md](docs/contracts/giskard-ca-certification.md) | 等待 CA pubkey hex、claim values、Gatekeeper 偏好 | 设计 Agent |
-| OATR | 信任注册表 + JWT Attestation + x402 支付 | 对接中 | [oatr-jwt-attestation.md](docs/contracts/oatr-jwt-attestation.md) | v0.8 did:web quick path → v0.9 完整集成 | 开发 Agent |
+| OATR | 信任注册表 + JWT Attestation + x402 支付 | 对接中 | [oatr-jwt-attestation.md](docs/contracts/oatr-jwt-attestation.md) | trust_snapshot / governance JWS 基础已实现；compact JWT、claim namespace、cert bridge 待外部联调 | 开发 Agent |
 | QNTM WG | DID Resolution 规范 | 已完成 | [qntm-did-resolution.md](docs/contracts/qntm-did-resolution.md) | — | 设计 Agent |
-| MEEET | did:meeet 互操作（1020 Agents, Solana） | 对接中 | — | DIDResolver 新增 did:meeet 分支，待确认 Solana API 端点 | 开发 Agent |
-| OpenClaw | AgentNexus Skill 适配器 | 未开始 | — | v0.8 SDK 先行 | 开发 Agent |
-| Dify / Coze | Webhook 适配器 | 未开始 | — | v0.8 SDK 先行 | 开发 Agent |
+| MEEET | did:meeet 互操作（1020 Agents, Solana） | 部分实现 / 对接中 | [ADR-008](docs/adr/008-did-meeet-bridge.md) | Relay handler、映射端点、x402_score 已实现；待确认 Solana API 端点和评分口径 | 开发 Agent |
+| OpenClaw | AgentNexus Skill / Adapter Contract | 规划中 | [design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | v1.0 先统一 intake 契约，v1.1 产品化适配器 | 开发 Agent |
+| Dify / Coze | Webhook 适配器 | 规划中 | [design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | v1.0 Webhook HMAC intake，v1.1 产品化适配器 | 开发 Agent |
