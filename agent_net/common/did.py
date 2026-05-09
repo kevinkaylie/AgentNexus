@@ -83,7 +83,7 @@ class AgentProfile:
     capabilities: list = field(default_factory=list)
     location: str = ""
     endpoints: dict = field(default_factory=dict)
-    context: str = "https://agent-net.io/v1"
+    context: str = "https://agentnexus.top/contexts/agent-profile/v1"
     created_at: float = field(default_factory=time.time)
 
     def to_json_ld(self) -> dict:

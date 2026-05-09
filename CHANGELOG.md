@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Architecture Review & P1 Cleanup — 已完成（2026-05-09）
+
+全项目架构审查（详见 `docs/architecture-review-2026-05-09.md`）并实施 P1 修整：
+
+- **删除无引用旧入口文件**：`agent_net/daemon.py`（v0.1.0 旧 Daemon）、`agent_net/mcp_server.py`（7 工具旧 MCP Server），均已被 `agent_net/node/` 下版本完全替代
+- **删除被 package 遮蔽的死文件**：`agent_net/identity.py`（被 `agent_net/identity/` 包目录遮蔽，Python 导入优先匹配 package 目录）
+- **移除死代码**：`agent_net/node/routers/agents.py` 中无效的 `global _heartbeat_task_ref` 及 `import _self`
+- **向后兼容重导出添加 `@deprecated`**：`agent_net/auth/handshake.py`、`agent_net/identity/did_generator.py`，引导调用方迁移到 `common` 模块
+- **移除 `router.py` 死字段**：`RELAY_URL` 常量及 `Router.relay_url` 参数（类内无任何路径读取该字段）
+- **更新 `common/did.py` `@context` URI**：`https://agent-net.io/v1` → `https://agentnexus.top/contexts/agent-profile/v1`
+- **给 P2P/Relay 异常加上 `logger.warning`**：`router.py`、`node/_config.py` 中原为裸 `except Exception: pass` 的 5 处
+
+**测试结果：** 471 passed, 8 skipped
+
+---
+
 ### Code Review — 已完成（2026-04-30）
 
 #### Dashboard / Setup + Secretary Phase B 收口 — 代码评审通过

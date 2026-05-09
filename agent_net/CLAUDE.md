@@ -28,8 +28,10 @@ agent_net/
 │   └── gatekeeper.py # 访问控制网关
 ├── relay/
 │   └── server.py     # 公网信令+中转服务器 :9000 + MEEET桥接
-├── identity.py       # 向后兼容重导出（→ common/did）
-├── auth/handshake.py # 向后兼容重导出（→ common/handshake）
+├── identity/         # 向后兼容重导出包（→ common/did）
+│   ├── __init__.py   # 主兼容入口：generate_did, AgentProfile
+│   └── did_generator.py  # 旧导入路径重导出（@deprecated）
+├── auth/handshake.py # 向后兼容重导出（@deprecated → common/handshake）
 ├── storage.py        # SQLite CRUD
 ├── router.py         # 消息路由（支持 Action Layer）
 └── stun.py           # UDP STUN探测

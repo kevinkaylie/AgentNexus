@@ -33,8 +33,6 @@ router = APIRouter()
 
 @router.post("/agents/register")
 async def api_register_agent(req: RegisterRequest, _=Depends(_require_token)):
-    import agent_net.node.routers.agents as _self
-    global _heartbeat_task_ref
     RELAY_URL = get_relay_url()
     _public_endpoint = get_public_endpoint_cached()
 

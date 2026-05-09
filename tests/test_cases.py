@@ -88,7 +88,7 @@ def test_tc02_local_p2p_message():
 def test_tc03_nat_traversal_fallback():
     """tc03 - 远程DID不可达时自动降级到离线存储（模拟NAT穿透失败场景）"""
     async def _run():
-        r = Router(relay_url="http://unreachable-relay:9999")
+        r = Router()
         did_a = generate_did("node_a")
         did_b = generate_did("node_b")  # 未注册本地会话，模拟远程节点
 

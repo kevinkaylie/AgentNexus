@@ -97,8 +97,9 @@ async def announce_to_relay(did: str, endpoint: str, relay_url: Optional[str] = 
         async with aiohttp.ClientSession() as s:
             await s.post(f"{url}/announce", json=payload,
                          timeout=aiohttp.ClientTimeout(total=5))
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Announce to relay {url} failed: {e}")
 
 
 async def federation_announce(did: str, local_relay: str, profile_dict: Optional[dict] = None):
@@ -111,8 +112,9 @@ async def federation_announce(did: str, local_relay: str, profile_dict: Optional
                     json={"did": did, "relay_url": local_relay, "profile": profile_dict},
                     timeout=aiohttp.ClientTimeout(total=FEDERATION_PROXY_TIMEOUT),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Federation announce to {seed} failed: {e}")
 
 
 async def heartbeat_loop(did: str, endpoint: str, interval: int = RELAY_HEARTBEAT_INTERVAL):
@@ -145,5 +147,6 @@ async def resolve_from_relay(did: str):
                 if resp.status == 200:
                     data = await resp.json()
                     await upsert_contact(did, data["endpoint"], RELAY_URL)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Resolve from relay for {did} failed: {e}")

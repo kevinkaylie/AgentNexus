@@ -17,12 +17,8 @@ logger = logging.getLogger(__name__)
 # 意图路由匹配阈值（S1-05-1）
 MIN_MATCH_SCORE = 2  # 至少 2 个关键词匹配才转发
 
-RELAY_URL = "https://relay.agent-net.io"  # 可配置
-
-
 class Router:
-    def __init__(self, relay_url: str = RELAY_URL):
-        self.relay_url = relay_url
+    def __init__(self):
         self._local_sessions: dict[str, asyncio.Queue] = {}  # did -> message queue
 
     def register_local_session(self, did: str):
@@ -132,8 +128,8 @@ class Router:
                                                  session_id, reply_to, message_type, protocol, content_encoding, message_id)
                 if result:
                     return {"status": "delivered", "method": "p2p", "session_id": session_id, "message_id": message_id}
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"P2P delivery to {to_did} via {contact.get('endpoint')} failed: {e}")
 
         # 4. 尝试 Relay
         if contact and contact.get("relay"):
@@ -142,8 +138,8 @@ class Router:
                                                 session_id, reply_to, message_type, protocol, content_encoding, message_id)
                 if result:
                     return {"status": "delivered", "method": "relay", "session_id": session_id, "message_id": message_id}
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Relay delivery to {to_did} via {contact.get('relay')} failed: {e}")
 
         # 5. 离线存储
         await storage.store_message(from_did, to_did, content, session_id, reply_to,
