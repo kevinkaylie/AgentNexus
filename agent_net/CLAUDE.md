@@ -25,7 +25,9 @@ agent_net/
 ├── node/             # 本地节点
 │   ├── daemon.py     # FastAPI HTTP服务 :8765
 │   ├── mcp_server.py # MCP stdio服务
-│   └── gatekeeper.py # 访问控制网关
+│   ├── gatekeeper.py # 访问控制网关
+│   └── routers/      # HTTP 路由模块
+│       ├── coordination.py  # Coding Coordination V1（工作流协作）
 ├── relay/
 │   └── server.py     # 公网信令+中转服务器 :9000 + MEEET桥接
 ├── identity/         # 向后兼容重导出包（→ common/did）
@@ -148,7 +150,17 @@ agentnexus-sdk/
 │   ├── models.py        # Message, VerificationResult, Certification
 │   ├── discovery.py     # Daemon/Token 自动发现
 │   ├── exceptions.py    # 异常层次
-│   └── sync.py          # 同步包装器
+│   ├── sync.py          # 同步包装器
+│   ├── coordination.py   # Coding Coordination V1 工作流 API
+│   ├── orchestration.py  # 编排聚合 facade
+│   ├── owner.py          # Owner 管理
+│   ├── team.py           # Team 管理
+│   ├── secretary.py      # Secretary intake/dispatch
+│   ├── runs.py           # Run 跟踪
+│   ├── worker.py         # Worker 运行时
+│   ├── enclave.py        # Enclave 管理
+│   ├── discussion.py     # Discussion 协议
+│   └── emergency.py      # Emergency halt
 ├── examples/
 └── tests/
 ```
@@ -179,6 +191,12 @@ async def handle(msg):
 
 # 信任查询
 result = await nexus.verify("did:agentnexus:...")
+
+# Coding Coordination V1
+session = await nexus.coordination.coding_intake(
+    owner_did="...", actor_did="...", objective="实现登录模块")
+await nexus.coordination.advance(session["coordination_session_id"], actor_did="...")
+timeline = await nexus.coordination.timeline(session["coordination_session_id"], actor_did="...")
 ```
 
 ### 同步包装器

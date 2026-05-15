@@ -265,7 +265,7 @@ await admin.secretary.abort(
 
 旧的 `send / propose_task / notify_state` Action Layer 仍然兼容，适合轻量点对点协作；复杂团队流程建议使用 Secretary + Enclave + Playbook 主链路。
 
-专题设计见 [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md)、[docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md) 和 [docs/design/design-dashboard-setup-v1.0.md](docs/design/design-dashboard-setup-v1.0.md)。
+专题设计见 [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md)、[docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md)、[docs/design/design-coding-coordination-v1.md](docs/design/design-coding-coordination-v1.md)、[docs/design/design-coding-coordination-v1-release.md](docs/design/design-coding-coordination-v1-release.md) 和 [docs/design/design-dashboard-setup-v1.0.md](docs/design/design-dashboard-setup-v1.0.md)。
 
 ---
 
@@ -277,6 +277,8 @@ await admin.secretary.abort(
 | [docs/quickstart.md](docs/quickstart.md) | 注册、发现、通信、MCP 使用 |
 | [docs/architecture.md](docs/architecture.md) | DID、Relay、路由、Gatekeeper、信任架构 |
 | [docs/design.md](docs/design.md) | 设计文档索引 |
+| [docs/design/design-coding-coordination-v1.md](docs/design/design-coding-coordination-v1.md) | Coding Coordination V1 可信协调闭环 |
+| [docs/design/design-coding-coordination-v1-release.md](docs/design/design-coding-coordination-v1-release.md) | V1 SDK / CLI / Dashboard / Quickstart 发布收口 |
 | [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | 常驻秘书与 Agent 团队协作编排 |
 | [docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md) | Orchestration SDK 改造 |
 | [docs/design/design-dashboard-setup-v1.0.md](docs/design/design-dashboard-setup-v1.0.md) | Dashboard / Setup v1.0 收口 |
@@ -389,6 +391,8 @@ result = await admin.secretary.dispatch(
 | [Quick Start](docs/quickstart.md) | Register, discover, chat, MCP |
 | [Architecture](docs/architecture.md) | DID, Relay, routing, trust |
 | [Design Index](docs/design.md) | Design documents |
+| [Coding Coordination V1](docs/design/design-coding-coordination-v1.md) | Trusted coding workflow loop |
+| [Coding Coordination V1 Release Closure](docs/design/design-coding-coordination-v1-release.md) | SDK, CLI, Dashboard and Quickstart release closure |
 | [Secretary Orchestration](docs/design/design-secretary-orchestration.md) | Teamwork orchestration design |
 | [Orchestration SDK](docs/design/design-sdk-orchestration.md) | Owner, Secretary, Team, Run and Worker Runtime SDK design |
 | [Dashboard / Setup v1.0](docs/design/design-dashboard-setup-v1.0.md) | v1.0 dashboard and setup closure |

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentNexus — Coordination</title>
+<style>
+  :root { --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a; --text: #e1e4eb; --text-muted: #8b8fa3; --accent: #6c8cff; --green: #4ade80; --yellow: #fbbf24; --red: #f87171; --purple: #c084fc; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { width: 320px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px; overflow-y: auto; flex-shrink: 0; }
+  .sidebar h2 { font-size: 14px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.5px; }
+  .session-item { padding: 10px 12px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+  .session-item:hover { background: #222636; }
+  .session-item.active { background: #222636; border-color: var(--accent); }
+  .session-item .obj { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-item .meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 8px; }
+  .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .status-intake { background: var(--purple); } .status-active { background: var(--yellow); } .status-completed { background: var(--green); } .status-error { background: var(--red); }
+  .main { flex: 1; padding: 24px 32px; overflow-y: auto; }
+  .main .empty { text-align: center; color: var(--text-muted); margin-top: 120px; }
+  .main .empty h3 { font-size: 18px; margin-bottom: 8px; }
+  .header { margin-bottom: 24px; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header .sub { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; margin-bottom: 20px; font-size: 13px; }
+  .detail-grid .label { color: var(--text-muted); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+  .card h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; padding: 6px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: none; }
+  .row .stage { width: 100px; color: var(--accent); font-family: monospace; font-size: 11px; }
+  .row .type { width: 140px; color: var(--text-muted); }
+  .row .actor { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 10px; color: var(--text-muted); }
+  .row .ref { font-family: monospace; font-size: 10px; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .badge-approved { background: rgba(74,222,128,0.15); color: var(--green); }
+  .badge-rejected { background: rgba(248,113,113,0.15); color: var(--red); }
+  .loader { color: var(--text-muted); text-align: center; padding: 40px; }
+  .error-box { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); border-radius: 8px; padding: 12px; color: var(--red); font-size: 13px; margin-bottom: 16px; }
+  .nav-back { font-size: 12px; color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 12px; }
+  .nav-back:hover { text-decoration: underline; }
+  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .filter-row select, .filter-row input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 12px; }
+  .filter-row select { min-width: 100px; }
+  .filter-row input { flex: 1; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h2>Sessions</h2>
+    <div class="filter-row">
+      <select id="filterStatus"><option value="">All status</option><option value="intake">Intake</option><option value="clarify">Clarify</option><option value="design">Design</option><option value="implement">Implement</option><option value="completed">Completed</option></select>
+      <input type="text" id="filterOwner" placeholder="Owner DID..." />
+    </div>
+    <div id="sessionList"><div class="loader">Enter an owner DID and press Enter to load sessions.</div></div>
+  </aside>
+  <main class="main" id="mainContent">
+    <div class="empty"><h3>Select a Session</h3><p>Choose a coordination session from the sidebar to view details.</p></div>
+  </main>
+</div>
+
+<script>
+const API = '/coordination';
+let selectedId = null;
+
+function fmtDid(did) { return did ? did.substring(0, 24) + '...' : '—'; }
+function fmtTime(ts) { return ts ? new Date(ts).toLocaleString() : '—'; }
+
+async function api(path, params) {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  const r = await fetch(API + path + qs);
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()));
+  return r.json();
+}
+
+async function loadSessions() {
+  const owner = document.getElementById('filterOwner').value.trim();
+  if (!owner) {
+    document.getElementById('sessionList').innerHTML = '<div class="loader">Enter an owner DID and press Enter to load sessions.</div>';
+    return;
+  }
+  const status = document.getElementById('filterStatus').value;
+  try {
+    const params = { owner_did: owner, actor_did: owner };
+    if (status) params.status = status;
+    const data = await api('/sessions', params);
+    const sessions = data.sessions || [];
+    const html = sessions.length === 0
+      ? '<div style="color:var(--text-muted);padding:16px;text-align:center;font-size:12px">No sessions found.</div>'
+      : sessions.map(s => {
+        const cls = selectedId === s.coordination_session_id ? 'session-item active' : 'session-item';
+        const dotCls = 'status-' + (s.status || 'intake');
+        return `<div class="${cls}" onclick="selectSession('${s.coordination_session_id}')">
+          <div class="obj">${esc(s.objective || 'Untitled')}</div>
+          <div class="meta"><span><span class="status-dot ${dotCls}"></span>${esc(s.status || 'intake')}</span><span>${fmtDid(s.owner_did)}</span></div>
+        </div>`;
+      }).join('');
+    document.getElementById('sessionList').innerHTML = html;
+  } catch (e) {
+    document.getElementById('sessionList').innerHTML = `<div class="error-box">${esc(e.message)}</div>`;
+  }
+}
+
+async function selectSession(id) {
+  selectedId = id;
+  await loadSessions();
+  const owner = document.getElementById('filterOwner').value.trim();
+  renderDetail(id, owner);
+}
+
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function renderDetail(id, actor) {
+  const main = document.getElementById('mainContent');
+  main.innerHTML = '<div class="loader">Loading session detail...</div>';
+  try {
+    const [sess, timeline, artifacts, receipts, closures] = await Promise.all([
+      api(`/sessions/${id}`, { actor_did: actor }),
+      api(`/sessions/${id}/timeline`, { actor_did: actor }),
+      api(`/sessions/${id}/artifacts`, { actor_did: actor }),
+      api(`/sessions/${id}/receipts`, { actor_did: actor }),
+      api(`/sessions/${id}/closures`, { actor_did: actor }),
+    ]);
+    const s = sess.session || sess;
+    const tl = timeline.timeline || [];
+    const arts = artifacts.artifacts || [];
+    const rcs = receipts.receipts || [];
+    const cls = closures.closures || [];
+
+    main.innerHTML = `
+      <div class="header">
+        <a href="/ui/" class="nav-back">&larr; Dashboard</a>
+        <h1>${esc(s.objective || 'Untitled')}</h1>
+        <div class="sub">${esc(s.coordination_session_id)}</div>
+      </div>
+      <div class="detail-grid">
+        <div><span class="label">Status</span>: <span class="badge badge-approved">${esc(s.status || '—')}</span></div>
+        <div><span class="label">Workflow</span>: ${esc(s.workflow_id || '—')}</div>
+        <div><span class="label">Owner</span>: <span title="${esc(s.owner_did)}">${fmtDid(s.owner_did)}</span></div>
+        <div><span class="label">Controller</span>: <span title="${esc(s.controller_did)}">${fmtDid(s.controller_did)}</span></div>
+        <div><span class="label">Created</span>: ${fmtTime(s.created_at)}</div>
+        <div><span class="label">Updated</span>: ${fmtTime(s.updated_at)}</div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('timeline', event)">Timeline (${tl.length})</button>
+        <button class="tab" onclick="switchTab('artifacts', event)">Artifacts (${arts.length})</button>
+        <button class="tab" onclick="switchTab('receipts', event)">Receipts (${rcs.length})</button>
+        <button class="tab" onclick="switchTab('closures', event)">Closures (${cls.length})</button>
+      </div>
+      <div id="tabContent">${renderTimeline(tl)}</div>
+    `;
+    window._tabData = { timeline: tl, artifacts: arts, receipts: rcs, closures: cls };
+  } catch (e) {
+    main.innerHTML = `<div class="error-box">Failed to load session: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderTimeline(tl) {
+  if (!tl.length) return '<p style="color:var(--text-muted);font-size:13px">No timeline events.</p>';
+  return '<div class="card"><h3>Timeline</h3>' + tl.map(e => `
+    <div class="row">
+      <span class="stage">${esc(e.stage || '')}</span>
+      <span class="type">${esc(e.event_type)}</span>
+      <span class="actor">${fmtDid(e.actor_did)}</span>
+      <span style="font-size:11px;color:var(--text-muted)">${fmtTime(e.timestamp)}</span>
+    </div>`).join('') + '</div>';
+}
+
+function renderArtifacts(arts) {
+  if (!arts.length) return '<p style="color:var(--text-muted);font-size:13px">No artifacts.</p>';
+  return '<div class="card"><h3>Artifacts</h3>' + arts.map(a => `
+    <div class="row">
+      <span class="stage">${esc(a.stage || '')}</span>
+      <span class="type">${esc(a.artifact_type)}</span>
+      <span class="actor">${fmtDid(a.producer_did)}</span>
+      <span class="ref" title="${esc(a.content_ref)}">${esc(a.content_ref || '')}</span>
+    </div>`).join('') + '</div>';
+}
+
+function renderReceipts(rcs) {
+  if (!rcs.length) return '<p style="color:var(--text-muted);font-size:13px">No receipts.</p>';
+  return '<div class="card"><h3>Receipts</h3>' + rcs.map(r => `
+    <div class="row">
+      <span class="stage">${esc(r.stage || '')}</span>
+      <span class="type">${esc(r.receipt_type)}</span>
+      <span class="actor">${fmtDid(r.issuer_did)}</span>
+      <span class="badge ${r.decision === 'approved' ? 'badge-approved' : 'badge-rejected'}">${esc(r.decision)}</span>
+    </div>`).join('') + '</div>';
+}
+
+function renderClosures(cls) {
+  if (!cls.length) return '<p style="color:var(--text-muted);font-size:13px">No closures.</p>';
+  return '<div class="card"><h3>Closures</h3>' + cls.map(c => `
+    <div class="row">
+      <span class="stage" style="width:auto">${esc(c.closure_id)}</span>
+      <span style="flex:1"></span>
+      <span class="badge ${c.sla_status === 'met' ? 'badge-approved' : 'badge-rejected'}">SLA: ${esc(c.sla_status || '—')}</span>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:12px">${fmtTime(c.recorded_at)}</span>
+    </div>`).join('') + '</div>';
+}
+
+function switchTab(name, evt) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  if (evt && evt.target) evt.target.classList.add('active');
+  const data = window._tabData || {};
+  const renderers = { timeline: renderTimeline, artifacts: renderArtifacts, receipts: renderReceipts, closures: renderClosures };
+  document.getElementById('tabContent').innerHTML = renderers[name](data[name] || []);
+}
+
+document.getElementById('filterOwner').addEventListener('keydown', e => { if (e.key === 'Enter') loadSessions(); });
+document.getElementById('filterStatus').addEventListener('change', loadSessions);
+
+// Auto-load session from URL path /ui/coordination/{session_id} or hash #session=
+function _getSessionFromUrl() {
+  const m = window.location.pathname.match(/^\/ui\/coordination\/([a-zA-Z0-9_-]+)$/);
+  if (m) return m[1];
+  const hash = window.location.hash;
+  if (hash && hash.startsWith('#session=')) return hash.replace('#session=', '');
+  return null;
+}
+const _autoSession = _getSessionFromUrl();
+if (_autoSession) {
+  const hint = document.getElementById('sessionList');
+  hint.innerHTML = '<div style="color:var(--accent);padding:16px;text-align:center;font-size:12px">Session <strong>' + esc(_autoSession) + '</strong> pre-loaded from URL.<br>Enter an owner DID above and press Enter to view.</div>';
+  document.getElementById('filterOwner').addEventListener('input', function h() {
+    if (this.value.trim()) { this.removeEventListener('input', h); selectSession(_autoSession); }
+  });
+}
+</script>
+</body>
+</html>

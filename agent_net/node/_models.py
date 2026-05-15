@@ -150,3 +150,103 @@ class InteractionRequest(BaseModel):
     interaction_type: str
     success: bool
     response_time_ms: Optional[float] = None
+
+
+# ── Coordination Request Models ─────────────────────────────────
+
+class CreateCoordinationSessionRequest(BaseModel):
+    owner_did: str
+    controller_did: str
+    objective: str
+    workflow_id: str = "coding.v1"
+    intake_session_id: Optional[str] = None
+    parent_session_id: Optional[str] = None
+    coordination_session_id: Optional[str] = None
+    policy: Optional[dict] = None
+    context_snapshot: Optional[dict] = None
+
+
+class ForkSessionRequest(BaseModel):
+    coordination_session_id: str
+    actor_did: str = ""
+    link_type: str = "review_fork"
+    reason: str = ""
+
+
+class CreateDelegationRequest(BaseModel):
+    role: str
+    delegator_did: str = ""
+    delegatee_did: str
+    capability_token_id: Optional[str] = None
+    runtime_kind: str = "native_worker"
+    protocol: str = "agentnexus-native"
+    session_id: str = ""
+
+
+class AcceptDelegationRequest(BaseModel):
+    actor_did: str
+
+
+class RejectDelegationRequest(BaseModel):
+    actor_did: str
+    reason: str = ""
+
+
+class SubmitArtifactRequest(BaseModel):
+    coordination_session_id: str
+    stage: str
+    artifact_type: str
+    producer_did: str
+    content_ref: str
+    artifact_id: Optional[str] = None
+    schema_version: str = "1"
+
+
+class SubmitReceiptRequest(BaseModel):
+    coordination_session_id: str
+    stage: str
+    receipt_type: str
+    issuer_did: str
+    decision: str
+    subject_artifact_id: Optional[str] = ""
+    evidence_refs: Optional[list[str]] = None
+    signature: str = ""
+    receipt_id: Optional[str] = None
+
+
+class CreateRuntimeEventRequest(BaseModel):
+    coordination_session_id: str
+    event_type: str
+    event_id: Optional[str] = None
+    stage: str = ""
+    actor_did: str = ""
+    session_id: str = ""
+    run_id: str = ""
+    delegation_id: str = ""
+    artifact_id: str = ""
+    receipt_id: str = ""
+    payload: Optional[dict] = None
+
+
+class CodingIntakeRequest(BaseModel):
+    owner_did: str
+    actor_did: str
+    objective: str
+    complexity: str = "medium"
+    risk_level: str = "normal"
+    cost_policy: str = "balanced"
+    data_sensitivity: str = "internal"
+    requires_human_approval: bool = False
+    session_id: Optional[str] = None
+    preferred_playbook: Optional[str] = None
+    source: dict = {}
+
+
+class CodingClarifyRequest(BaseModel):
+    actor_did: str
+    requirement_spec: dict = {}
+    content_ref: Optional[str] = None
+
+
+class CodingAdvanceRequest(BaseModel):
+    actor_did: str

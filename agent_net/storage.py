@@ -111,6 +111,22 @@ async def init_db():
     # 初始化信任网络相关表
     await init_trust_tables()
 
+    # 初始化 Coding Coordination 相关表
+    await init_coordination_tables()
+
+    # 向后兼容：为后续模块创建的表追加 coordination 列
+    async with aiosqlite.connect(DB_PATH) as db:
+        for alter in [
+            "ALTER TABLE playbook_runs ADD COLUMN coordination_session_id TEXT DEFAULT NULL",
+            "ALTER TABLE secretary_intakes ADD COLUMN coordination_session_id TEXT DEFAULT NULL",
+            "ALTER TABLE stage_executions ADD COLUMN delegation_id TEXT DEFAULT NULL",
+        ]:
+            try:
+                await db.execute(alter)
+                await db.commit()
+            except Exception:
+                pass  # 列已存在，忽略
+
 
 async def add_pending(did: str, init_packet: dict):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -1473,6 +1489,129 @@ async def init_trust_tables():
         await db.commit()
 
 
+async def init_coordination_tables():
+    """初始化 Coding Coordination V1 相关表"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS coordination_sessions (
+                coordination_session_id TEXT PRIMARY KEY,
+                root_session_id TEXT DEFAULT NULL,
+                owner_did TEXT NOT NULL,
+                controller_did TEXT NOT NULL,
+                objective TEXT NOT NULL,
+                workflow_id TEXT DEFAULT 'coding.v1',
+                status TEXT DEFAULT 'intake',
+                policy_json TEXT DEFAULT '{}',
+                context_snapshot TEXT DEFAULT NULL,
+                intake_session_id TEXT DEFAULT NULL,
+                parent_session_id TEXT DEFAULT NULL,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS session_links (
+                link_id TEXT PRIMARY KEY,
+                coordination_session_id TEXT NOT NULL,
+                from_session_id TEXT NOT NULL,
+                to_session_id TEXT NOT NULL,
+                link_type TEXT NOT NULL,
+                reason TEXT DEFAULT '',
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_session_links_coord
+                ON session_links(coordination_session_id);
+            CREATE INDEX IF NOT EXISTS idx_session_links_child
+                ON session_links(to_session_id);
+
+            CREATE TABLE IF NOT EXISTS delegations (
+                delegation_id TEXT PRIMARY KEY,
+                coordination_session_id TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                role TEXT NOT NULL,
+                delegator_did TEXT NOT NULL,
+                delegatee_did TEXT NOT NULL,
+                capability_token_id TEXT DEFAULT '',
+                runtime_kind TEXT DEFAULT 'native_worker',
+                protocol TEXT DEFAULT 'agentnexus-native',
+                session_id TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_delegations_coord
+                ON delegations(coordination_session_id);
+
+            CREATE TABLE IF NOT EXISTS runtime_events (
+                event_id TEXT PRIMARY KEY,
+                coordination_session_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                stage TEXT DEFAULT '',
+                actor_did TEXT DEFAULT '',
+                session_id TEXT DEFAULT '',
+                run_id TEXT DEFAULT '',
+                delegation_id TEXT DEFAULT '',
+                artifact_id TEXT DEFAULT '',
+                receipt_id TEXT DEFAULT '',
+                payload TEXT DEFAULT '{}',
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_runtime_events_coord
+                ON runtime_events(coordination_session_id);
+            CREATE INDEX IF NOT EXISTS idx_runtime_events_stage
+                ON runtime_events(coordination_session_id, stage);
+            CREATE INDEX IF NOT EXISTS idx_runtime_events_type
+                ON runtime_events(coordination_session_id, event_type);
+
+            CREATE TABLE IF NOT EXISTS artifacts (
+                artifact_id TEXT PRIMARY KEY,
+                coordination_session_id TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                artifact_type TEXT NOT NULL,
+                producer_did TEXT NOT NULL,
+                content_ref TEXT NOT NULL,
+                content_hash TEXT DEFAULT '',
+                schema_version TEXT DEFAULT '1',
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_artifacts_coord
+                ON artifacts(coordination_session_id);
+            CREATE INDEX IF NOT EXISTS idx_artifacts_stage
+                ON artifacts(coordination_session_id, stage);
+
+            CREATE TABLE IF NOT EXISTS receipts (
+                receipt_id TEXT PRIMARY KEY,
+                coordination_session_id TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                receipt_type TEXT NOT NULL,
+                issuer_did TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                subject_artifact_id TEXT DEFAULT '',
+                evidence_refs TEXT DEFAULT '[]',
+                signature TEXT DEFAULT '',
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_receipts_coord
+                ON receipts(coordination_session_id);
+            CREATE INDEX IF NOT EXISTS idx_receipts_stage
+                ON receipts(coordination_session_id, stage);
+
+            CREATE TABLE IF NOT EXISTS closure_records (
+                closure_id TEXT PRIMARY KEY,
+                coordination_session_id TEXT NOT NULL,
+                actor_did TEXT NOT NULL,
+                status TEXT NOT NULL,
+                sla_status TEXT NOT NULL,
+                sla_metrics TEXT DEFAULT '{}',
+                receipt_id TEXT DEFAULT '',
+                evidence_refs TEXT DEFAULT '[]',
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_closure_records_coord
+                ON closure_records(coordination_session_id);
+        """)
+        await db.commit()
+
+
 # ── Trust Edges CRUD ─────────────────────────────────────────────────────
 
 async def add_trust_edge(
@@ -2575,3 +2714,651 @@ async def store_final_manifest(
         pass
 
     return manifest
+
+
+# ── Coordination Session CRUD ──────────────────────────────────────────
+
+def _coord_session_row_to_dict(row: tuple) -> dict:
+    return {
+        "coordination_session_id": row[0],
+        "root_session_id": row[1],
+        "owner_did": row[2],
+        "controller_did": row[3],
+        "objective": row[4],
+        "workflow_id": row[5],
+        "status": row[6],
+        "policy_json": json.loads(row[7]) if row[7] else {},
+        "context_snapshot": json.loads(row[8]) if row[8] else None,
+        "intake_session_id": row[9],
+        "parent_session_id": row[10],
+        "created_at": row[11],
+        "updated_at": row[12],
+    }
+
+
+async def create_coordination_session(
+    coordination_session_id: str,
+    owner_did: str,
+    controller_did: str,
+    objective: str,
+    workflow_id: str = "coding.v1",
+    intake_session_id: str | None = None,
+    parent_session_id: str | None = None,
+    policy: dict | None = None,
+    context_snapshot: dict | None = None,
+    root_session_id: str | None = None,
+) -> dict:
+    ts = time.time()
+    policy_json = json.dumps(policy) if policy else json.dumps(
+        {"complexity": "medium", "risk_level": "normal", "cost_policy": "balanced"}
+    )
+    context_json = json.dumps(context_snapshot) if context_snapshot else None
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO coordination_sessions
+               (coordination_session_id, root_session_id, owner_did, controller_did,
+                objective, workflow_id, status, policy_json, context_snapshot,
+                intake_session_id, parent_session_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 'intake', ?, ?, ?, ?, ?, ?)""",
+            (coordination_session_id, root_session_id, owner_did, controller_did,
+             objective, workflow_id, policy_json, context_json,
+             intake_session_id, parent_session_id, ts, ts),
+        )
+        await db.commit()
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await db.execute(
+            "SELECT * FROM coordination_sessions WHERE coordination_session_id=?",
+            (coordination_session_id,),
+        )
+        row = await row.fetchone()
+        await db.commit()
+    return _coord_session_row_to_dict(row)
+
+
+async def get_coordination_session(coordination_session_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await db.execute(
+            "SELECT * FROM coordination_sessions WHERE coordination_session_id=?",
+            (coordination_session_id,),
+        )
+        row = await row.fetchone()
+        await db.commit()
+    return _coord_session_row_to_dict(row) if row else None
+
+
+async def list_coordination_sessions(
+    owner_did: str | None = None,
+    status: str | None = None,
+    workflow_id: str | None = None,
+) -> list[dict]:
+    query = "SELECT * FROM coordination_sessions WHERE 1=1"
+    params: list = []
+    if owner_did:
+        query += " AND owner_did=?"
+        params.append(owner_did)
+    if status:
+        query += " AND status=?"
+        params.append(status)
+    if workflow_id:
+        query += " AND workflow_id=?"
+        params.append(workflow_id)
+    query += " ORDER BY created_at DESC"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute(query, tuple(params))
+        rows = await rows.fetchall()
+        await db.commit()
+    return [_coord_session_row_to_dict(r) for r in rows]
+
+
+async def update_coordination_session(
+    coordination_session_id: str, **kwargs
+) -> bool:
+    allowed = {"status", "policy_json", "context_snapshot", "root_session_id",
+               "intake_session_id", "controller_did"}
+    updates = {}
+    for k, v in kwargs.items():
+        if k in allowed:
+            if k == "policy_json" and isinstance(v, dict):
+                updates[k] = json.dumps(v)
+            elif k == "context_snapshot" and isinstance(v, dict):
+                updates[k] = json.dumps(v)
+            elif k == "context_snapshot" and v is None:
+                updates[k] = None
+            else:
+                updates[k] = v
+    if not updates:
+        return False
+
+    updates["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [coordination_session_id]
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute(
+            f"UPDATE coordination_sessions SET {set_clause} WHERE coordination_session_id=?",
+            values,
+        )
+        await db.commit()
+        return result.rowcount > 0
+
+
+# ── Session Link CRUD ──────────────────────────────────────────────────
+
+def _session_link_row_to_dict(row: tuple) -> dict:
+    return {
+        "link_id": row[0],
+        "coordination_session_id": row[1],
+        "from_session_id": row[2],
+        "to_session_id": row[3],
+        "link_type": row[4],
+        "reason": row[5],
+        "created_at": row[6],
+    }
+
+
+async def create_session_link(
+    link_id: str,
+    coordination_session_id: str,
+    from_session_id: str,
+    to_session_id: str,
+    link_type: str,
+    reason: str = "",
+) -> dict:
+    ts = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO session_links
+               (link_id, coordination_session_id, from_session_id, to_session_id,
+                link_type, reason, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (link_id, coordination_session_id, from_session_id, to_session_id,
+             link_type, reason, ts),
+        )
+        await db.commit()
+    return {
+        "link_id": link_id,
+        "coordination_session_id": coordination_session_id,
+        "from_session_id": from_session_id,
+        "to_session_id": to_session_id,
+        "link_type": link_type,
+        "reason": reason,
+        "created_at": ts,
+    }
+
+
+async def get_session_links(
+    coordination_session_id: str, link_type: str | None = None
+) -> list[dict]:
+    query = "SELECT * FROM session_links WHERE coordination_session_id=?"
+    params: list = [coordination_session_id]
+    if link_type:
+        query += " AND link_type=?"
+        params.append(link_type)
+    query += " ORDER BY created_at"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute(query, tuple(params))
+        rows = await rows.fetchall()
+        await db.commit()
+    return [_session_link_row_to_dict(r) for r in rows]
+
+
+async def get_session_link_by_child(to_session_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await db.execute(
+            "SELECT * FROM session_links WHERE to_session_id=? ORDER BY created_at DESC LIMIT 1",
+            (to_session_id,),
+        )
+        row = await row.fetchone()
+        await db.commit()
+    return _session_link_row_to_dict(row) if row else None
+
+
+# ── Runtime Event CRUD ─────────────────────────────────────────────────
+
+def _runtime_event_row_to_dict(row: tuple) -> dict:
+    return {
+        "event_id": row[0],
+        "coordination_session_id": row[1],
+        "event_type": row[2],
+        "stage": row[3] or "",
+        "actor_did": row[4] or "",
+        "session_id": row[5] or "",
+        "run_id": row[6] or "",
+        "delegation_id": row[7] or "",
+        "artifact_id": row[8] or "",
+        "receipt_id": row[9] or "",
+        "payload": json.loads(row[10]) if row[10] else {},
+        "created_at": row[11],
+    }
+
+
+async def emit_event(
+    coordination_session_id: str,
+    event_type: str,
+    stage: str = "",
+    actor_did: str = "",
+    session_id: str = "",
+    run_id: str = "",
+    delegation_id: str = "",
+    artifact_id: str = "",
+    receipt_id: str = "",
+    payload: dict | None = None,
+) -> dict:
+    event_id = f"evt_{uuid.uuid4().hex[:16]}"
+    return await create_runtime_event(
+        event_id=event_id,
+        coordination_session_id=coordination_session_id,
+        event_type=event_type,
+        stage=stage,
+        actor_did=actor_did,
+        session_id=session_id,
+        run_id=run_id,
+        delegation_id=delegation_id,
+        artifact_id=artifact_id,
+        receipt_id=receipt_id,
+        payload=payload,
+    )
+
+
+async def create_runtime_event(
+    event_id: str,
+    coordination_session_id: str,
+    event_type: str,
+    stage: str = "",
+    actor_did: str = "",
+    session_id: str = "",
+    run_id: str = "",
+    delegation_id: str = "",
+    artifact_id: str = "",
+    receipt_id: str = "",
+    payload: dict | None = None,
+) -> dict:
+    payload_json = json.dumps(payload) if payload else "{}"
+    ts = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO runtime_events
+               (event_id, coordination_session_id, event_type, stage, actor_did,
+                session_id, run_id, delegation_id, artifact_id, receipt_id,
+                payload, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (event_id, coordination_session_id, event_type, stage, actor_did,
+             session_id, run_id, delegation_id, artifact_id, receipt_id,
+             payload_json, ts),
+        )
+        await db.commit()
+    return {
+        "event_id": event_id,
+        "coordination_session_id": coordination_session_id,
+        "event_type": event_type,
+        "stage": stage,
+        "actor_did": actor_did,
+        "session_id": session_id,
+        "run_id": run_id,
+        "delegation_id": delegation_id,
+        "artifact_id": artifact_id,
+        "receipt_id": receipt_id,
+        "payload": payload or {},
+        "created_at": ts,
+    }
+
+
+async def get_runtime_events(
+    coordination_session_id: str,
+    stage: str | None = None,
+    event_type: str | None = None,
+) -> list[dict]:
+    query = "SELECT * FROM runtime_events WHERE coordination_session_id=?"
+    params: list = [coordination_session_id]
+    if stage:
+        query += " AND stage=?"
+        params.append(stage)
+    if event_type:
+        query += " AND event_type=?"
+        params.append(event_type)
+    query += " ORDER BY created_at ASC"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute(query, tuple(params))
+        rows = await rows.fetchall()
+        await db.commit()
+    return [_runtime_event_row_to_dict(r) for r in rows]
+
+
+# ── Artifact CRUD ──────────────────────────────────────────────────────
+
+def _artifact_row_to_dict(row: tuple) -> dict:
+    return {
+        "artifact_id": row[0],
+        "coordination_session_id": row[1],
+        "stage": row[2],
+        "artifact_type": row[3],
+        "producer_did": row[4],
+        "content_ref": row[5],
+        "content_hash": row[6] or "",
+        "schema_version": row[7] or "1",
+        "created_at": row[8],
+    }
+
+
+async def create_artifact(
+    artifact_id: str,
+    coordination_session_id: str,
+    stage: str,
+    artifact_type: str,
+    producer_did: str,
+    content_ref: str,
+    content_hash: str = "",
+    schema_version: str = "1",
+) -> dict:
+    ts = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO artifacts
+               (artifact_id, coordination_session_id, stage, artifact_type,
+                producer_did, content_ref, content_hash, schema_version, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (artifact_id, coordination_session_id, stage, artifact_type,
+             producer_did, content_ref, content_hash, schema_version, ts),
+        )
+        await db.commit()
+    return {
+        "artifact_id": artifact_id,
+        "coordination_session_id": coordination_session_id,
+        "stage": stage,
+        "artifact_type": artifact_type,
+        "producer_did": producer_did,
+        "content_ref": content_ref,
+        "content_hash": content_hash,
+        "schema_version": schema_version,
+        "created_at": ts,
+    }
+
+
+async def get_artifact(artifact_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await db.execute(
+            "SELECT * FROM artifacts WHERE artifact_id=?",
+            (artifact_id,),
+        )
+        row = await row.fetchone()
+        await db.commit()
+    return _artifact_row_to_dict(row) if row else None
+
+
+async def list_artifacts(
+    coordination_session_id: str, stage: str | None = None
+) -> list[dict]:
+    query = "SELECT * FROM artifacts WHERE coordination_session_id=?"
+    params: list = [coordination_session_id]
+    if stage:
+        query += " AND stage=?"
+        params.append(stage)
+    query += " ORDER BY created_at ASC"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute(query, tuple(params))
+        rows = await rows.fetchall()
+        await db.commit()
+    return [_artifact_row_to_dict(r) for r in rows]
+
+
+# ── Receipt CRUD ───────────────────────────────────────────────────────
+
+def _receipt_row_to_dict(row: tuple) -> dict:
+    return {
+        "receipt_id": row[0],
+        "coordination_session_id": row[1],
+        "stage": row[2],
+        "receipt_type": row[3],
+        "issuer_did": row[4],
+        "decision": row[5],
+        "subject_artifact_id": row[6] or "",
+        "evidence_refs": json.loads(row[7]) if row[7] else [],
+        "signature": row[8] or "",
+        "created_at": row[9],
+    }
+
+
+async def create_receipt(
+    receipt_id: str,
+    coordination_session_id: str,
+    stage: str,
+    receipt_type: str,
+    issuer_did: str,
+    decision: str,
+    subject_artifact_id: str = "",
+    evidence_refs: list[str] | None = None,
+    signature: str = "",
+) -> dict:
+    ts = time.time()
+    evidence_json = json.dumps(evidence_refs) if evidence_refs else "[]"
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO receipts
+               (receipt_id, coordination_session_id, stage, receipt_type,
+                issuer_did, decision, subject_artifact_id, evidence_refs,
+                signature, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (receipt_id, coordination_session_id, stage, receipt_type,
+             issuer_did, decision, subject_artifact_id, evidence_json,
+             signature, ts),
+        )
+        await db.commit()
+    return {
+        "receipt_id": receipt_id,
+        "coordination_session_id": coordination_session_id,
+        "stage": stage,
+        "receipt_type": receipt_type,
+        "issuer_did": issuer_did,
+        "decision": decision,
+        "subject_artifact_id": subject_artifact_id,
+        "evidence_refs": evidence_refs or [],
+        "signature": signature,
+        "created_at": ts,
+    }
+
+
+async def get_receipt(receipt_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await db.execute(
+            "SELECT * FROM receipts WHERE receipt_id=?",
+            (receipt_id,),
+        )
+        row = await row.fetchone()
+        await db.commit()
+    return _receipt_row_to_dict(row) if row else None
+
+
+async def list_receipts(
+    coordination_session_id: str, stage: str | None = None
+) -> list[dict]:
+    query = "SELECT * FROM receipts WHERE coordination_session_id=?"
+    params: list = [coordination_session_id]
+    if stage:
+        query += " AND stage=?"
+        params.append(stage)
+    query += " ORDER BY created_at ASC"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute(query, tuple(params))
+        rows = await rows.fetchall()
+        await db.commit()
+    return [_receipt_row_to_dict(r) for r in rows]
+
+
+# ── Closure Record CRUD ────────────────────────────────────────────────
+
+def _closure_row_to_dict(row: tuple) -> dict:
+    return {
+        "closure_id": row[0],
+        "coordination_session_id": row[1],
+        "actor_did": row[2],
+        "status": row[3],
+        "sla_status": row[4],
+        "sla_metrics": json.loads(row[5]) if row[5] else {},
+        "receipt_id": row[6] or "",
+        "evidence_refs": json.loads(row[7]) if row[7] else [],
+        "created_at": row[8],
+    }
+
+
+async def create_closure_record(
+    closure_id: str,
+    coordination_session_id: str,
+    actor_did: str,
+    status: str,
+    sla_status: str,
+    sla_metrics: dict | None = None,
+    receipt_id: str = "",
+    evidence_refs: list[str] | None = None,
+) -> dict:
+    ts = time.time()
+    metrics_json = json.dumps(sla_metrics) if sla_metrics else "{}"
+    evidence_json = json.dumps(evidence_refs) if evidence_refs else "[]"
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO closure_records
+               (closure_id, coordination_session_id, actor_did, status,
+                sla_status, sla_metrics, receipt_id, evidence_refs, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (closure_id, coordination_session_id, actor_did, status,
+             sla_status, metrics_json, receipt_id, evidence_json, ts),
+        )
+        await db.commit()
+    return {
+        "closure_id": closure_id,
+        "coordination_session_id": coordination_session_id,
+        "actor_did": actor_did,
+        "status": status,
+        "sla_status": sla_status,
+        "sla_metrics": sla_metrics or {},
+        "receipt_id": receipt_id,
+        "evidence_refs": evidence_refs or [],
+        "created_at": ts,
+    }
+
+
+async def get_closure_record(closure_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await db.execute(
+            "SELECT * FROM closure_records WHERE closure_id=?",
+            (closure_id,),
+        )
+        row = await row.fetchone()
+        await db.commit()
+    return _closure_row_to_dict(row) if row else None
+
+
+async def list_closure_records(
+    coordination_session_id: str, status: str | None = None
+) -> list[dict]:
+    query = "SELECT * FROM closure_records WHERE coordination_session_id=?"
+    params: list = [coordination_session_id]
+    if status:
+        query += " AND status=?"
+        params.append(status)
+    query += " ORDER BY created_at ASC"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute(query, tuple(params))
+        rows = await rows.fetchall()
+        await db.commit()
+    return [_closure_row_to_dict(r) for r in rows]
+
+
+# ── Delegation CRUD ────────────────────────────────────────────────────
+
+def _delegation_row_to_dict(row: tuple) -> dict:
+    return {
+        "delegation_id": row[0],
+        "coordination_session_id": row[1],
+        "stage": row[2],
+        "role": row[3],
+        "delegator_did": row[4],
+        "delegatee_did": row[5],
+        "capability_token_id": row[6] or "",
+        "runtime_kind": row[7] or "native_worker",
+        "protocol": row[8] or "agentnexus-native",
+        "session_id": row[9] or "",
+        "status": row[10],
+        "created_at": row[11],
+        "updated_at": row[12],
+    }
+
+
+async def create_delegation(
+    delegation_id: str,
+    coordination_session_id: str,
+    stage: str,
+    role: str,
+    delegator_did: str,
+    delegatee_did: str,
+    capability_token_id: str = "",
+    runtime_kind: str = "native_worker",
+    protocol: str = "agentnexus-native",
+    session_id: str = "",
+) -> dict:
+    ts = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO delegations
+               (delegation_id, coordination_session_id, stage, role,
+                delegator_did, delegatee_did, capability_token_id,
+                runtime_kind, protocol, session_id, status, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
+            (delegation_id, coordination_session_id, stage, role,
+             delegator_did, delegatee_did, capability_token_id,
+             runtime_kind, protocol, session_id, ts, ts),
+        )
+        await db.commit()
+    return {
+        "delegation_id": delegation_id,
+        "coordination_session_id": coordination_session_id,
+        "stage": stage,
+        "role": role,
+        "delegator_did": delegator_did,
+        "delegatee_did": delegatee_did,
+        "capability_token_id": capability_token_id,
+        "runtime_kind": runtime_kind,
+        "protocol": protocol,
+        "session_id": session_id,
+        "status": "pending",
+        "created_at": ts,
+        "updated_at": ts,
+    }
+
+
+async def get_delegation(delegation_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await db.execute(
+            "SELECT * FROM delegations WHERE delegation_id=?",
+            (delegation_id,),
+        )
+        row = await row.fetchone()
+        await db.commit()
+    return _delegation_row_to_dict(row) if row else None
+
+
+async def update_delegation(delegation_id: str, status: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute(
+            "UPDATE delegations SET status=?, updated_at=? WHERE delegation_id=?",
+            (status, time.time(), delegation_id),
+        )
+        await db.commit()
+        return result.rowcount > 0
+
+
+async def list_delegations(coordination_session_id: str) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute(
+            "SELECT * FROM delegations WHERE coordination_session_id=? ORDER BY created_at ASC",
+            (coordination_session_id,),
+        )
+        rows = await rows.fetchall()
+        await db.commit()
+    return [_delegation_row_to_dict(r) for r in rows]

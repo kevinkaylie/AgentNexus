@@ -52,6 +52,7 @@ from .secretary import SecretaryClient
 from .runs import RunClient
 from .worker import WorkerRuntime
 from .orchestration import OrchestrationClient
+from .coordination import CoordinationClient
 
 
 # Default Push callback URL for SDK (local webhook server)
@@ -150,6 +151,7 @@ class AgentNexusClient:
         self.runs = RunClient(self)
         self.worker = WorkerRuntime(self)
         self.orchestration = OrchestrationClient(self)
+        self.coordination = CoordinationClient(self)
 
         # Polling state
         self._poll_interval = 2.0  # seconds

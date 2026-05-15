@@ -88,6 +88,7 @@ from .secretary import SecretaryClient, SecretaryInfo, IntakeInfo, DispatchResul
 from .runs import RunClient, RunStatus
 from .worker import WorkerRuntime, StageContext
 from .orchestration import OrchestrationClient
+from .coordination import CoordinationClient
 
 __all__ = [
     # Core
@@ -150,6 +151,8 @@ __all__ = [
     "WorkerRuntime",
     "StageContext",
     "OrchestrationClient",
+    # Coordination
+    "CoordinationClient",
 ]
 
 __version__ = "1.0.1"

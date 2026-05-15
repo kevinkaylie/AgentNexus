@@ -33,7 +33,7 @@ async def _trust_decay_loop():
                 logger.info(f"[TrustDecay] {updated} edges updated")
         except Exception as e:
             logger.warning(f"[TrustDecay] error: {e}")
-from agent_net.node.routers import agents, messages, handshake, adapters, push, enclave, governance, secretary
+from agent_net.node.routers import agents, messages, handshake, adapters, push, enclave, governance, secretary, coordination
 from agent_net.storage import init_db
 
 
@@ -89,6 +89,7 @@ app.include_router(push.router)
 app.include_router(enclave.router)
 app.include_router(governance.router)
 app.include_router(secretary.router)
+app.include_router(coordination.router)
 
 # Web 仪表盘静态文件挂载（v1.0-01）
 from pathlib import Path
@@ -103,6 +104,18 @@ if _static_dir.exists() and (_static_dir / "index.html").exists():
 
     # SPA fallback：所有非 assets 路径返回 index.html
     from fastapi.responses import FileResponse
+
+    # Coordination page (before SPA catch-all)
+    _coord_html = _static_dir / "coordination.html"
+    if _coord_html.exists():
+        @app.get("/ui/coordination")
+        async def serve_coordination_page():
+            return FileResponse(_coord_html)
+
+        @app.get("/ui/coordination/{session_id}")
+        async def serve_coordination_session(session_id: str):
+            """Serve coordination detail page with session pre-loaded via hash."""
+            return FileResponse(_coord_html)
 
     @app.get("/ui/{path:path}")
     async def serve_ui_spa(path: str = ""):

@@ -91,13 +91,14 @@ def _check_file_permissions(path: Path, check: bool) -> None:
     """Check if file permissions are secure (0o600)."""
     if not check:
         return
+    if os.name == "nt":
+        return
 
     try:
         mode = path.stat().st_mode & 0o777
         if mode != 0o600:
             warnings.warn(
-                f"Token file {path} has permissions {oct(mode)}, recommend chmod 600",
-                TokenPermissionWarning,
+                TokenPermissionWarning(str(path), mode),
                 stacklevel=3,
             )
     except OSError:
