@@ -154,7 +154,8 @@ async def reconcile_workers(
                 )
                 return warnings
             registry_agents = r.json().get("agents", [])
-        except Exception as e:
+        except (httpx.HTTPError, httpx.NetworkError, httpx.TimeoutException,
+                OSError) as e:
             warnings.append(
                 f"Could not reach daemon for Worker Registry: {e}. "
                 f"Skipping reconciliation."
