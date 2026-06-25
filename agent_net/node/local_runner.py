@@ -120,6 +120,47 @@ def find_worker_for_capability(
     return _match_worker(cfg, "capabilities", capability)
 
 
+def find_fallback_worker(
+    cfg: dict[str, Any],
+    role: str,
+    exclude_workers: set[str] | None = None,
+) -> dict[str, Any] | None:
+    """Find a fallback worker for a role, excluding already-tried workers.
+
+    Design ref: docs/design/design-objective-loop-v1.1.md Section 9.2
+    """
+    exclude = exclude_workers or set()
+    workers = cfg.get("workers", {})
+
+    # Try role match first
+    for name, w in workers.items():
+        if not isinstance(w, dict):
+            continue
+        worker_key = w.get("worker_did") or w.get("agent_name", name)
+        if worker_key in exclude:
+            continue
+        roles = w.get("roles", [])
+        if not isinstance(roles, list):
+            roles = [roles]
+        if role in roles:
+            return {"name": name, **w}
+
+    # Fallback to capability match
+    for name, w in workers.items():
+        if not isinstance(w, dict):
+            continue
+        worker_key = w.get("worker_did") or w.get("agent_name", name)
+        if worker_key in exclude:
+            continue
+        caps = w.get("capabilities", [])
+        if not isinstance(caps, list):
+            caps = [caps]
+        if role in caps:
+            return {"name": name, **w}
+
+    return None
+
+
 # ── Worker Registry reconciliation ──────────────────────────────────
 
 

@@ -17,6 +17,7 @@ from agent_net.node.execution_backends.base import ExecutionResult
 from agent_net.node.local_runner import (
     find_worker_for_role,
     find_worker_for_capability,
+    find_fallback_worker,
     execute_stage,
 )
 
@@ -151,8 +152,15 @@ async def runner_tick(
             # Find matching worker (try role first, then fallback to capability)
             worker = find_worker_for_role(config, role)
             if worker is None:
-                # Fallback: try to match by stage name as capability
                 worker = find_worker_for_capability(config, role)
+
+            # For retries, try fallback worker (different worker, same role)
+            if retry_attempt > 1 and worker is not None:
+                worker_key = worker.get("worker_did") or worker.get("agent_name", "")
+                fallback = find_fallback_worker(config, role, exclude_workers={worker_key})
+                if fallback is not None:
+                    worker = fallback
+
             if worker is None:
                 actions.append({
                     "action": "skip", "session_id": sid, "stage": stage,
