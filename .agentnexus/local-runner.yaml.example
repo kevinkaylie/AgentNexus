@@ -1,0 +1,69 @@
+# AgentNexus Local Runner Configuration
+# Copy this file to .agentnexus/local-runner.yaml and customize.
+#
+# Design ref: docs/design/design-objective-loop-v1.1.md Section 6.2
+
+daemon_url: http://127.0.0.1:8765
+secretary_agent: OpenClawSecretary
+poll_interval_sec: 2
+
+defaults:
+  workdir: .  # Project root
+  timeout_sec: 1800
+  max_retries_per_stage: 2
+
+workers:
+  # ── Example: Claude Code as developer ──────────────────────────────
+  # claude_developer:
+  #   agent_name: ClaudeDeveloper
+  #   adapter: local_cli
+  #   command: claude
+  #   args: ["-p", "{prompt}"]
+  #   roles: ["developer", "implement"]
+  #   capabilities: ["Code", "Debug", "Implement"]
+
+  # ── Example: Codex as reviewer ─────────────────────────────────────
+  # codex_reviewer:
+  #   agent_name: CodexReviewer
+  #   adapter: local_cli
+  #   command: codex
+  #   args: ["exec", "{prompt}"]
+  #   roles: ["reviewer", "code_review"]
+  #   capabilities: ["Review", "Code", "QA"]
+
+  # ── Fake worker for testing (always available) ─────────────────────
+  fake_developer:
+    agent_name: FakeDeveloper
+    adapter: local_cli
+    command: python
+    args:
+      - "-c"
+      - |
+        import json
+        print(json.dumps({
+            "summary": "Fake implementation completed",
+            "status": "completed",
+            "artifact_type": "ImplementationArtifact",
+            "artifact_body": "# Fake implementation\nprint('hello')",
+            "evidence_refs": []
+        }))
+    roles: ["developer", "implement"]
+    capabilities: ["Code", "Debug"]
+
+  fake_tester:
+    agent_name: FakeTester
+    adapter: local_cli
+    command: python
+    args:
+      - "-c"
+      - |
+        import json
+        print(json.dumps({
+            "summary": "All tests passed",
+            "status": "completed",
+            "artifact_type": "TestResultArtifact",
+            "artifact_body": "8 passed, 0 failed",
+            "evidence_refs": []
+        }))
+    roles: ["tester", "test"]
+    capabilities: ["Test"]

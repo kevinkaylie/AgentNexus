@@ -31,6 +31,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "workdir": str(pathlib.Path.cwd()),
         "timeout_sec": 1800,
         "max_retries_per_stage": 2,
+        "max_total_executions": 30,       # NEW
+        "max_wall_clock_sec": 14400,      # NEW
+        "require_final_acceptance": False, # NEW
     },
     "workers": {},
 }
@@ -71,7 +74,9 @@ def load_runner_config(path: str) -> dict[str, Any]:
         cfg["poll_interval_sec"] = int(raw["poll_interval_sec"])
 
     if "defaults" in raw and isinstance(raw["defaults"], dict):
-        for k in ("workdir", "timeout_sec", "max_retries_per_stage"):
+        for k in ("workdir", "timeout_sec", "max_retries_per_stage",
+                  "max_total_executions", "max_wall_clock_sec",
+                  "require_final_acceptance"):
             if k in raw["defaults"]:
                 cfg["defaults"][k] = raw["defaults"][k]
 

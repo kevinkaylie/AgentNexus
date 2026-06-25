@@ -53,8 +53,10 @@ class IntakeInfo:
 class DispatchResult:
     status: str
     session_id: str
+    coordination_session_id: str | None = None
     run_id: str | None = None
     enclave_id: str | None = None
+    playbook_id: str | None = None
     playbook_name: str | None = None
     current_stage: str | None = None
     selected_workers: dict[str, str] = field(default_factory=dict)
@@ -66,8 +68,10 @@ class DispatchResult:
         return cls(
             status=data.get("status", ""),
             session_id=data.get("session_id", session_id),
+            coordination_session_id=data.get("coordination_session_id"),
             run_id=data.get("run_id"),
             enclave_id=data.get("enclave_id"),
+            playbook_id=data.get("playbook_id"),
             playbook_name=data.get("playbook_name"),
             current_stage=data.get("current_stage"),
             selected_workers=data.get("selected_workers", {}) or {},

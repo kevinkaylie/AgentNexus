@@ -10,6 +10,7 @@ Enclave 协作架构测试（ADR-013）
 import asyncio
 import json
 import pytest
+import pytest_asyncio
 import tempfile
 import os
 from pathlib import Path
@@ -18,13 +19,13 @@ from pathlib import Path
 TEST_DB_PATH = Path(tempfile.gettempdir()) / f"test_enclave_{os.getpid()}.db"
 
 
-@pytest.fixture(autouse=True)
-def setup_db(monkeypatch):
+@pytest_asyncio.fixture(autouse=True)
+async def setup_db(monkeypatch):
     """每个测试前重置数据库"""
     import agent_net.storage as storage
     monkeypatch.setattr(storage, "DB_PATH", TEST_DB_PATH)
     # 初始化数据库
-    asyncio.run(storage.init_db())
+    await storage.init_db()
     yield
     # 清理
     if TEST_DB_PATH.exists():

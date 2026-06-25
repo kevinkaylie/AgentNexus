@@ -2,18 +2,27 @@
 
 > **唯一状态源**：本文档是 AgentNexus 项目版本、功能状态、关键数字的唯一权威来源。
 > 其他文档（CLAUDE.md、architecture.md、AGENTS.md 等）引用本文档，不重复维护状态。
-> 最后更新：2026-05-15（Coding Coordination V1 后端闭环已完成，SDK/CLI/Dashboard/Quickstart release closure 已实现；65 个 coordination 测试通过）
+> 最后更新：2026-06-23
+> 
+> **本轮修复：**
+> - 8 个 sync fixture → `@pytest_asyncio.fixture` async（消除 `asyncio.run()` / `new_event_loop()` 重复创建 ProactorEventLoop）
+> - 4 个 `yield TestClient(app)` → `with TestClient(app) as client: yield client`（上下文管理确保 httpx 连接池释放）
+> - `init_db()` 连接合并 6→1（`init_*_tables(db)` 必传参数，连接由调用者管理）
+> - 7 个测试文件 DB 隔离（`tmp_path` 重定向，不碰默认 `data/agent_net.db`）
+> - 5 个测试文件 `asyncio.run()` → `@pytest.mark.asyncio async def`（`test_cases.py` / `test_gatekeeper.py` / `test_v10_intent_route.py` / `test_v10_messages.py` / `test_v10_owner.py`），共用 pytest-asyncio 单一 event loop
+> 
+> **结果：544 passed, 8 skipped, 1 warning**（`I/O operation on closed pipe`，非 aiosqlite/资源泄漏类）
 
 ## 一句话总结
 
-AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0.0 收敛为”团队协作开发者预览”：Orchestration SDK + 常驻秘书 + Enclave/Playbook + 基础 Web 入口。Coding Coordination V1 后端闭环已实现，SDK facade / CLI demo / Dashboard 只读视图 / Quickstart 已完成；65 个 coordination 测试通过。
+AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0.0 收敛为”团队协作开发者预览”：Orchestration SDK + 常驻秘书 + Enclave/Playbook + 基础 Web 入口。Coding Coordination V1 后端闭环、SDK facade、CLI demo/runtime-mock、Dashboard detail、Quickstart、Delivery Manifest closure 已完成。Objective Loop V1.1 核心模块（storage/backend/runner/loop engine/gateway）已开发完成，进入 daemon 集成和 quickstart 阶段。
 
 ## 关键数字
 
 | 指标 | 值 |
 |------|-----|
-| 当前版本 | v1.0.0 开发中（团队协作开发者预览；Secretary Phase B 已完成开发，Dashboard/Setup 主链路已实现；Coding Coordination V1 后端闭环已完成，SDK/CLI/Dashboard/Quickstart release closure 已实现） |
-| 测试数 | 全量：486 passed, 8 skipped；前端 build 通过 |
+| 当前版本 | v1.0.0→v1.1 过渡中（团队协作开发者预览已发布；Coding Coordination V1 release closure 完成；Objective Loop V1.1 P0-1~P0-5 核心模块开发完成，待 daemon 集成与 quickstart） |
+| 测试数 | 全量：544 passed, 8 skipped, 1 warning（`I/O operation on closed pipe`，非资源泄漏类）；前端 build 通过 |
 | MCP 工具数 | 37 |
 | Python | 3.10+ |
 | 存储 | SQLite (aiosqlite) |
@@ -30,9 +39,9 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | v0.9.6 | ✅ 已发布 | Governance Attestation、Web of Trust、信任衰减 |
 | v1.0 Phase 1 | ✅ 已实现 | 个人主 DID (1.0-04)、消息中心 (1.0-06)、Capability Token (1.0-08)、委托链收窄 (1.0-10) |
 | v1.0.0 | 🚧 开发中 | 团队协作开发者预览：意图路由、鉴权矩阵 v3、Orchestration SDK、Secretary Phase B、Dashboard/Setup 主链路已完成；代码评审阻塞项已解决 |
-| Coding Coordination V1 | ✅ 已实现 | 以 coding 场景验证 protocol-agnostic trusted coordination loop；后端 foundation 已补齐，coordination router 可导入，models/storage/router registration/tests 已完成；65 个 coordination 测试通过 |
-| Coding Coordination V1 Release Closure | ✅ 已完成 | 后端 foundation 补齐后，SDK facade、CLI demo、Dashboard 只读视图、Quickstart 已全部完成；新开发者可通过 SDK 示例或 CLI 命令跑通完整 coding coordination 闭环 |
-| v1.1 | 📋 规划中 | 产品化增强：Dashboard 完整体验、更多 Adapter、CLI Launcher、Tauri 壳和本机通知 |
+| Coding Coordination V1 | ✅ 已实现 | 以 coding 场景验证 protocol-agnostic trusted coordination loop；PlaybookRun 作为运行态状态源，closure 自动生成 Delivery Manifest 并写入 Enclave Vault；63 个 coordination/manifest 回归测试通过 |
+| Coding Coordination V1 Release Closure | ✅ 已完成 | SDK facade、CLI demo、runtime-mock、Dashboard detail、Quickstart 已全部完成；新开发者可通过 SDK 示例或 CLI 命令跑通完整 coding coordination 闭环 |
+| v1.1 | 🚧 开发中 | Objective Loop（L0 本机）：P0-1~P0-6 全部完成（含 Execution API、Daemon 集成、Quickstart）；Runner poll loop 验证中；L1/L2 后移到 v1.2+ |
 | v1.5 | 📋 规划中 | 企业版 MVP：per-agent token、Admin API、审计日志、多租户、RBAC、统一策略引擎、强授权与可信交付 |
 
 ## 模块状态
@@ -56,20 +65,22 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | Consistency Level | ✅ L0, 🚧 L1 | 决策一致性分级 |
 | 秘书编排（Phase A） | ✅ | D-SEC-01 Worker Registry + D-SEC-02 Intake/Dispatch 已实现 |
 | 秘书编排（Phase B） | ✅ | 已完成开发：Presence、Adapter Contract、Message Envelope、Delivery Manifest、Context Budget & Handoff、Owner abort、SDK/CLI 原生入口 |
-| Coding Coordination V1 | ✅ | 将 Secretary 升级为 Coordination Controller：后端 foundation 已补齐，coordination router 可导入，session/storage/model/daemon registration/tests 已完成；65 个 coordination 测试通过 |
-| Coding Coordination V1 Release Closure | ✅ | SDK facade、CLI demo、Dashboard 只读视图、Quickstart 已全部完成；新开发者可通过 SDK 示例或 CLI 命令跑通完整 coding coordination 闭环 |
+| Coding Coordination V1 | ✅ | 将 Secretary 升级为 Coordination Controller：PlaybookRun 作为运行态状态源，closure 自动生成 Delivery Manifest 并写入 Enclave Vault；63 个 coordination/manifest 回归测试通过 |
+| Coding Coordination V1 Release Closure | ✅ | SDK facade、CLI demo、runtime-mock、Dashboard detail、Quickstart 已全部完成；新开发者可通过 SDK 示例或 CLI 命令跑通完整 coding coordination 闭环 |
+| Objective Loop V1.1 P0-1~P0-5 | ✅ | objective_executions 表 + CRUD、ExecutionBackend/Protocol + LocalCLIBackend、local_runner YAML + stage 执行、Loop Engine next_action() 状态机、Secretary DecisionGate handler；新增 56 个测试 |
+| Objective Loop Daemon 集成 | ✅ | Execution API endpoints（POST/GET executions、runner poll loop）、execution 集成测试已完成 |
 | Web 仪表盘 | ✅ | Setup 六步闭环（Token→Owner→Secretary→Workers→Dispatch→Result）、Dashboard 聚合视图、Agents worker_type/presence、Enclaves Run 详情/manifest/context_budget 已实现并构建同步 |
 | 鉴权矩阵 v3 | ✅ | 已实现 v1.0 阶段性边界：token + actor DID 校验、读接口私有化、/deliver soft-enforce 签名验证；per-agent token 和 hard-enforce 后移 |
 | did:meeet 桥接 | 🚧 部分实现 | Relay/DIDResolver handler、映射端点、x402_score metadata 已实现；真实 Solana API 与外部评分口径待确认 |
 
-## v1.0.0 发布范围
+## v1.1 发布范围
 
 | 类别 | 内容 |
 |------|------|
-| 必交 | Orchestration SDK、Owner/Secretary/Team/Run/Worker Runtime 主链路、Secretary Phase B 基础闭环、Context Budget 基础实现、Delivery Manifest、Dashboard 基础入口、Setup 向导、鉴权矩阵 v3 |
-| 已完成 | Coding Coordination V1 后端 foundation 与 alpha/demo 闭环：models/storage/router registration/tests 已修复，SDK/CLI/Dashboard release closure 已完成；65 个 coordination 测试通过 |
-| 后移到 v1.1 | Tauri 桌面壳、系统托盘通知、CLI Launcher 自动拉起、更多 OpenClaw/Webhook 产品化 Adapter、Dashboard 完整产品体验 |
-| 后移到 v1.5 | per-agent token、Capability 强制覆盖所有 Enclave/Vault/Run/Stage 操作、/deliver hard-enforce、Strict JCS、审计日志、签名交付包 |
+| 已完成 | P0-1 objective_executions 存储、P0-2 ExecutionBackend + LocalCLIBackend、P0-3 local_runner + YAML config + worker 匹配、P0-4 Loop Engine next_action() 状态机、P0-5 Secretary DecisionGate handler、P0-6 Execution API endpoints + daemon 集成 + Quickstart；56 个新测试 |
+| 进行中 | Runner auto-discover poll loop 验证、Dashboard execution/decision gate 视图 |
+| 后移到 v1.2 | LAN Worker、Relay Worker、artifact transport 跨网络 |
+| 后移到 v1.3+ | Productization：Tauri 桌面壳、系统托盘通知、Adapter marketplace |
 
 ## 活跃外部合作
 

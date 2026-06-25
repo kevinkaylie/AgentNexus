@@ -206,6 +206,40 @@ python main.py node relay set-local http://192.168.1.100:9000
 python main.py node relay add https://relay.example.com
 ```
 
+### Coding Coordination V1
+
+最快路径是直接跑内置 demo。它会创建 owner/secretary/workers、Enclave、Vault 内容、CoordinationSession 和主 PlaybookRun，并跑通 `clarify -> design -> design_review -> implement -> code_review -> test -> final`。
+
+```bash
+python main.py node coordination demo
+```
+
+完成后会输出：
+
+- `Session` / `Run`：用于后续 CLI 检查。
+- `Closure`：最终闭环审计记录。
+- `Open: http://127.0.0.1:8765/ui/coordination/<session_id>`：Dashboard 详情页，可查看 timeline、artifact、receipt、closure 和 Delivery Manifest。
+
+常用检查命令：
+
+```bash
+# 查看 Session + Timeline + Closure 摘要
+python main.py node coordination show <coordination_session_id> --actor <owner_or_secretary_did>
+
+# 查看审计时间线
+python main.py node coordination timeline <coordination_session_id> --actor <owner_or_secretary_did>
+
+# 推进指定 PlaybookRun
+python main.py node coordination advance <coordination_session_id> <run_id> --actor <secretary_did>
+
+# 模拟外部 runtime adapter 接入某个 stage
+python main.py node coordination runtime-mock <coordination_session_id> <run_id> design --actor <secretary_did>
+```
+
+核心模型：`CoordinationSession` 是审计/权限/聚合容器；`PlaybookRun` 是运行态状态源，`current_stage/status` 从 run 派生。最终完成时，系统会把阶段产物结构化成 Delivery Manifest 并写入 Enclave Vault，closure 会持有 manifest 引用。
+
+策略门禁最小例子：在 `design_review` 阶段提交 `decision=changes_requested` 的 receipt，再执行 `advance`，会按 Playbook 的 `on_reject=design` 回退，并在 timeline 里记录 `stage.blocked`。
+
 ---
 
 ## 🇬🇧 English
@@ -353,3 +387,37 @@ python main.py node relay list
 python main.py node relay set-local http://192.168.1.100:9000
 python main.py node relay add https://relay.example.com
 ```
+
+### Coding Coordination V1
+
+The fastest path is the built-in demo. It creates the owner, secretary, workers, Enclave, Vault entries, CoordinationSession and primary PlaybookRun, then runs `clarify -> design -> design_review -> implement -> code_review -> test -> final`.
+
+```bash
+python main.py node coordination demo
+```
+
+The demo prints:
+
+- `Session` / `Run` for follow-up CLI checks.
+- `Closure`, the terminal audit record.
+- `Open: http://127.0.0.1:8765/ui/coordination/<session_id>` for the Dashboard detail page, including timeline, artifacts, receipts, closure and Delivery Manifest.
+
+Useful checks:
+
+```bash
+# Session + timeline + closure summary
+python main.py node coordination show <coordination_session_id> --actor <owner_or_secretary_did>
+
+# Inspect the audit timeline
+python main.py node coordination timeline <coordination_session_id> --actor <owner_or_secretary_did>
+
+# Advance a specific PlaybookRun
+python main.py node coordination advance <coordination_session_id> <run_id> --actor <secretary_did>
+
+# Simulate an external runtime adapter for a stage
+python main.py node coordination runtime-mock <coordination_session_id> <run_id> design --actor <secretary_did>
+```
+
+Core model: `CoordinationSession` is the audit/permission/aggregation container; `PlaybookRun` is the runtime state source, and `current_stage/status` are derived from the run. On completion, stage artifacts are packaged into Delivery Manifests in the Enclave Vault, and the closure stores the manifest references.
+
+Minimal policy-gate example: submit a `decision=changes_requested` receipt at `design_review`, then call `advance`; the run reverts through the Playbook `on_reject=design` rule and records `stage.blocked` in the timeline.

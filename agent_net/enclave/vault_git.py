@@ -390,10 +390,6 @@ class GitVaultBackend(VaultBackend):
         if returncode != 0:
             raise VaultBackendError(f"git commit failed: {stderr}")
 
-        # 获取 commit hash
-        returncode, stdout, _ = await self._run_git("rev-parse", "HEAD")
-        commit_hash = stdout.strip() if returncode == 0 else ""
-
         # 推送到远程
         await self._git_push()
 

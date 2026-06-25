@@ -172,7 +172,7 @@ trust_score = base_score(L级) + behavior_delta + attestation_bonus
 ```bash
 python main.py node start                      # 启动 Daemon :8765
 python main.py node mcp --name "TestAgent"     # 启动 MCP 并注册新 DID
-python main.py test                            # 运行测试（当前 390 collected）
+python main.py test                            # 运行测试（当前 80+ collected，详见 project-status.md）
 python main.py relay start                     # 启动 Relay :9000（需 Redis）
 python main.py relay start --host my.domain    # 启动 Relay 并指定域名（用于 did:web）
 python main.py agent export <did> --output agent.key --password pw

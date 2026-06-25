@@ -9,12 +9,12 @@ v1.0-04 个人主 DID 测试套件
   - 列出子 Agent
   - 获取主 DID profile
 """
-import asyncio
 import importlib
 import sys
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, ".")
@@ -24,8 +24,8 @@ sys.path.insert(0, ".")
 # 测试 Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture()
-def isolated_env(tmp_path, monkeypatch):
+@pytest_asyncio.fixture()
+async def isolated_env(tmp_path, monkeypatch):
     """创建隔离的测试环境"""
     import agent_net.storage as st
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "agent_net.db")
@@ -38,17 +38,19 @@ def isolated_env(tmp_path, monkeypatch):
 
     import agent_net.storage as st_reload
     importlib.reload(st_reload)
-    asyncio.run(st_reload.init_db())
+    await st_reload.init_db()
 
     from agent_net.node.daemon import app
-    yield TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 # ---------------------------------------------------------------------------
 # 测试用例
 # ---------------------------------------------------------------------------
 
-def test_v10_own_01_register_owner(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_own_01_register_owner(isolated_env):
     """注册个人主 DID"""
     client = isolated_env
 
@@ -73,13 +75,14 @@ def test_v10_own_01_register_owner(isolated_env):
 
     # 验证写入数据库
     from agent_net.storage import get_agent
-    agent = asyncio.run(get_agent(data["did"]))
+    agent = await get_agent(data["did"])
     assert agent is not None
     assert agent["profile"]["type"] == "owner"
     assert agent["owner_did"] is None  # 主 DID 没有 owner
 
 
-def test_v10_own_02_bind_agent(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_own_02_bind_agent(isolated_env):
     """绑定 Agent 到主 DID"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -112,15 +115,16 @@ def test_v10_own_02_bind_agent(isolated_env):
 
     # 验证绑定关系
     from agent_net.storage import get_agent, list_owned_agents
-    agent = asyncio.run(get_agent(agent_did))
+    agent = await get_agent(agent_did)
     assert agent["owner_did"] == owner_did
 
-    owned = asyncio.run(list_owned_agents(owner_did))
+    owned = await list_owned_agents(owner_did)
     assert len(owned) == 1
     assert owned[0]["did"] == agent_did
 
 
-def test_v10_own_03_bind_already_bound(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_own_03_bind_already_bound(isolated_env):
     """绑定已被其他 owner 拥有的 Agent 应失败"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -141,7 +145,8 @@ def test_v10_own_03_bind_already_bound(isolated_env):
     assert resp.status_code == 409  # Agent already bound
 
 
-def test_v10_own_04_unbind_agent(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_own_04_unbind_agent(isolated_env):
     """解绑 Agent"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -164,11 +169,12 @@ def test_v10_own_04_unbind_agent(isolated_env):
 
     # 验证解绑
     from agent_net.storage import get_agent
-    agent_data = asyncio.run(get_agent(agent))
+    agent_data = await get_agent(agent)
     assert agent_data["owner_did"] is None
 
 
-def test_v10_own_05_list_owned_agents(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_own_05_list_owned_agents(isolated_env):
     """列出主 DID 下所有子 Agent"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -199,7 +205,8 @@ def test_v10_own_05_list_owned_agents(isolated_env):
     assert agent2 in dids
 
 
-def test_v10_own_06_get_owner_profile(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_own_06_get_owner_profile(isolated_env):
     """获取主 DID profile"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token

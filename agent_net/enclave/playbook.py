@@ -430,7 +430,7 @@ class PlaybookEngine:
                     "summary": f"Stage {stage_name} completed",
                 })
             required_outputs = [stage_name]
-            manifest = await store_stage_manifest(
+            await store_stage_manifest(
                 run_id=run_id,
                 stage_name=stage_name,
                 status="completed",

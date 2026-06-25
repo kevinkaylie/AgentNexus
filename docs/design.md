@@ -10,6 +10,7 @@
 | 文件 | 版本范围 | 状态 | 行数 |
 |------|---------|------|------|
 | [design/design-v1.0.md](design/design-v1.0.md) | v1.0.0 团队协作开发者预览 + v1.5 前瞻 + 鉴权矩阵 | **活跃** | ~1400 |
+| [design/design-objective-loop-v1.1.md](design/design-objective-loop-v1.1.md) | Objective Loop V1.1：跨运行时、跨机器、跨网络的目标驱动 Agent 协作循环 | 草案 | ~400 |
 | [design/design-coding-coordination-v1.md](design/design-coding-coordination-v1.md) | Coding Coordination V1：跨 session / runtime 的可信协调闭环 | 设计/草稿实现未接入 | ~750 |
 | [design/design-coding-coordination-v1-release.md](design/design-coding-coordination-v1-release.md) | Coding Coordination V1 Release Closure：SDK / CLI / Dashboard / Quickstart 收口 | 设计中 / P0 阻塞 | ~430 |
 | [archive/design-v0.x.md](archive/design-v0.x.md) | v0.7–v0.9 | 归档 | ~440 |
@@ -39,7 +40,7 @@
 
 ### 后移范围
 
-- v1.1：Tauri 桌面壳、系统托盘通知、CLI Launcher、Dashboard 产品化、Adapter 产品化、Skill 版本精细绑定、花费限额组合。
+- v1.1：Objective Loop 主线，覆盖本机 / 局域网 / 公网 Relay 的异构 Agent 自动目标循环；包含 Local Runner / CLI Launcher sidecar、Runtime Adapter Contract、Secretary Human Decision Gate、Dashboard 产品化、Adapter 产品化、Tauri 桌面壳、系统托盘通知、Skill 版本精细绑定、花费限额组合。
 - v1.5：per-agent token、Capability 强制执行、`/deliver` hard-enforce、Strict JCS、审计日志、签名交付包、企业 RBAC。
 
 ### v0.x（归档）
@@ -50,6 +51,7 @@
 
 ### 专题设计（活跃）
 
+- [Objective Loop V1.1](design/design-objective-loop-v1.1.md)
 - [Coding Coordination V1](design/design-coding-coordination-v1.md)
 - [Coding Coordination V1 Release Closure](design/design-coding-coordination-v1-release.md)
 - [常驻秘书与 Agent 团队协作编排](design/design-secretary-orchestration.md)

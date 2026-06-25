@@ -43,19 +43,23 @@ def _make_fake_session(response_overrides=None):
     """
     session = AsyncMock()
     session._last_request = None
+    session._requests = []
 
     def _request(method, url, *, headers=None, json=None, params=None, **kwargs):
         session._last_request = (method, url, json, params, headers)
+        session._requests.append(session._last_request)
         return _make_resp(_resolve_body(url, response_overrides))
 
     session.request = _request
 
     def _get(url, *, headers=None, params=None, **kwargs):
         session._last_request = ("GET", url, None, params, headers)
+        session._requests.append(session._last_request)
         return _make_resp(_resolve_body(url, response_overrides))
 
     def _post(url, *, json=None, headers=None, params=None, **kwargs):
         session._last_request = ("POST", url, json, params, headers)
+        session._requests.append(session._last_request)
         return _make_resp(_resolve_body(url, response_overrides))
 
     session.get = _get
@@ -219,6 +223,7 @@ async def test_cli_submit_artifact(monkeypatch, capsys):
         "cs_test001", "design", "DesignArtifact",
         "did:agentnexus:designer",
         "vault://enc/design.md",
+        "--run", "run_cli001",
     ], {
         "/coordination/artifacts": {
             "status": "submitted",
@@ -229,6 +234,7 @@ async def test_cli_submit_artifact(monkeypatch, capsys):
     method, url, body, params, headers = session._last_request
     assert "/coordination/artifacts" in url
     assert body["stage"] == "design"
+    assert body["run_id"] == "run_cli001"
     assert body["artifact_type"] == "DesignArtifact"
 
     captured = capsys.readouterr()
@@ -245,6 +251,7 @@ async def test_cli_submit_receipt(monkeypatch, capsys):
         "receipt", "submit",
         "cs_test001", "design", "DesignReceipt",
         "did:agentnexus:reviewer", "approved",
+        "--run", "run_cli001",
         "--subject-artifact", "art_001",
     ], {
         "/coordination/receipts": {
@@ -255,6 +262,7 @@ async def test_cli_submit_receipt(monkeypatch, capsys):
 
     method, url, body, params, headers = session._last_request
     assert "/coordination/receipts" in url
+    assert body["run_id"] == "run_cli001"
     assert body["decision"] == "approved"
     assert body["subject_artifact_id"] == "art_001"
 
@@ -269,7 +277,7 @@ async def test_cli_submit_receipt(monkeypatch, capsys):
 @pytest.mark.asyncio
 async def test_cli_advance(monkeypatch, capsys):
     session = await _run_cmd(monkeypatch, capsys, [
-        "advance", "cs_test001",
+        "advance", "cs_test001", "run_cli001",
         "--actor", "did:agentnexus:secretary",
     ], {
         "/advance": {
@@ -280,7 +288,7 @@ async def test_cli_advance(monkeypatch, capsys):
     })
 
     method, url, body, params, headers = session._last_request
-    assert "/advance" in url
+    assert "/runs/run_cli001/advance" in url
     assert body["actor_did"] == "did:agentnexus:secretary"
 
     captured = capsys.readouterr()
@@ -344,6 +352,7 @@ async def test_cli_delegate(monkeypatch, capsys):
         "did:agentnexus:designer",
         "--delegator", "did:agentnexus:secretary",
         "--role", "designer",
+        "--run", "run_cli001",
     ], {
         "/delegate": {
             "status": "delegated",
@@ -355,9 +364,37 @@ async def test_cli_delegate(monkeypatch, capsys):
     assert "/delegate" in url
     assert body["delegatee_did"] == "did:agentnexus:designer"
     assert body["role"] == "designer"
+    assert body["run_id"] == "run_cli001"
 
     captured = capsys.readouterr()
     assert "del_001" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_runtime_mock(monkeypatch, capsys):
+    session = await _run_cmd(monkeypatch, capsys, [
+        "runtime-mock", "cs_test001", "run_cli001", "design",
+        "--actor", "did:agentnexus:secretary",
+        "--session", "mock-session-001",
+    ], {
+        "/coordination/events": {
+            "status": "recorded",
+            "event": {"event_id": "evt_mock001", "event_type": "runtime.adapter.completed"},
+        },
+    })
+
+    event_requests = [
+        body for method, url, body, _, _ in session._requests
+        if method == "POST" and url.endswith("/coordination/events")
+    ]
+    assert len(event_requests) == 2
+    assert event_requests[0]["event_type"] == "runtime.adapter.accepted"
+    assert event_requests[1]["event_type"] == "runtime.adapter.completed"
+    assert event_requests[0]["run_id"] == "run_cli001"
+    assert event_requests[0]["session_id"] == "mock-session-001"
+
+    captured = capsys.readouterr()
+    assert "Runtime adapter mock" in captured.out
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -445,7 +482,7 @@ async def test_cli_coordination_show(monkeypatch, capsys):
                 "coordination_session_id": "cs_test001",
                 "objective": "Build demo login",
                 "status": "completed",
-                "workflow_id": "wf_demo",
+                "playbook_id": "pb_demo",
                 "owner_did": "did:agentnexus:owner1",
                 "controller_did": "did:agentnexus:secretary",
             },
@@ -469,7 +506,7 @@ async def test_cli_coordination_show(monkeypatch, capsys):
 @pytest.mark.asyncio
 async def test_cli_coordination_demo_happy_path(monkeypatch, capsys):
     """CLI demo command runs the full demo workflow via SDK facade."""
-    await _run_cmd(monkeypatch, capsys, ["demo"], {
+    session = await _run_cmd(monkeypatch, capsys, ["demo"], {
         "/health": {"status": "ok"},
         "/agents/local": {"agents": []},
         "/agents/register": {"did": "did:agentnexus:zDemoSecretary"},
@@ -478,7 +515,7 @@ async def test_cli_coordination_demo_happy_path(monkeypatch, capsys):
         "/enclaves": {"enclave_id": "demo_coordination_enclave"},
         "/coordination/coding/intake": {
             "status": "intake",
-            "session": {"coordination_session_id": "cs_demo001"},
+            "session": {"coordination_session_id": "cs_demo001", "playbook_run_id": "run_demo001"},
         },
         "/coordination/artifacts": {
             "status": "submitted",
@@ -514,6 +551,12 @@ async def test_cli_coordination_demo_happy_path(monkeypatch, capsys):
     assert "Status : completed" in captured.out
     assert "Advance: ->" in captured.out
     assert "http://127.0.0.1:8765/ui/coordination/cs_demo001" in captured.out
+
+    intake_requests = [
+        body for _, url, body, _, _ in session._requests
+        if url.endswith("/coordination/coding/intake")
+    ]
+    assert intake_requests[0]["enclave_id"] == "demo_coordination_enclave"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -572,16 +615,16 @@ async def test_cli_coordination_timeline_dedicated(monkeypatch, capsys):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# list-sessions with workflow_id filter
+# list-sessions with playbook_id filter
 # ═══════════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_cli_list_sessions_with_workflow(monkeypatch, capsys):
+async def test_cli_list_sessions_with_playbook(monkeypatch, capsys):
     session = await _run_cmd(monkeypatch, capsys, [
         "list",
         "--owner", "did:agentnexus:owner1",
         "--actor", "did:agentnexus:actor1",
-        "--workflow", "coding.v1",
+        "--playbook", "coding.v1",
     ], {
         "/coordination/sessions": {
             "status": "ok",
@@ -591,7 +634,7 @@ async def test_cli_list_sessions_with_workflow(monkeypatch, capsys):
     })
 
     method, url, body, params, headers = session._last_request
-    assert params["workflow_id"] == "coding.v1"
+    assert params["playbook_id"] == "coding.v1"
 
 
 # ═══════════════════════════════════════════════════════════════════

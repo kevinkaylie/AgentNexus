@@ -269,6 +269,16 @@ async def api_create_playbook_run(enclave_id: str, req: CreatePlaybookRunRequest
     )
 
     stages = playbook["stages"]
+    first_stage_name = stages[0]["name"] if stages else None
+    await update_playbook_run(
+        run_id,
+        current_stage=first_stage_name,
+        context={
+            "coordination_mode": "standalone",
+            "stage_snapshots": stages,
+            "playbook_id": playbook["playbook_id"],
+        },
+    )
     assigned_did = None
     if stages:
         first_stage = stages[0]
@@ -281,12 +291,13 @@ async def api_create_playbook_run(enclave_id: str, req: CreatePlaybookRunRequest
             await create_stage_execution(
                 run_id=run_id, stage_name=first_stage["name"], assigned_did=assigned_did,
             )
-            await update_playbook_run(run_id, current_stage=first_stage["name"])
 
     return {
         "status": "ok",
         "run_id": run_id,
-        "current_stage": stages[0]["name"] if stages else None,
+        "coordination_mode": "standalone",
+        "coordination_session_id": None,
+        "current_stage": first_stage_name,
         "assigned_did": assigned_did,
     }
 

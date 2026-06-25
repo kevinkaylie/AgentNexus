@@ -1,18 +1,18 @@
 """
 鉴权矩阵 v3 API 回归测试。
 """
-import asyncio
 import importlib
 import sys
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, ".")
 
 
-@pytest.fixture()
-def client_env(tmp_path, monkeypatch):
+@pytest_asyncio.fixture()
+async def client_env(tmp_path, monkeypatch):
     import agent_net.storage as st
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "agent_net.db")
 
@@ -24,7 +24,7 @@ def client_env(tmp_path, monkeypatch):
 
     import agent_net.storage as st_reload
     importlib.reload(st_reload)
-    asyncio.run(st_reload.init_db())
+    await st_reload.init_db()
 
     from agent_net.node._auth import init_daemon_token
     from agent_net.node.daemon import app

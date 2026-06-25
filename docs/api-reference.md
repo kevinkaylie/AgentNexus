@@ -281,6 +281,57 @@
 - `schema_version` and `updated_at` are included in the signature, preventing tampering and replay attacks
 - Anyone holding the card can verify the signature offline
 
+### Objective Loop V1.1 — Execution API
+
+| 端点 | 方法 | 说明 | 鉴权 |
+|------|------|------|------|
+| `/coordination/sessions/{id}/next-action` | GET | Loop Engine 状态查询，返回 9 种 action_type | token + actor_did |
+| `/coordination/sessions/{id}/executions` | GET | 列出 session 的 objective_executions | token + actor_did (session access) |
+| `/coordination/executions` | POST | 创建 execution lease | token + actor_did (session access) |
+| `/coordination/executions/{id}` | PATCH | 更新 execution 状态/lease/metadata | token + actor_did (session access) |
+| `/coordination/executions/{id}/result` | POST | 提交 execution 结果（幂等，自动创建 artifact+receipt） | token + actor_did (session access) |
+| `/coordination/sessions` | GET | 列出 sessions（需 owner_did + actor_did） | token + owner_did + actor_did |
+
+**next-action 响应示例：**
+
+```json
+{
+  "status": "ok",
+  "action": {
+    "action_type": "start_execution",
+    "stage": "implement",
+    "role": "developer",
+    "reason": "No artifact for stage implement",
+    "retry_attempt": 1
+  }
+}
+```
+
+**action_type 枚举：** `start_execution` | `poll_execution` | `advance` | `submit_receipt` | `create_decision_gate` | `wait` | `closed` | `blocked`
+
+**result submit 契约：**
+- 相同 result_hash → 返回既有 artifact/receipt（幂等）
+- 不同 hash 的重复提交 → 409 Conflict
+- `blocked` 状态 → 自动创建 DecisionGate
+- artifact body 自动写入 session 的 enclave Vault
+
+### SDK — CoordinationClient (Objective Loop)
+
+```python
+# Loop Engine
+action = await nexus.coordination.next_action(session_id, actor_did=did)
+
+# Executions
+execs = await nexus.coordination.list_executions(session_id, actor_did=did)
+exec_record = await nexus.coordination.create_execution(
+    coordination_session_id=sid, run_id=rid, stage="implement",
+    worker_did=worker_did, backend_kind="local_cli", actor_did=did)
+await nexus.coordination.update_execution(eid, actor_did=did, status="running")
+result = await nexus.coordination.submit_execution_result(
+    eid, actor_did=did, status="completed",
+    artifact_type="Impl", artifact_body="...", summary="Done")
+```
+
 ### Relay Redis Key Schema
 
 | Key Pattern | Type | TTL | Description |

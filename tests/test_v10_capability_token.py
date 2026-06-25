@@ -9,13 +9,13 @@ v1.0-08 Capability Token Envelope 测试套件
   - 单调收窄验证
   - 委托链完整性
 """
-import asyncio
 import importlib
 import sys
 import time
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, ".")
@@ -25,8 +25,8 @@ sys.path.insert(0, ".")
 # 测试 Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture()
-def isolated_env(tmp_path, monkeypatch):
+@pytest_asyncio.fixture()
+async def isolated_env(tmp_path, monkeypatch):
     """创建隔离的测试环境"""
     import agent_net.storage as st
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "agent_net.db")
@@ -39,10 +39,11 @@ def isolated_env(tmp_path, monkeypatch):
 
     import agent_net.storage as st_reload
     importlib.reload(st_reload)
-    asyncio.run(st_reload.init_db())
+    await st_reload.init_db()
 
     from agent_net.node.daemon import app
-    yield TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 # ---------------------------------------------------------------------------

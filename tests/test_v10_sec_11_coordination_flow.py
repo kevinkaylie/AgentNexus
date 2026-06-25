@@ -7,15 +7,18 @@ import uuid
 from agent_net.node._auth import _TOKEN_DID_BINDINGS
 
 @pytest_asyncio.fixture(autouse=True)
-async def setup_db():
-    from agent_net.storage import DB_PATH
-    DB_PATH.parent.mkdir(exist_ok=True)
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-    from agent_net.storage import init_db
-    await init_db()
+async def setup_db(tmp_path):
+    import agent_net.storage as s
+    _db = tmp_path / "agent_net.db"
+    _orig = s.DB_PATH
+    s.DB_PATH = _db
+    _db.parent.mkdir(exist_ok=True)
+    if _db.exists():
+        _db.unlink()
+    await s.init_db()
     _TOKEN_DID_BINDINGS.clear()
     yield
+    s.DB_PATH = _orig
 
 
 def _auth_header():
@@ -23,9 +26,8 @@ def _auth_header():
     return {"Authorization": f"Bearer {init_daemon_token()}"}
 
 
-async def _vault_ref(key: str, value: str, author_did: str) -> str:
+async def _vault_ref(key: str, value: str, author_did: str, enclave_id: str = "enc_coord_flow") -> str:
     from agent_net.storage import vault_put
-    enclave_id = "enc_coord_flow"
     await vault_put(enclave_id, key, value, author_did)
     return f"vault://{enclave_id}/{key}"
 
@@ -53,7 +55,7 @@ async def _bound_agent(owner_did: str, name: str, capabilities: list[str]) -> st
 @pytest.mark.asyncio
 async def test_v10_sec_11_full_coding_workflow():
     """E2E: coding intake -> clarify -> design -> design_review -> implement -> code_review -> test -> final."""
-    from agent_net.storage import register_owner
+    from agent_net.storage import register_owner, vault_get
     from agent_net.node.daemon import app
     from fastapi.testclient import TestClient
 
@@ -74,13 +76,16 @@ async def test_v10_sec_11_full_coding_workflow():
     intake_data = intake_resp.json()
     assert intake_data["status"] == "intake"
     cs_id = intake_data["session"]["coordination_session_id"]
+    run_id = intake_data["session"]["playbook_run_id"]
+    enclave_id = intake_data["session"]["enclave_id"]
     assert cs_id.startswith("cs_")
 
     # Helper: submit artifact + receipt for a stage, then advance
     async def submit_artifact(stage, artifact_type, producer, key, value):
-        content_ref = await _vault_ref(key, value, producer)
+        content_ref = await _vault_ref(key, value, producer, enclave_id)
         return client.post("/coordination/artifacts", json={
             "coordination_session_id": cs_id,
+            "run_id": run_id,
             "stage": stage,
             "artifact_type": artifact_type,
             "producer_did": producer,
@@ -90,6 +95,7 @@ async def test_v10_sec_11_full_coding_workflow():
     def submit_receipt(stage, receipt_type, issuer, decision, subject_artifact_id=""):
         return client.post("/coordination/receipts", json={
             "coordination_session_id": cs_id,
+            "run_id": run_id,
             "stage": stage,
             "receipt_type": receipt_type,
             "issuer_did": issuer,
@@ -98,7 +104,7 @@ async def test_v10_sec_11_full_coding_workflow():
         })
 
     def advance(actor):
-        return client.post(f"/coordination/coding/{cs_id}/advance", json={"actor_did": actor})
+        return client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": actor})
 
     # 2. Clarify stage
     resp = await submit_artifact("clarify", "RequirementSpec", owner["did"], "clarify", "clarify")
@@ -194,6 +200,17 @@ async def test_v10_sec_11_full_coding_workflow():
     assert len(closures) == 1
     assert closures[0]["status"] == "recorded"
     assert closures[0]["sla_status"] == "met"
+    metrics = closures[0]["sla_metrics"]
+    assert metrics["run_id"] == run_id
+    assert metrics["delivery_manifest"]["ref"] == f"vault://{enclave_id}/manifests/{run_id}/final"
+    assert metrics["delivery_manifest"]["stage_manifest_ids"]
+    assert f"vault://{enclave_id}/manifests/{run_id}/final" in closures[0]["evidence_refs"]
+    final_manifest_entry = await vault_get(enclave_id, f"manifests/{run_id}/final")
+    assert final_manifest_entry is not None
+    final_manifest = json.loads(final_manifest_entry["value"])
+    assert final_manifest["run_id"] == run_id
+    assert final_manifest["status"] == "completed"
+    assert final_manifest["stage_manifests"] == metrics["delivery_manifest"]["stage_manifest_ids"]
 
     # 12. Verify terminal audit event
     events_resp = client.get(f"/coordination/sessions/{cs_id}/events", params={"actor_did": owner["did"]})
@@ -221,7 +238,9 @@ async def test_v10_sec_11_fork_session_flow():
         "controller_did": owner["did"],
         "objective": "Fork test task",
     })
-    cs_id = create_resp.json()["session"]["coordination_session_id"]
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
 
     # Fork a review session
     fork_resp = client.post("/coordination/sessions/fork", json={
@@ -270,11 +289,14 @@ async def test_v10_sec_11_delegation_flow():
         "controller_did": owner["did"],
         "objective": "Delegation test",
     })
-    cs_id = create_resp.json()["session"]["coordination_session_id"]
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
 
     # Delegate design stage
     del_resp = client.post(f"/coordination/sessions/{cs_id}/stages/design/delegate", json={
         "role": "designer",
+        "run_id": run_id,
         "delegator_did": owner["did"],
         "delegatee_did": delegatee,
         "runtime_kind": "native_worker",
@@ -320,53 +342,56 @@ async def test_v10_sec_11_rejection_flow():
         "owner_did": owner["did"],
         "controller_did": owner["did"],
         "objective": "Rejection flow test",
-        "workflow_id": "coding.v1",
+        "playbook_id": "coding.v1",
     })
-    cs_id = create_resp.json()["session"]["coordination_session_id"]
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
+    enclave_id = session["enclave_id"]
 
     # Move through clarify → design → design_review
     # Clarify
     client.post("/coordination/artifacts", json={
-        "coordination_session_id": cs_id, "stage": "clarify",
+        "coordination_session_id": cs_id, "run_id": run_id, "stage": "clarify",
         "artifact_type": "RequirementSpec", "producer_did": owner["did"],
-        "content_ref": await _vault_ref("rej_clarify", "clarify", owner["did"]),
+        "content_ref": await _vault_ref("rej_clarify", "clarify", owner["did"], enclave_id),
     })
     client.post("/coordination/receipts", json={
-        "coordination_session_id": cs_id, "stage": "clarify",
+        "coordination_session_id": cs_id, "run_id": run_id, "stage": "clarify",
         "receipt_type": "ReviewReceipt", "issuer_did": owner["did"], "decision": "approved",
     })
-    r1 = client.post(f"/coordination/coding/{cs_id}/advance", json={"actor_did": owner["did"]})
+    r1 = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
     assert r1.json()["current_stage"] == "design"
 
     # Design - approved
     client.post("/coordination/artifacts", json={
-        "coordination_session_id": cs_id, "stage": "design",
+        "coordination_session_id": cs_id, "run_id": run_id, "stage": "design",
         "artifact_type": "DesignArtifact", "producer_did": owner["did"],
-        "content_ref": await _vault_ref("rej_design", "design", owner["did"]),
+        "content_ref": await _vault_ref("rej_design", "design", owner["did"], enclave_id),
     })
     client.post("/coordination/receipts", json={
-        "coordination_session_id": cs_id, "stage": "design",
+        "coordination_session_id": cs_id, "run_id": run_id, "stage": "design",
         "receipt_type": "DesignReceipt", "issuer_did": owner["did"], "decision": "approved",
     })
-    r2 = client.post(f"/coordination/coding/{cs_id}/advance", json={"actor_did": owner["did"]})
+    r2 = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
     assert r2.json()["current_stage"] == "design_review"
 
     # Submit design_review artifact
     client.post("/coordination/artifacts", json={
-        "coordination_session_id": cs_id, "stage": "design_review",
+        "coordination_session_id": cs_id, "run_id": run_id, "stage": "design_review",
         "artifact_type": "ReviewFinding", "producer_did": owner["did"],
-        "content_ref": await _vault_ref("rej_review", "review", owner["did"]),
+        "content_ref": await _vault_ref("rej_review", "review", owner["did"], enclave_id),
     })
 
     # Reject design_review
     client.post("/coordination/receipts", json={
-        "coordination_session_id": cs_id, "stage": "design_review",
+        "coordination_session_id": cs_id, "run_id": run_id, "stage": "design_review",
         "receipt_type": "ReviewReceipt", "issuer_did": owner["did"],
         "decision": "changes_requested",
     })
 
     # Advance: should revert to design (design_review.on_reject = "design")
-    r3 = client.post(f"/coordination/coding/{cs_id}/advance", json={"actor_did": owner["did"]})
+    r3 = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
     data = r3.json()
     assert data["status"] == "reverted"
     assert data["revert_to"] == "design"
@@ -375,6 +400,84 @@ async def test_v10_sec_11_rejection_flow():
     timeline = client.get(f"/coordination/sessions/{cs_id}/timeline", params={"actor_did": owner["did"]}).json()["timeline"]
     blocked_events = [e for e in timeline if e["event_type"] == "stage.blocked"]
     assert len(blocked_events) >= 1
+
+
+@pytest.mark.asyncio
+async def test_v10_sec_11_owner_decision_gate_flow():
+    """Owner decision request pauses advance until the decision principal responds."""
+    from agent_net.node.daemon import app
+    from fastapi.testclient import TestClient
+    from agent_net.storage import register_owner
+
+    owner = await register_owner("DecisionGateOwner")
+    client = TestClient(app, headers=_auth_header())
+
+    create_resp = client.post("/coordination/sessions", json={
+        "owner_did": owner["did"],
+        "controller_did": owner["did"],
+        "objective": "Decision gate test",
+        "playbook_id": "coding.v1",
+    })
+    assert create_resp.status_code == 200
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
+    enclave_id = session["enclave_id"]
+
+    client.post("/coordination/artifacts", json={
+        "coordination_session_id": cs_id,
+        "run_id": run_id,
+        "stage": "clarify",
+        "artifact_type": "RequirementSpec",
+        "producer_did": owner["did"],
+        "content_ref": await _vault_ref("decision_clarify", "clarify", owner["did"], enclave_id),
+    })
+
+    dec_resp = client.post("/coordination/decisions", json={
+        "coordination_session_id": cs_id,
+        "run_id": run_id,
+        "stage": "clarify",
+        "requested_by_did": owner["did"],
+        "question": "Continue with the clarified requirement?",
+        "options": [{"id": "approved", "label": "Continue"}, {"id": "changes_requested", "label": "Revise"}],
+        "recommended_option": "approved",
+        "risk_level": "normal",
+    })
+    assert dec_resp.status_code == 200
+    decision = dec_resp.json()["decision"]
+    assert decision["status"] == "pending"
+
+    blocked = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
+    assert blocked.status_code == 200
+    assert blocked.json()["status"] == "awaiting_owner_decision"
+    assert blocked.json()["decisions"][0]["decision_id"] == decision["decision_id"]
+
+    list_resp = client.get("/owner/decisions", params={
+        "owner_did": owner["did"],
+        "actor_did": owner["did"],
+        "status": "pending",
+    })
+    assert list_resp.status_code == 200
+    assert list_resp.json()["count"] == 1
+
+    respond_resp = client.post(f"/owner/decisions/{decision['decision_id']}/respond", json={
+        "actor_did": owner["did"],
+        "decision": "approved",
+        "comment": "Proceed",
+        "channel_ref": "cli://local",
+    })
+    assert respond_resp.status_code == 200
+    assert respond_resp.json()["receipt"]["receipt_type"] == "OwnerDecisionReceipt"
+    assert respond_resp.json()["receipt"]["issuer_did"] == owner["did"]
+
+    advanced = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
+    assert advanced.status_code == 200
+    assert advanced.json()["current_stage"] == "design"
+
+    timeline = client.get(f"/coordination/sessions/{cs_id}/timeline", params={"actor_did": owner["did"]}).json()["timeline"]
+    event_types = {e["event_type"] for e in timeline}
+    assert "decision.requested" in event_types
+    assert "decision.responded" in event_types
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -504,8 +607,10 @@ async def test_v10_sec_11_sdk_facade_integration(monkeypatch, tmp_path):
             actor_did=secretary_did,
             objective="SDK facade integration test",
             complexity="medium",
+            enclave_id=enclave_id,
         )
         cs_id = session["coordination_session_id"]
+        run_id = session["playbook_run_id"]
         assert cs_id.startswith("cs_")
 
         # 2. Run all 7 stages via SDK facade
@@ -522,6 +627,7 @@ async def test_v10_sec_11_sdk_facade_integration(monkeypatch, tmp_path):
             content_ref = f"vault://{enclave_id}/{vkey}" if vkey else f"vault://{enclave_id}/design.md"
             art = await client.coordination.submit_artifact(
                 coordination_session_id=cs_id,
+                run_id=run_id,
                 stage=stage,
                 artifact_type=atype,
                 producer_did=producer,
@@ -531,6 +637,7 @@ async def test_v10_sec_11_sdk_facade_integration(monkeypatch, tmp_path):
 
             rcpt = await client.coordination.submit_receipt(
                 coordination_session_id=cs_id,
+                run_id=run_id,
                 stage=stage,
                 receipt_type=rtype,
                 issuer_did=issuer,
@@ -540,6 +647,7 @@ async def test_v10_sec_11_sdk_facade_integration(monkeypatch, tmp_path):
 
             state = await client.coordination.advance(
                 coordination_session_id=cs_id,
+                run_id=run_id,
                 actor_did=secretary_did,
             )
             # Final stage auto-completes on advance from test (next=final, final next=None)
@@ -583,4 +691,3 @@ async def test_v10_sec_11_sdk_facade_integration(monkeypatch, tmp_path):
 
     finally:
         await asgi_session.close()
-

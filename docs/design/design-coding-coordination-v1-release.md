@@ -97,7 +97,7 @@ Release closure 开工前必须先补齐以下后端能力：
 | 阻塞项 | 必须完成的工作 | 最小验收 |
 |--------|----------------|----------|
 | Request models | 在 `agent_net/node/_models.py` 定义 coordination router 引用的 request models，或把 router 统一改为 dict + 显式校验 | `python -c "import agent_net.node.routers.coordination"` 不再失败 |
-| Storage functions | 在 `agent_net/storage.py` 实现 coordination session、delegation、runtime event、artifact、receipt、closure 的 CRUD / list 函数，并确保 `GET /coordination/sessions` 可用 | coordination router 单元测试可调用真实 SQLite storage；session list API 可按 owner/status/workflow_id/actor 授权查询 |
+| Storage functions | 在 `agent_net/storage.py` 实现 coordination session、delegation、runtime event、artifact、receipt、closure 的 CRUD / list 函数，并确保 `GET /coordination/sessions` 可用 | coordination router 单元测试可调用真实 SQLite storage；session list API 可按 owner/status/playbook_id/actor 授权查询 |
 | Router registration | 在 `agent_net/node/daemon.py` 注册 coordination router | Daemon 启动后 OpenAPI / HTTP 可访问 coordination endpoints |
 | Migration/init | 在 SQLite 初始化路径创建 coordination 相关 tables | 空数据库启动后可创建 coding coordination session |
 | Tests | 修复 `tests/test_v10_sec_10_coordination.py` 和 `tests/test_v10_sec_11_coordination_flow.py` 的 import/runtime failures | coordination 后端测试不再因为 ImportError 全量失败 |
@@ -164,6 +164,7 @@ session = await nexus.coordination.coding_intake(
 
 artifact = await nexus.coordination.submit_artifact(
     coordination_session_id=session.coordination_session_id,
+    run_id=session.playbook_run_id,
     stage="design",
     artifact_type="DesignArtifact",
     producer_did=designer.did,
@@ -172,6 +173,7 @@ artifact = await nexus.coordination.submit_artifact(
 
 receipt = await nexus.coordination.submit_receipt(
     coordination_session_id=session.coordination_session_id,
+    run_id=session.playbook_run_id,
     stage="design",
     receipt_type="DesignReceipt",
     issuer_did=reviewer.did,
@@ -181,6 +183,7 @@ receipt = await nexus.coordination.submit_receipt(
 
 state = await nexus.coordination.advance(
     coordination_session_id=session.coordination_session_id,
+    run_id=session.playbook_run_id,
     actor_did=secretary.did,
 )
 
@@ -212,14 +215,14 @@ child_session = await nexus.coordination.fork_session(
 |------|-----|------|
 | `coding_intake()` | `POST /coordination/coding/intake` | 创建 coding.v1 root session |
 | `get_session()` | `GET /coordination/sessions/{id}` | 查询 session |
-| `list_sessions(owner_did, actor_did, status=None, workflow_id=None)` | `GET /coordination/sessions` | 查询 owner 下 coordination sessions；Dashboard 前置 API |
+| `list_sessions(owner_did, actor_did, status=None, playbook_id=None)` | `GET /coordination/sessions` | 查询 owner 下 coordination sessions；Dashboard 前置 API |
 | `fork_session(coordination_session_id, actor_did, link_type, reason)` | `POST /coordination/sessions/fork` | 创建 review/session fork |
 | `delegate_stage()` | `POST /coordination/sessions/{id}/stages/{stage}/delegate` | 委托阶段并签发 capability token |
 | `accept_delegation()` | `POST /coordination/delegations/{id}/accept` | 接受委托 |
 | `reject_delegation()` | `POST /coordination/delegations/{id}/reject` | 拒绝委托 |
 | `submit_artifact()` | `POST /coordination/artifacts` | 提交 artifact |
 | `submit_receipt()` | `POST /coordination/receipts` | 提交 receipt |
-| `advance()` | `POST /coordination/coding/{id}/advance` | 按 receipt gate 推进 workflow |
+| `advance()` | `POST /coordination/coding/{id}/runs/{run_id}/advance` | 按指定 PlaybookRun 的 receipt gate 推进 |
 | `events()` | `GET /coordination/sessions/{id}/events` | 查询 runtime events |
 | `stream_events(session_id, actor_did, last_event_id=None, limit=None, timeout_seconds=None)` | `GET /coordination/sessions/{id}/events/stream` | 返回 async iterator；不做自动 reconnect |
 | `timeline()` | `GET /coordination/sessions/{id}/timeline` | 查询聚合 timeline |
@@ -338,14 +341,14 @@ Dashboard V1 只读视图依赖以下 API：
 
 | 页面能力 | API | 当前状态 |
 |----------|-----|----------|
-| Session list | `GET /coordination/sessions?owner_did=&status=&workflow_id=&actor_did=` | **缺失，P0 前置阻塞** |
-| Session detail | `GET /coordination/sessions/{coordination_session_id}` | router 草稿存在，但当前不可用 |
-| Timeline | `GET /coordination/sessions/{coordination_session_id}/timeline` | router 草稿存在，但当前不可用 |
-| Events | `GET /coordination/sessions/{coordination_session_id}/events` | router 草稿存在，但当前不可用 |
-| SSE refresh | `GET /coordination/sessions/{coordination_session_id}/events/stream` | router 草稿存在，但当前不可用 |
-| Artifacts | `GET /coordination/sessions/{coordination_session_id}/artifacts` | router 草稿存在，但当前不可用 |
-| Receipts | `GET /coordination/sessions/{coordination_session_id}/receipts` | router 草稿存在，但当前不可用 |
-| Closures | `GET /coordination/sessions/{coordination_session_id}/closures` | router 草稿存在，但当前不可用 |
+| Session list | `GET /coordination/sessions?owner_did=&status=&playbook_id=&actor_did=` | 已实现 |
+| Session detail | `GET /coordination/sessions/{coordination_session_id}` | 已实现 |
+| Timeline | `GET /coordination/sessions/{coordination_session_id}/timeline` | 已实现 |
+| Events | `GET /coordination/sessions/{coordination_session_id}/events` | 已实现 |
+| SSE refresh | `GET /coordination/sessions/{coordination_session_id}/events/stream` | 已实现 |
+| Artifacts | `GET /coordination/sessions/{coordination_session_id}/artifacts` | 已实现 |
+| Receipts | `GET /coordination/sessions/{coordination_session_id}/receipts` | 已实现 |
+| Closures | `GET /coordination/sessions/{coordination_session_id}/closures` | 已实现 |
 | Delegations | `GET /coordination/sessions/{coordination_session_id}/delegations` | **缺失，详情页可选前置** |
 
 因此 Dashboard 实现前必须先完成第 3.1 节 P0 后端 Foundation。P0 已覆盖 session list：
@@ -359,7 +362,7 @@ GET /coordination/sessions
 - `owner_did` 必填
 - `actor_did` 必填，用于授权
 - `status` 可选
-- `workflow_id` 可选
+- `playbook_id` 可选
 
 授权语义：
 
@@ -398,7 +401,7 @@ Coordination
 
 - `coordination_session_id`
 - `objective`
-- `workflow_id`
+- `playbook_id`
 - `status`
 - `owner_did`
 - `controller_did`
@@ -409,7 +412,7 @@ Coordination
 
 - owner
 - status
-- workflow_id
+- playbook_id
 
 V1 可以先只展示最近 N 条本地 session。
 
@@ -418,7 +421,7 @@ V1 可以先只展示最近 N 条本地 session。
 布局：
 
 ```text
-Header: objective / status / workflow_id / owner / controller
+Header: objective / status / playbook_id / owner / controller
 
 Tabs:
   Timeline
@@ -470,7 +473,7 @@ Closure：
 
 ### 6.6 Dashboard 不做
 
-- 不在 Dashboard 内编辑 workflow。
+- 不在 Dashboard 内编辑 Playbook。
 - 不在 Dashboard 内提交 artifact/receipt。
 - 不做可视化编排画布。
 - 不做支付或结算展示。

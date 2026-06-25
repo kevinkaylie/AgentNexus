@@ -215,7 +215,11 @@ V1 demo 必须能跑通：
   "owner_did": "did:agentnexus:owner",
   "controller_did": "did:agentnexus:secretary",
   "objective": "实现登录模块重构",
-  "status": "running",
+  "enclave_id": "enc_123",
+  "playbook_id": "coding.v1",
+  "playbook_version": "1",
+  "playbook_fingerprint": "sha256:...",
+  "playbook_run_id": "run_123",
   "complexity": "medium",
   "risk_level": "normal",
   "cost_policy": "balanced",
@@ -234,11 +238,14 @@ V1 demo 必须能跑通：
 建议存储：
 
 - 新表 `coordination_sessions`
-- `coordination_sessions` 是根容器，可对应 1:N 个 `playbook_runs`
+- `Playbook` 是唯一流程定义源，`PlaybookRun.context.stage_snapshots` 保存该 run 创建时的阶段快照
+- `coordination_sessions` 是审计/权限/聚合容器；运行时游标（`current_stage` / `status`）以 `playbook_runs` 为准
+- `coordination_sessions` V1 默认对应 1 个主 `playbook_run`，后续可扩展为 1:N
 - 现有 `secretary_intakes.session_id` 作为入口兼容字段，并新增 `coordination_session_id`
-- `playbook_runs.run_id` 作为 workflow execution ID，并新增 `coordination_session_id`
+- `playbook_runs.run_id` 作为 Vault / Manifest / Handoff 的内部执行 ID，并通过 `playbook_runs.coordination_session_id` 反向挂到容器；`coordination_sessions.playbook_run_id` 仅表示主 run
 - `intake_session_id` 指向最初的人机澄清入口 session
 - `policy_json` 保存 topology policy 输入，默认值由 Secretary 初步判断，用户或 owner 可覆盖
+- `POST /enclaves/{enclave_id}/runs` 创建的是 `coordination_mode=standalone` 的底层 Enclave Run；需要 artifact/receipt/timeline/advance 审计链时应通过 Coordination 入口创建 run
 
 ### 5.2 SessionLink
 
@@ -431,7 +438,7 @@ V1 中 `ClosureRecord` 只表达“本次 coding workflow 已完成、最终 rec
   "status": "recorded",
   "sla_status": "met",
   "sla_metrics": {
-    "workflow_id": "coding.v1",
+    "playbook_id": "coding.v1",
     "artifact_count": 6,
     "receipt_count": 7
   },
@@ -503,17 +510,18 @@ V1 可提供高层便捷 API，内部仍使用上面的通用对象。
 ```text
 POST /coordination/coding/intake
 POST /coordination/coding/{coordination_session_id}/clarify
-POST /coordination/coding/{coordination_session_id}/advance
+POST /coordination/coding/{coordination_session_id}/runs/{run_id}/advance
 ```
 
-`advance` 由 Secretary / Coordination Controller 调用，根据当前 stage、policy 和 receipt 推进流程。
+`advance` 由 Secretary / Coordination Controller 调用，根据指定 PlaybookRun 的当前 stage、policy 和 receipt 推进流程。
 
 Phase 1 推进规则：
 
-- 内置默认 `coding.v1` workflow template，阶段顺序为 `clarify -> design -> design_review -> implement -> code_review -> test -> final`
-- `advance()` 读取 session 绑定的 `workflow_id` 和 template，而不是在核心模型里写死 coding 阶段
+- 内置默认 `coding.v1` 是 Playbook Definition，阶段顺序为 `clarify -> design -> design_review -> implement -> code_review -> test -> final`
+- `advance()` 读取 `playbook_runs.current_stage/status` 和 `PlaybookRun.context.stage_snapshots`，不从 `coordination_sessions` 读取运行时状态
+- Artifact / Receipt 按 `coordination_session_id + run_id + stage` 归属，避免同一容器多 run 的同名 stage 串线
 - receipt decision 为 `approved` / `passed` 时推进到下一阶段
-- receipt decision 为 `changes_requested` / `failed` 时阻塞推进，等待当前 stage 重新提交 artifact
+- receipt decision 为 `changes_requested` / `failed` 时按 Playbook stage 的 `on_reject` 回退；没有 `on_reject` 时阻塞
 - 动态 workflow editor、复杂 DAG、跨模板组合、自动重试和替换 worker 后移到 Phase 2+
 
 ---
@@ -624,7 +632,7 @@ timeline = await nexus.coordination.get_timeline(session.id)
 
 必做：
 
-- 注册内置 `coding.v1` workflow template。
+- 注册内置 `coding.v1` Playbook。
 - Secretary 根据 topology policy 推进 stage。
 - 支持 design review fork session。
 - ContextPack 生成和 constraint hash。
@@ -638,7 +646,7 @@ timeline = await nexus.coordination.get_timeline(session.id)
 
 ```json
 {
-  "workflow_id": "coding.v1",
+  "playbook_id": "coding.v1",
   "stages": [
     {"name": "clarify", "role": "clarifier", "next": "design"},
     {"name": "design", "role": "designer", "next": "design_review"},
@@ -744,7 +752,7 @@ Coding Coordination V1 的核心不是让 AgentNexus 变成 coding agent，而�
 | S1 | `ContextPack` 与现有 Playbook `context_snapshot` 可能重复实现。现有 `_build_context_snapshot()` 已构建上下文，V1 的 ContextPack 引入了 `allowed_sources`、`excluded_sources`、`constraint_hash`。 | 5.5 | **决议**：Phase 1 直接复用现有 `context_snapshot` 结构，不新建 ContextPack 表。Phase 2 再升级为一等模型并添加 `constraint_hash`。避免重复实现两套 context 机制。 | 已采纳 |
 | S2 | `TopologyPolicy` 的信号输入来源不明确（`complexity`、`risk_level`、`cost_policy` 是自动判断还是用户输入？存储在哪里？）。 | 9.1 | **决议**：在 `CoordinationSession` 模型中新增 `policy_json` 字段（JSON），intake 时由 Secretary 自动初步判断 + 用户可手动调整。默认值：`complexity=medium, risk_level=normal, cost_policy=balanced`。 | 已采纳 |
 | S3 | SDK `coordination` facade 与现有 Orchestration SDK 的关系未明确。`create_session()` 内部是否调用 `secretary.dispatch`？还是完全独立的新 API？ | 8 | **修正决议**：`coordination` facade 复用 Secretary / Enclave / Run 主链路，但 `create_session()` 只创建协调容器，不隐式 dispatch。`coding_intake()` / `advance()` 再调用 Secretary / Run API。 | 已采纳 |
-| S4 | `advance` API 的推进逻辑过于模糊。receipt 是 `changes_requested` 时怎么办？谁决定下一步？ | 7.4 | **决议**：Phase 1 内置 `coding.v1` workflow template，`advance()` 按 session 绑定的 template 推进，不在核心模型里写死 coding 阶段。receipt 为 `changes_requested` 时阻塞推进或按 template 的 `on_reject` 回退。Phase 2 再引入动态 workflow editor 和复杂 DAG。 | 已采纳 |
+| S4 | `advance` API 的推进逻辑过于模糊。receipt 是 `changes_requested` 时怎么办？谁决定下一步？ | 7.4 | **决议**：Phase 1 内置 `coding.v1` Playbook，`advance()` 按指定 `run_id` 读取 PlaybookRun 的 stage snapshot 推进，不从 CoordinationSession 读取运行时游标。receipt 为 `changes_requested` 时阻塞推进或按 stage snapshot 的 `on_reject` 回退。Phase 2 再引入动态 workflow editor 和复杂 DAG。 | 已采纳 |
 | S5 | Artifact `content_hash` 的存储和校验实现未定义。由服务端计算还是客户端传入？如何与 Vault 内容校验？ | 5.6 | **决议**：服务端在写入 Vault 时自动计算 hash（SHA-256），写入 artifact 记录。客户端提交 artifact 时只需传 `content_ref`（Vault key），不需传 hash。receipt 引用 `subject_artifact_id` 时可间接验证 hash 一致性。 | 已采纳 |
 
 ---
@@ -785,5 +793,5 @@ Coding Coordination V1 的核心不是让 AgentNexus 变成 coding agent，而�
 - **S1** → 已更新 5.5 `ContextPack`，标注 Phase 1 复用现有 snapshot
 - **S2** → 已更新 5.1 `CoordinationSession`，新增 `policy_json` 字段
 - **S3** → 已更新第 8 节 SDK 设计，补充内部调用关系说明，并修正 `create_session()` 不隐式 dispatch
-- **S4** → 已更新 7.4 `advance` API 说明，标注 Phase 1 使用内置 `coding.v1` workflow template，而不是核心逻辑硬编码阶段
+- **S4** → 已更新 7.4 `advance` API 说明，标注 Phase 1 使用指定 PlaybookRun 的 stage snapshot，而不是核心逻辑硬编码阶段
 - **S5** → 已更新 5.6 `Artifact`，补充 hash 自动生成说明

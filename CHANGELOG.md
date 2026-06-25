@@ -8,6 +8,178 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### 评审问题修复与拆分后清理（2026-06-25）
+
+- 修复 `relay start --host` 导入顺序问题，确保自定义 host 在 Relay DID 初始化前生效。
+- 声明 `pyyaml` 运行时依赖，并修复 `load_runner_config()` 浅拷贝污染 `DEFAULT_CONFIG` 的问题。
+- `execute_stage()` 显式拒绝未支持的 `backend_kind`，避免参数被静默忽略。
+- Execution API 统一使用 Coordination session 访问控制，覆盖 owner/controller/owner-bound agent/accepted delegation；同时修复 session list 中 secretary 判定的旧调用签名问题。
+- Loop Engine 不再被历史 stage 的 pending decision 阻塞，只等待当前 stage 的待处理决策。
+- 删除 Relay 中已迁移至 DIDResolver 的 `_resolve_meeet_via_solana()` 死代码。
+- CLI、Coordination 路由子模块、Relay 业务子模块移除 star-import；仅保留 `agent_net/relay/server.py` 兼容聚合器的 re-export。
+- SDK 新增共享常量模块，收敛 `PROTOCOL_NEXUS_V1` 与 push callback URL；移除无字段 mixin 的 `@dataclass` 和拆分文件中的未使用导入。
+- 补充回归测试：默认配置不污染、未支持 backend 拒绝、历史决策不阻塞当前 stage。
+
+**验收结果：** 后端 `547 passed, 8 skipped`（跳过 online），SDK `129 passed`；compileall 与 Ruff 均通过。
+
+### 大文件领域拆分与资源生命周期收口（2026-06-24）
+
+- `agent_net/storage.py` 改为兼容门面，持久化实现按 core、schema、governance、enclave、coordination 拆分。
+- Coordination API 按 sessions、delegations、records、coding、executions 拆分，保留原 router 和 URL。
+- `main.py` 改为 CLI 聚合入口，命令实现迁移到 `agent_net/cli/`。
+- Relay Server 按 registry、federation、identity、ANPN、MEEET 拆分，保留旧 monkeypatch/import 契约。
+- SDK client 拆为 lifecycle/actions/polling mixin；discussion 拆为 models/state/manager。
+- LocalCLIBackend 取消执行时显式终止并回收子进程；Execution API 改为原生 async，移除请求级 `asyncio.run()`。
+- 新增 Ruff correctness 门禁，并将 pytest async loop 设为 session scope，避免 Windows Proactor 资源耗尽。
+
+**验收结果：** 后端 `544 passed, 8 skipped`，SDK `129 passed`，0 warnings；源码 compileall 与 Ruff 均通过。
+
+### Objective Loop V1.1 — 阻塞问题修复（2026-06-22）
+
+修复 7 个阻塞/高优先级问题，demo 验证通过（7/7 stages OK）。
+
+**修复内容：**
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 1 | Runner 无 token/auth，401/400 | `local-runner start` 读取 daemon token，传递 `owner_did`/`actor_did`，所有 API 请求带 `Authorization` header |
+| 2 | 自动循环不完整，仅记录不推进 | `runner_tick()` 新增 `call_advance`/`create_decision` 回调；`start` 命令处理全部 7 种 action_type |
+| 3 | Worker 无任务上下文，{prompt} 不替换 | 新增 `build_worker_prompt()` 构建结构化 prompt（objective/artifact refs/constraints/acceptance criteria）；模板变量替换 |
+| 4 | 重试/on_reject 闭环断裂 | `retry_attempt` 传入 execution metadata；`on_reject` 查找目标 stage 的 role；PlaybookRun 正确更新 |
+| 5 | Execution API 无访问控制 | 新增 `_verify_session_access()` 校验 actor_did 对 session 的 owner/controller/secretary 权限 |
+| 6 | Result 契约不满足（覆盖/无DecisionGate/截断） | 不同 hash → 409；blocked → 自动创建 DecisionGate；artifact body 写入 Vault（不截断）；emit audit event；幂等正确 |
+| 7 | LocalCLIBackend 缺 JSON 重试/workdir | 首次 JSON 解析失败返回 `changes_requested`（重试信号）；新增 `workdir` + `env` 约束支持 |
+
+**Demo 验证：**
+```
+=== Objective Loop V1.1 Demo ===
+  [1/7] clarify... OK
+  [2/7] design... OK
+  [3/7] design_review... OK
+  [4/7] implement... OK
+  [5/7] code_review... OK
+  [6/7] test... OK
+  [7/7] final... OK
+=== Demo complete ===
+```
+
+**测试结果：** 92 passed, 0 failed（无变化，所有修复向下兼容）
+
+### Dashboard + Quickstart 收口（2026-06-22）
+
+- **Dashboard**: 新增 Executions 标签页（展示 objective_executions 状态/attempt/lease/artifact/receipt）；新增 Next Action 面板（实时显示 Loop Engine 决策）；新增 execution 状态徽章样式
+- **API**: 新增 `GET /coordination/sessions/{id}/executions` 端点，支持按 run_id/stage 过滤
+- **Quickstart**: 新增 `docs/quickstart-objective-loop.md`（10 分钟快速上手指南，涵盖 daemon 启动、demo 运行、Dashboard 查看、local-runner 配置、API 速查、FAQ）
+
+完成 L0 本机 Objective Loop 全部核心模块 + daemon API 集成 + runner poll loop + CLI demo，严格遵循 TDD 流程（RED→GREEN→REFACTOR）。
+
+**P0-1 ~ P0-5 核心模块**：
+- P0-1: `objective_executions` 表 + 5 CRUD 函数 + 幂等 result 提交
+- P0-2: `ExecutionBackend` Protocol + `LocalCLIBackend`（argv 执行/白名单/timeout/JSON 解析）
+- P0-3: `local_runner`（YAML 配置/worker 匹配/stage 执行）
+- P0-4: `loop_engine` — `next_action()` 状态机，9 种 action_type
+- P0-5: `secretary_gateway` — DecisionGate handler，8 种 gate 类型
+
+**Daemon API 集成**：
+- `GET /coordination/sessions/{id}/next-action` — Loop Engine 状态查询
+- `POST /coordination/executions` — 创建 execution lease
+- `PATCH /coordination/executions/{id}` — 更新 execution 状态
+- `POST /coordination/executions/{id}/result` — 提交结果（幂等，自动创建 artifact+receipt）
+
+**Runner Poll Loop**：
+- `agent_net/node/runner_loop.py` — `runner_tick()` 单轮轮询 + `process_action()` 单步执行
+- `python main.py node local-runner start` — 完整 poll loop（自动发现 session → 获取 next_action → 匹配 worker → 执行 → 提交结果）
+- `.agentnexus/local-runner.yaml.example` — 配置模板（含 fake workers）
+
+**CLI Demo**：
+- `python main.py node objective demo` — 完整 7-stage coding 闭环演示（clarify → design → … → final）
+- `python main.py node objective status <id>` — 查看 Loop Engine 状态
+
+**测试结果：** 新增 56 个测试；92 passed, 0 failed；无回归
+
+**新增文件：**
+```
+agent_net/node/
+├── loop_engine.py                    # 状态机
+├── local_runner.py                   # YAML 配置 + worker 匹配 + 执行
+├── runner_loop.py                    # Poll loop
+├── secretary_gateway.py              # DecisionGate handler
+└── execution_backends/
+    ├── __init__.py
+    ├── base.py                       # ExecutionHandle, ExecutionResult, Protocol
+    └── local_cli.py                  # argv 子进程执行
+
+tests/
+├── test_objective_execution_storage.py  (12 tests)
+├── test_local_cli_backend.py            (10 tests)
+├── test_objective_loop_engine.py        (9 tests)
+├── test_local_runner.py                 (10 tests)
+├── test_runner_loop.py                  (5 tests)
+├── test_secretary_gateway.py            (3 tests)
+└── test_execution_api.py               (7 tests)
+```
+
+**P0-1 Storage** — `objective_executions` 表与 CRUD：
+- 新增 `objective_executions` 表（execution_id, coordination_session_id, run_id, stage, worker_did, backend_kind, status, lease_expires_at, attempt, artifact_id, receipt_id, result_hash, metadata, timestamps）
+- 5 个存储函数：`create_objective_execution`, `get_objective_execution`, `list_objective_executions`, `update_objective_execution`, `mark_execution_result`
+- `mark_execution_result` 支持幂等（相同 result_hash 返回既有记录）
+- 2 个索引：`(coordination_session_id, run_id, stage)` + `(status, lease_expires_at)`
+
+**P0-2 ExecutionBackend** — 执行通道抽象层：
+- 新增 `agent_net/node/execution_backends/` 包
+- `ExecutionHandle` / `ExecutionResult` dataclass，`ExecutionBackend` Protocol
+- `LocalCLIBackend`：argv list 子进程执行（无 shell）、命令白名单、destructive pattern 检测、timeout kill 进程树、stdout/stderr output size 限制、JSON 结构化输出提取
+
+**P0-3 Local Runner** — 本地 Runner 配置与执行：
+- 新增 `agent_net/node/local_runner.py`
+- YAML 配置加载与校验（`load_runner_config`），worker 按 role/capability 匹配
+- `execute_stage()`：从 Loop Engine 的 `start_execution` action 通过 LocalCLIBackend 执行单个 stage
+- CLI 入口：`python main.py node local-runner run/start`
+- 配置模板：`.agentnexus/local-runner.yaml.example`（含 fake worker）
+
+**P0-4 Loop Engine** — 目标循环状态机：
+- 新增 `agent_net/node/loop_engine.py`
+- `next_action()` 函数：读取 session/run/execution/artifact/receipt/decision 状态，计算下一步动作
+- 9 种 `action_type`：`start_execution` / `poll_execution` / `advance` / `submit_receipt` / `create_decision_gate` / `wait` / `closed` / `blocked`
+- retry counter + max_retries → DecisionGate；`on_reject` 回退按 Playbook stage 定义
+- CLI 入口：`python main.py node objective status <session_id> --actor <did>`
+
+**P0-5 Secretary Human Gateway** — 人工决策点：
+- 新增 `agent_net/node/secretary_gateway.py`
+- `handle_decision_gate()`：将 Loop Engine 的 `create_decision_gate` action 转换为持久化 `decision_request`
+- 8 种 DecisionGate 类型（scope_change / secret_access / destructive_command / network_access / low_confidence / review_conflict / max_retry_exceeded / final_acceptance），每种带人类可读的问题描述、风险等级和选项列表
+
+**测试结果：** 新增 44 个测试（P0-1: 12, P0-2: 10, P0-3: 10, P0-4: 9, P0-5: 3）；80 个全部通过；无回归
+
+**设计文档：** `docs/design/design-objective-loop-v1.1.md` 通过 4P + 5S + 7D 评审，已补开发契约、P0 任务拆分、API Contract、存储方案、安全检查清单
+
+---
+
+### Coding Coordination V1 Alpha Readiness — 已完成（2026-05-26）
+
+- 完成最终闭环 Delivery Manifest：stage/final manifest 自动落入 Enclave Vault，FinalResultReceipt 与 ClosureRecord 持有 manifest evidence refs
+- Dashboard Coordination 详情页补齐 run、closure evidence、Delivery Manifest 展示，并支持从 Vault 读取 manifest 内容
+- SDK 增加 `coordination.emit_event()`；CLI 增加 `node coordination runtime-mock`，用于模拟外部 runtime adapter 接入 stage
+- CLI `delegate` 补齐 `--run`，多 run 场景可显式委派到目标 PlaybookRun
+- Quickstart 增加 demo 输出、Dashboard URL、runtime-mock、policy gate/on_reject 示例
+
+**测试结果：** 63 passed（coordination + manifest + CLI 回归）；`py_compile` 通过
+
+---
+
+### Coding Coordination V1 Run-State Refactor — 已完成（2026-05-20）
+
+- 将 `advance` 改为 run 级 API：`POST /coordination/coding/{coordination_session_id}/runs/{run_id}/advance`
+- `PlaybookRun` 成为 `current_stage/status` 的运行态状态源；CoordinationSession 只作为审计、权限和聚合容器
+- artifact / receipt 增加 `run_id` 维度，避免多 run 同名 stage 串线
+- `playbook_runs.coordination_session_id` 改为真实写入，timeline 从 session 关联 run 聚合
+- fork 创建独立 child PlaybookRun；Enclave run 明确为 `coordination_mode=standalone`
+- SDK、CLI、Quickstart、README、设计文档同步到 `playbook_id/run_id` 语义
+
+**测试结果：** 133 passed（相关回归）；53 个 coordination 测试通过
+
+---
+
 ### Architecture Review & P1 Cleanup — 已完成（2026-05-09）
 
 全项目架构审查（详见 `docs/architecture-review-2026-05-09.md`）并实施 P1 修整：
