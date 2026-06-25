@@ -180,10 +180,16 @@ class LocalCLIBackend:
             self._handles[execution_id] = h
             return h
 
+        handle_meta = {"command": command, "timeout_sec": timeout, "pid": proc.pid}
+        if kwargs.get("cwd"):
+            handle_meta["cwd"] = kwargs["cwd"]
+        if kwargs.get("env"):
+            handle_meta["env"] = kwargs["env"]
+
         handle = ExecutionHandle(
             execution_id=execution_id, backend_kind=self.kind,
             worker_did=worker_did, stage=stage, status="running",
-            metadata={"command": command, "timeout_sec": timeout, "pid": proc.pid},
+            metadata=handle_meta,
         )
         self._handles[execution_id] = handle
         self._processes[execution_id] = proc
@@ -288,13 +294,25 @@ class LocalCLIBackend:
             try:
                 cmd = (current.metadata or {}).get("command", [])
                 if cmd:
+                    # Inherit cwd and timeout from the first execution
+                    retry_meta = current.metadata or {}
+                    retry_timeout = retry_meta.get("timeout_sec", self.default_timeout_sec)
+                    retry_kwargs: dict = {"stdout": asyncio.subprocess.PIPE,
+                                          "stderr": asyncio.subprocess.PIPE}
+                    if retry_meta.get("cwd"):
+                        retry_kwargs["cwd"] = retry_meta["cwd"]
+                    if retry_meta.get("env"):
+                        import os as _os
+                        merged = dict(_os.environ)
+                        merged.update(retry_meta["env"])
+                        retry_kwargs["env"] = merged
+
                     retry_proc = await asyncio.create_subprocess_exec(
                         *cmd,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
+                        **retry_kwargs,
                     )
                     retry_stdout, retry_stderr = await asyncio.wait_for(
-                        retry_proc.communicate(), timeout=30
+                        retry_proc.communicate(), timeout=retry_timeout
                     )
                     retry_stdout_str = retry_stdout.decode("utf-8", errors="replace")[:self.max_output_bytes]
                     # Try parsing the fresh output

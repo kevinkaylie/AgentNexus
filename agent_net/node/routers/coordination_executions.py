@@ -64,8 +64,29 @@ async def get_next_action(
 
 @router.post("/coordination/executions")
 async def create_execution(req: CreateExecutionRequest, _token_ok: bool = Depends(_require_token)):
-    """Create a new objective_execution (execution lease)."""
+    """Create a new objective_execution (execution lease).
+
+    Idempotency: rejects if a pending/running execution already exists for
+    the same coordination_session_id + run_id + stage.
+    """
     await _verify_session_access(req.coordination_session_id, req.actor_did)
+
+    # Guard: prevent duplicate active executions for the same stage
+    active_execs = await list_objective_executions(
+        coordination_session_id=req.coordination_session_id,
+        run_id=req.run_id,
+        stage=req.stage,
+        status=None,
+    )
+    for ex in active_execs:
+        if ex["status"] in ("pending", "running"):
+            raise HTTPException(
+                409,
+                f"Stage '{req.stage}' already has an active execution "
+                f"({ex['execution_id']} is {ex['status']}). "
+                f"Wait for it to complete or time out before creating a new one."
+            )
+
     eid = f"exec_{uuid.uuid4().hex[:16]}"
     lease = time.time() + req.lease_ttl_sec if req.lease_ttl_sec > 0 else None
     meta = req.metadata or {}

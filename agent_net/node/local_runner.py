@@ -183,23 +183,30 @@ async def reconcile_workers(
         return []
 
     owner_did = cfg.get("owner_did", "")
+    if not owner_did:
+        return ["No owner_did in config; skipping Worker Registry reconciliation."]
     warnings: list[str] = []
 
     async with httpx.AsyncClient(timeout=30) as client:
-        # Fetch registered agents for this owner
+        # Fetch registered workers via agents.py GET /owner/workers/v2/{owner_did}
         try:
             r = await client.get(
-                f"{daemon_url}/agents",
-                params={"owner_did": owner_did},
+                f"{daemon_url}/owner/workers/v2/{owner_did}",
+                params={"actor_did": owner_did},
                 headers=auth_headers,
             )
+            if r.status_code == 404:
+                raise ValueError(
+                    f"Owner '{owner_did}' not found in Worker Registry. "
+                    f"Register the owner first: POST /owner/register"
+                )
             if r.status_code != 200:
                 warnings.append(
                     f"Could not fetch Worker Registry from daemon "
                     f"(HTTP {r.status_code}). Skipping reconciliation."
                 )
                 return warnings
-            registry_agents = r.json().get("agents", [])
+            registry_workers = r.json().get("workers", [])
         except (httpx.HTTPError, httpx.NetworkError, httpx.TimeoutException,
                 OSError) as e:
             warnings.append(
@@ -208,7 +215,7 @@ async def reconcile_workers(
             )
             return warnings
 
-        registry_by_did = {a["did"]: a for a in registry_agents}
+        registry_by_did = {w["did"]: w for w in registry_workers if "did" in w}
 
         for name, w in workers.items():
             if not isinstance(w, dict):

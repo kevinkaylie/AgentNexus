@@ -22,6 +22,21 @@ from agent_net.node.local_runner import (
 )
 
 
+def _build_constraints(config: dict[str, Any], worker: dict[str, Any]) -> dict[str, Any]:
+    """Build execution constraints from config defaults merged with worker overrides.
+
+    Propagates: timeout_sec, workdir, max_output_bytes, network_access.
+    Design ref: docs/design/design-objective-loop-v1.1.md Sections 6.1-6.2
+    """
+    defaults = config.get("defaults", {})
+    return {
+        "timeout_sec": worker.get("timeout_sec", defaults.get("timeout_sec", 1800)),
+        "workdir": worker.get("workdir", defaults.get("workdir", "")),
+        "max_output_bytes": defaults.get("max_output_bytes", 1_048_576),
+        "network_access": defaults.get("network_access", "deny_by_default"),
+    }
+
+
 def build_worker_prompt(
     *,
     worker: dict[str, Any],
@@ -154,8 +169,9 @@ async def runner_tick(
             if worker is None:
                 worker = find_worker_for_capability(config, role)
 
-            # For retries, try fallback worker (different worker, same role)
-            if retry_attempt > 1 and worker is not None:
+            # For retries beyond first retry, try fallback worker
+            # Design: retry same worker once (retry_attempt=2), then fallback (>=3)
+            if retry_attempt >= 3 and worker is not None:
                 worker_key = worker.get("worker_did") or worker.get("agent_name", "")
                 fallback = find_fallback_worker(config, role, exclude_workers={worker_key})
                 if fallback is not None:
@@ -228,7 +244,7 @@ async def runner_tick(
             eid = exec_resp.get("execution", {}).get("execution_id", "")
 
             # Execute via backend (handles JSON retry internally)
-            timeout = config.get("defaults", {}).get("timeout_sec", 1800)
+            constraints = _build_constraints(config, worker)
             try:
                 result = await execute_stage(
                     coordination_session_id=sid,
@@ -237,8 +253,9 @@ async def runner_tick(
                     worker_did=worker.get("worker_did") or worker.get("agent_name", "unknown"),
                     backend_kind=worker.get("adapter", "local_cli"),
                     command=command,
-                    constraints={"timeout_sec": timeout},
-                    timeout_sec=timeout,
+                    constraints=constraints,
+                    timeout_sec=constraints.get("timeout_sec", 1800),
+                    max_output_bytes=constraints.get("max_output_bytes", 1_048_576),
                 )
             except Exception as e:
                 actions.append({
@@ -261,8 +278,9 @@ async def runner_tick(
                         worker_did=worker.get("worker_did") or worker.get("agent_name", "unknown"),
                         backend_kind=worker.get("adapter", "local_cli"),
                         command=retry_command,
-                        constraints={"timeout_sec": timeout},
-                        timeout_sec=timeout,
+                        constraints=constraints,
+                        timeout_sec=constraints.get("timeout_sec", 1800),
+                        max_output_bytes=constraints.get("max_output_bytes", 1_048_576),
                     )
                 except Exception:
                     pass  # result stays as changes_requested → will be submitted as blocked
@@ -408,8 +426,6 @@ async def process_action(
     if worker is None:
         return None
 
-    timeout = config.get("defaults", {}).get("timeout_sec", 1800)
-
     # Build prompt
     prompt = build_worker_prompt(
         worker=worker,
@@ -423,6 +439,8 @@ async def process_action(
         worker.get("args", []), prompt
     )
 
+    constraints = _build_constraints(config, worker)
+
     return await execute_stage(
         coordination_session_id=session_id,
         run_id=run_id,
@@ -430,6 +448,7 @@ async def process_action(
         worker_did=worker_did,
         backend_kind=worker.get("adapter", "local_cli"),
         command=command,
-        constraints={"timeout_sec": timeout},
-        timeout_sec=timeout,
+        constraints=constraints,
+        timeout_sec=constraints.get("timeout_sec", 1800),
+        max_output_bytes=constraints.get("max_output_bytes", 1_048_576),
     )

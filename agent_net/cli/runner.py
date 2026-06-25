@@ -45,7 +45,8 @@ async def node_local_runner_cmd(args: list[str]):
             token = _read_token()
             auth_headers = {"Authorization": f"Bearer {token}"} if token else {}
             reconcile_warnings = await reconcile_workers(
-                cfg, cfg["daemon_url"], auth_headers
+                cfg, cfg["daemon_url"], auth_headers,
+                actor_did=cfg.get("secretary_agent", cfg.get("owner_did", "")),
             )
             for w in reconcile_warnings:
                 print(f"  [WARNING] {w}")
