@@ -73,6 +73,7 @@ Acceptance criteria:
 {criteria_text or '(none)'}
 
 Return a JSON block with:
+- contract: "agentnexus_json_v1"
 - summary
 - status: completed | changes_requested | failed | blocked
 - artifact_type
