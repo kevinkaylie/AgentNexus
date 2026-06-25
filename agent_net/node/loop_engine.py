@@ -176,6 +176,15 @@ async def next_action(
                         "reason": f"Blocked execution resolved: retry approved by human",
                         "retry_attempt": latest["attempt"] + 1,
                     }
+                elif decision_value in ("rejected", "aborted"):
+                    return {
+                        "action_type": "closed",
+                        "stage": current_stage,
+                        "reason": (
+                            f"Stage {current_stage} {decision_value} by human. "
+                            f"Session cannot continue."
+                        ),
+                    }
 
             meta = latest.get("metadata", {})
             if isinstance(meta, str):
