@@ -126,6 +126,16 @@ async def node_local_runner_cmd(args: list[str]):
                 from agent_net.node.secretary_gateway import handle_decision_gate
                 return await handle_decision_gate(**kw)
 
+            async def _ue(eid, body):
+                r = await client.patch(
+                    f"{daemon_url}/coordination/executions/{eid}",
+                    json=body,
+                    headers=auth_headers,
+                )
+                if r.status_code == 200:
+                    return r.json()
+                raise Exception(f"update_execution: {r.status_code}")
+
             actions = await runner_tick(
                 config=cfg,
                 list_sessions=_list,
@@ -135,6 +145,7 @@ async def node_local_runner_cmd(args: list[str]):
                 submit_result=_sr,
                 call_advance=_adv,
                 create_decision=_dec,
+                update_execution=_ue,
                 actor_did=actor_did,
                 owner_did=owner_did,
             )
@@ -270,6 +281,16 @@ async def node_local_runner_cmd(args: list[str]):
                         from agent_net.node.secretary_gateway import handle_decision_gate
                         return await handle_decision_gate(**kw)
 
+                    async def _ue(eid, body):
+                        r = await client.patch(
+                            f"{daemon_url}/coordination/executions/{eid}",
+                            json=body,
+                            headers=auth_headers,
+                        )
+                        if r.status_code == 200:
+                            return r.json()
+                        raise Exception(f"update_execution: {r.status_code}")
+
                     actions = await runner_tick(
                         config=cfg,
                         list_sessions=_list_sessions,
@@ -279,6 +300,7 @@ async def node_local_runner_cmd(args: list[str]):
                         submit_result=_submit_result,
                         call_advance=_call_advance,
                         create_decision=_create_decision,
+                        update_execution=_ue,
                         actor_did=actor_did,
                         owner_did=owner_did,
                     )

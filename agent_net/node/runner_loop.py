@@ -104,6 +104,7 @@ async def runner_tick(
     submit_result: Callable[..., Awaitable[dict]],
     call_advance: Callable[..., Awaitable[dict]] | None = None,
     create_decision: Callable[..., Awaitable[dict]] | None = None,
+    update_execution: Callable[..., Awaitable[dict]] | None = None,
     actor_did: str = "",
     owner_did: str = "",
 ) -> list[dict]:
@@ -307,12 +308,31 @@ async def runner_tick(
 
         # ── poll_execution ───────────────────────────────────────
         elif atype == "poll_execution":
-            actions.append({
-                "action": "poll_execution", "session_id": sid,
-                "stage": action.get("stage", ""),
-                "execution_id": action.get("execution_id", ""),
-                "reason": action.get("reason", ""),
-            })
+            if action.get("lease_expired") and update_execution:
+                eid = action.get("execution_id", "")
+                try:
+                    await update_execution(eid, {
+                        "actor_did": actor_did,
+                        "status": "timed_out",
+                    })
+                    actions.append({
+                        "action": "lease_expired", "session_id": sid,
+                        "stage": action.get("stage", ""),
+                        "execution_id": eid,
+                        "reason": "Marked timed_out due to lease expiry",
+                    })
+                except Exception as e:
+                    actions.append({
+                        "action": "error", "session_id": sid,
+                        "reason": f"Failed to mark lease expired: {e}",
+                    })
+            else:
+                actions.append({
+                    "action": "poll_execution", "session_id": sid,
+                    "stage": action.get("stage", ""),
+                    "execution_id": action.get("execution_id", ""),
+                    "reason": action.get("reason", ""),
+                })
 
         # ── create_decision_gate ─────────────────────────────────
         elif atype == "create_decision_gate":
