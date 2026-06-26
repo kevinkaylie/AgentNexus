@@ -427,6 +427,9 @@ async def init_coordination_tables(db: aiosqlite.Connection):
                 ON objective_executions(coordination_session_id, run_id, stage);
             CREATE INDEX IF NOT EXISTS idx_objective_executions_status
                 ON objective_executions(status, lease_expires_at);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_objective_executions_active_stage
+                ON objective_executions(coordination_session_id, run_id, stage)
+                WHERE status IN ('pending', 'running');
         """)
 
     coord_migrations = [

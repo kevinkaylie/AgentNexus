@@ -76,7 +76,8 @@ def load_runner_config(path: str) -> dict[str, Any]:
     if "defaults" in raw and isinstance(raw["defaults"], dict):
         for k in ("workdir", "timeout_sec", "max_retries_per_stage",
                   "max_total_executions", "max_wall_clock_sec",
-                  "require_final_acceptance"):
+                  "require_final_acceptance",
+                  "max_output_bytes", "network_access"):
             if k in raw["defaults"]:
                 cfg["defaults"][k] = raw["defaults"][k]
 
@@ -168,6 +169,7 @@ async def reconcile_workers(
     cfg: dict[str, Any],
     daemon_url: str,
     auth_headers: dict[str, str],
+    actor_did: str = "",
 ) -> list[str]:
     """Reconcile YAML worker profiles with Worker Registry.
 
@@ -199,6 +201,21 @@ async def reconcile_workers(
                 raise ValueError(
                     f"Owner '{owner_did}' not found in Worker Registry. "
                     f"Register the owner first: POST /owner/register"
+                )
+            if r.status_code == 401:
+                raise ValueError(
+                    f"Authentication failed when accessing Worker Registry "
+                    f"(HTTP 401). Check your daemon token."
+                )
+            if r.status_code == 403:
+                raise ValueError(
+                    f"Access denied to Worker Registry (HTTP 403). "
+                    f"Ensure actor_did is bound to owner_did={owner_did}."
+                )
+            if r.status_code >= 500:
+                raise ValueError(
+                    f"Worker Registry returned server error "
+                    f"(HTTP {r.status_code}). Cannot verify worker identities."
                 )
             if r.status_code != 200:
                 warnings.append(

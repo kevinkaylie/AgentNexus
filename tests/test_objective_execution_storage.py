@@ -124,7 +124,7 @@ async def test_obj_list_by_session():
             execution_id=f"exec_b_{i}_{uuid.uuid4().hex[:8]}",
             coordination_session_id=cs_id_2,
             run_id="run_2",
-            stage="implement",
+            stage=f"stage_b_{i}",  # different stages to avoid unique constraint
             worker_did="did:agentnexus:w2",
             backend_kind="local_service",
         )

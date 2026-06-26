@@ -25,16 +25,24 @@ from agent_net.node.local_runner import (
 def _build_constraints(config: dict[str, Any], worker: dict[str, Any]) -> dict[str, Any]:
     """Build execution constraints from config defaults merged with worker overrides.
 
-    Propagates: timeout_sec, workdir, max_output_bytes, network_access.
+    Worker-level fields take precedence over defaults. Propagates:
+    timeout_sec, workdir, max_output_bytes, network_access, env.
     Design ref: docs/design/design-objective-loop-v1.1.md Sections 6.1-6.2
     """
     defaults = config.get("defaults", {})
-    return {
+    constraints = {
         "timeout_sec": worker.get("timeout_sec", defaults.get("timeout_sec", 1800)),
         "workdir": worker.get("workdir", defaults.get("workdir", "")),
-        "max_output_bytes": defaults.get("max_output_bytes", 1_048_576),
-        "network_access": defaults.get("network_access", "deny_by_default"),
+        "max_output_bytes": worker.get("max_output_bytes",
+                                        defaults.get("max_output_bytes", 1_048_576)),
+        "network_access": worker.get("network_access",
+                                      defaults.get("network_access", "deny_by_default")),
     }
+    # env: only from worker; defaults.env would be too broad
+    worker_env = worker.get("env")
+    if worker_env and isinstance(worker_env, dict):
+        constraints["env"] = worker_env
+    return constraints
 
 
 def build_worker_prompt(
