@@ -91,18 +91,28 @@ async def create_execution(req: CreateExecutionRequest, _token_ok: bool = Depend
     lease = time.time() + req.lease_ttl_sec if req.lease_ttl_sec > 0 else None
     meta = req.metadata or {}
     retry_attempt = meta.pop("retry_attempt", 1)
-    exec_record = await create_objective_execution(
-        execution_id=eid,
-        coordination_session_id=req.coordination_session_id,
-        run_id=req.run_id,
-        stage=req.stage,
-        worker_did=req.worker_did,
-        backend_kind=req.backend_kind,
-        status="pending",
-        lease_expires_at=lease,
-        attempt=retry_attempt,
-        metadata=meta if meta else None,
-    )
+    try:
+        exec_record = await create_objective_execution(
+            execution_id=eid,
+            coordination_session_id=req.coordination_session_id,
+            run_id=req.run_id,
+            stage=req.stage,
+            worker_did=req.worker_did,
+            backend_kind=req.backend_kind,
+            status="pending",
+            lease_expires_at=lease,
+            attempt=retry_attempt,
+            metadata=meta if meta else None,
+        )
+    except Exception as e:
+        if "UNIQUE constraint" in str(e):
+            raise HTTPException(
+                409,
+                f"Stage '{req.stage}' already has an active execution "
+                f"for run {req.run_id}. "
+                f"Wait for it to complete or time out before creating a new one."
+            ) from e
+        raise
     await emit_event(
         coordination_session_id=req.coordination_session_id,
         event_type="stage.started",
