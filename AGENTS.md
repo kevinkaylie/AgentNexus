@@ -95,6 +95,7 @@
 | DID 方法规范 | [docs/did-method-spec.md](docs/did-method-spec.md) | 草稿 |
 | 快速开始 | [docs/quickstart.md](docs/quickstart.md) | 生效 |
 | 产品定位与使用场景 | [docs/product.md](docs/product.md) | 生效 |
+| 推广与发布清单 | [docs/promotion.md](docs/promotion.md) | 生效 |
 | MCP 集成 | [docs/integrations/mcp.md](docs/integrations/mcp.md) | 生效 |
 | 产品路线图 | [docs/roadmap.md](docs/roadmap.md) | 生效（仅本地） |
 | WG DID Resolution | [specs/working-group/did-resolution.md](specs/working-group/did-resolution.md) | 生效（v1.0 RATIFIED） |

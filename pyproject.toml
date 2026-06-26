@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentnexus"
-version = "0.9.6"
-description = "Decentralized communication network for AI Agents — the WhatsApp for Agents"
+version = "1.0.1"
+description = "DID identity, secure messaging and objective-loop collaboration infrastructure for AI agents"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"

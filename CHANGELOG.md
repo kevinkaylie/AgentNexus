@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Developer Preview 推广收口（2026-06-26）
+
+- README 首屏新增 Developer Preview 入口，明确第一版公开定位：DID 身份、授权、产物交付和 Objective Loop 的多 Agent 协作底座。
+- 新增 `docs/promotion.md`，沉淀推广完成度清单、发布边界、最小 demo、目标受众、首批外发文案和 L0-ready preview gate。
+- `docs/project-status.md` 增加推广状态，统一 `v1.0.1 developer preview → v1.1 L0-Ready` 口径。
+- 根包与 SDK 元数据对齐到 `1.0.1`，修复 SDK 项目链接。
+- 修复 Dashboard 推广截图阻塞项：API client 使用当前 origin、`actor_did` 深链可恢复本地身份、Run detail stage 状态聚合 artifact + approved receipt，并新增 Objective Loop Dashboard 截图。
+
 ### 评审问题修复与拆分后清理（2026-06-25）
 
 - 修复 `relay start --host` 导入顺序问题，确保自定义 host 在 Relay DID 初始化前生效。

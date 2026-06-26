@@ -2,7 +2,7 @@
 
 > **唯一状态源**：本文档是 AgentNexus 项目版本、功能状态、关键数字的唯一权威来源。
 > 其他文档（CLAUDE.md、architecture.md、AGENTS.md 等）引用本文档，不重复维护状态。
-> 最后更新：2026-06-23
+> 最后更新：2026-06-26
 > 
 > **本轮修复：**
 > - 8 个 sync fixture → `@pytest_asyncio.fixture` async（消除 `asyncio.run()` / `new_event_loop()` 重复创建 ProactorEventLoop）
@@ -15,18 +15,28 @@
 
 ## 一句话总结
 
-AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0.0 收敛为”团队协作开发者预览”：Orchestration SDK + 常驻秘书 + Enclave/Playbook + 基础 Web 入口。Coding Coordination V1 后端闭环、SDK facade、CLI demo/runtime-mock、Dashboard detail、Quickstart、Delivery Manifest closure 已完成。Objective Loop V1.1 核心模块（storage/backend/runner/loop engine/gateway）已开发完成；L0-Ready hardening 完成（worker_did 真实 DID、contract 校验、Registry reconcile、lease 恢复、loop budget、fallback chain、DecisionGate 终端路径）；进入 L0-Ready 真实 Worker 验收阶段。
+AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0.x 收敛为”团队协作开发者预览”：Orchestration SDK + 常驻秘书 + Enclave/Playbook + 基础 Web 入口。Coding Coordination V1 后端闭环、SDK facade、CLI demo/runtime-mock、Dashboard detail、Quickstart、Delivery Manifest closure 已完成。Objective Loop V1.1 核心模块（storage/backend/runner/loop engine/gateway）已开发完成；L0-Ready hardening 完成（worker_did 真实 DID、contract 校验、Registry reconcile、lease 恢复、loop budget、fallback chain、DecisionGate 终端路径）；进入 L0-Ready 真实 Worker 验收阶段。
 
 ## 关键数字
 
 | 指标 | 值 |
 |------|-----|
-| 当前版本 | v1.0.0→v1.1 过渡中（团队协作开发者预览已发布；Coding Coordination V1 release closure 完成；Objective Loop V1.1 L0-Ready hardening 完成，待真实 Worker 验收） |
+| 当前版本 | v1.0.1 developer preview → v1.1 L0-Ready 过渡中（团队协作开发者预览已发布；Coding Coordination V1 release closure 完成；Objective Loop V1.1 L0-Ready hardening 完成，待真实 Worker 验收） |
 | 测试数 | 全量：547 passed, 8 skipped（含 59 个 Objective Loop 测试）；前端 build 通过 |
 | MCP 工具数 | 37 |
 | Python | 3.10+ |
 | 存储 | SQLite (aiosqlite) |
 | 加密 | Ed25519 + X25519 + AES-256-GCM |
+
+## 推广状态
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| 第一版推广 | ✅ 可启动 | 以 developer preview 口径推广，目标是技术反馈、协议评审和早期集成，不承诺生产级多机运行 |
+| 对外主叙事 | ✅ 已收敛 | DID 身份、授权、产物交付和目标循环的多 Agent 协作底座 |
+| 最短验证路径 | ✅ 已具备 | `docs/quickstart.md`、`docs/quickstart-coding-coordination.md`、`docs/quickstart-objective-loop.md` |
+| L0 真实 Worker 验收 | 🚧 进行中 | 完成后可把推广口径从 developer preview 提升到 L0-ready preview |
+| 生产级安全承诺 | 📋 后续 | per-agent token、Strict JCS、signed delivery package、hard-enforce `/deliver` 后移 |
 
 ## 版本状态
 
@@ -38,7 +48,7 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | v0.9.5 | ✅ 已发布 | Enclave 项目组、VaultBackend、Playbook 自动编排 |
 | v0.9.6 | ✅ 已发布 | Governance Attestation、Web of Trust、信任衰减 |
 | v1.0 Phase 1 | ✅ 已实现 | 个人主 DID (1.0-04)、消息中心 (1.0-06)、Capability Token (1.0-08)、委托链收窄 (1.0-10) |
-| v1.0.0 | 🚧 开发中 | 团队协作开发者预览：意图路由、鉴权矩阵 v3、Orchestration SDK、Secretary Phase B、Dashboard/Setup 主链路已完成；代码评审阻塞项已解决 |
+| v1.0.1 | ✅ Developer Preview | 团队协作开发者预览：意图路由、鉴权矩阵 v3、Orchestration SDK、Secretary Phase B、Dashboard/Setup 主链路已完成；代码评审阻塞项已解决 |
 | Coding Coordination V1 | ✅ 已实现 | 以 coding 场景验证 protocol-agnostic trusted coordination loop；PlaybookRun 作为运行态状态源，closure 自动生成 Delivery Manifest 并写入 Enclave Vault；63 个 coordination/manifest 回归测试通过 |
 | Coding Coordination V1 Release Closure | ✅ 已完成 | SDK facade、CLI demo、runtime-mock、Dashboard detail、Quickstart 已全部完成；新开发者可通过 SDK 示例或 CLI 命令跑通完整 coding coordination 闭环 |
 | v1.1 | 🚧 开发中 | Objective Loop（L0 本机）：P0-1~P0-6 全部完成（含 Execution API、Daemon 集成、Quickstart）；Runner poll loop 验证中；L1/L2 后移到 v1.2+ |
@@ -97,7 +107,7 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 
 > 详见 `docs/wip.md`
 
-1. **v1.0.0 发布收口**：同步 README、quickstart、SDK 示例和 CHANGELOG，固定端到端操作路径。
+1. **第一版推广收口**：同步 README、quickstart、SDK 示例、状态源和推广材料，固定端到端操作路径。
 2. **D-SEC-04 角色选择与回退策略**：改进 dispatch 选人逻辑（按 worker 能力评分排序、离线降级、fallback）。
 3. **D-SEC-06 超时/重试/fallback**：stage 超时检测、retry_count 自动重试、失败后自动 fallback 到下一个匹配 worker。
 4. **严格 JCS 实现**（S5）：当前为确定性 JSON 序列化，跨语言互操作需升级为 RFC 8785；不阻塞 v1.0.0 开发者预览，后移到 v1.5 安全收紧。

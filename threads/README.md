@@ -23,11 +23,11 @@
 
 | 线索ID | 项目 | Issue/讨论 | 级别 | 最后检查 | 状态 |
 |--------|------|------------|------|---------|------|
-| x402-1777 | x402-foundation/x402 | #1777 | 🟢三级 | 2026-06-25 02:00 | 最后评论仍为 2026-03-27（臣评论）；无新动态；已近 3 个月无更新；保持三级（每天检查） |
-| msaleme-rtbtaf | msaleme/red-team-blue-team-agent-fabric | #120 | 🟢三级 | 2026-06-25 02:00 | 最后评论 2026-04-02（msaleme 将 Decision Behavior Benchmark 移至 v4.0）；无新动态；已近 2.5 个月无更新；保持三级（每天检查） |
-| openclaw-49971 | openclaw/openclaw | #49971 | 🟢三级 | 2026-06-25 02:00 | 最后评论 2026-04-01（MoltyCel）；臣 4/3 已回复 MoltyCel 关于 did:agentnexus 替代方案；无新动态；已近 2.5 个月无更新；保持三级（每天检查） |
-| mcpso-1308 | chatmcp/mcpso | #1308 | 🟢三级 | 2026-06-25 02:00 | 最后评论 2026-03-31（AiAgentKarl 确认签名范围）；AiAgentKarl 开放合作意向；无新动态；已近 3 个月无更新；保持三级观察 |
-| a2a-1672 | a2aproject/A2A | #1672 | 🟢三级 | 2026-06-25 02:00 | 最后评论 2026-03-23（vessenes 讨论 Ed25519 自主权身份）；无新动态；已近 3 个月无更新；保持三级观察 |
+| x402-1777 | x402-foundation/x402 | #1777 | 🟢三级 | 2026-06-29 02:00 | 最后评论仍为 2026-03-27（臣评论）；无新动态；已近 3 个月无更新；保持三级（每天检查） |
+| msaleme-rtbtaf | msaleme/red-team-blue-team-agent-fabric | #120 | 🟢三级 | 2026-06-29 02:00 | 最后评论 2026-04-02（msaleme 将 Decision Behavior Benchmark 移至 v4.0）；无新动态；已近 2.5 个月无更新；保持三级（每天检查） |
+| openclaw-49971 | openclaw/openclaw | #49971 | 🟢三级 | 2026-06-29 02:00 | 最后评论 2026-04-01（MoltyCel）；臣 4/3 已回复 MoltyCel 关于 did:agentnexus 替代方案；无新动态；已近 2.5 个月无更新；保持三级（每天检查） |
+| mcpso-1308 | chatmcp/mcpso | #1308 | 🟢三级 | 2026-06-29 02:00 | 最后评论 2026-03-31（AiAgentKarl 确认签名范围）；AiAgentKarl 开放合作意向；无新动态；已近 3 个月无更新；保持三级观察 |
+| a2a-1672 | a2aproject/A2A | #1672 | 🟢三级 | 2026-06-29 02:00 | 最后评论 2026-03-23（vessenes 讨论 Ed25519 自主权身份）；无新动态；已近 3 个月无更新；保持三级观察 |
 | ~~FransDev-oatr~~ | ~~open-agent-trust-registry~~ | ~~#2~~ | ❌剔除 | 2026-06-02 17:00 | **Issue #2 已 404**（仓库可能已删除/转私有）；剔除 |
 
 ### 已剔除
