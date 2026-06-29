@@ -106,6 +106,20 @@ print(json.dumps({"summary": "ok", "status": "completed", "artifact_type": "T",
 '''
 
 
+def test_obj_local_cli_destructive_detection_ignores_option_names():
+    """Dangerous command detection must not flag benign hyphenated options."""
+    from agent_net.node.execution_backends.local_cli import _is_destructive
+
+    assert not _is_destructive([
+        "claude",
+        "-p",
+        '{"contract":"agentnexus_json_v1"}',
+        "--output-format",
+        "text",
+    ])
+    assert _is_destructive(["rm", "-rf", "/"])
+
+
 def _write_script(content: str, dir_: str, name: str) -> str:
     path = os.path.join(dir_, f"{name}.py")
     with open(path, "w") as f:

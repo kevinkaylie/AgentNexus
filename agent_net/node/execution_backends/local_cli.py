@@ -20,11 +20,11 @@ from agent_net.node.execution_backends.base import (
 
 # Patterns to detect obviously destructive commands in argv
 _DESTRUCTIVE_PATTERNS = [
-    re.compile(r"\brm\b"),       # Unix remove
-    re.compile(r"\bdel\b"),      # Windows delete
-    re.compile(r"\brmdir\b"),
-    re.compile(r"\bformat\b"),
-    re.compile(r"\bdd\b"),
+    re.compile(r"(?<![-\w])rm(?![-\w])"),       # Unix remove
+    re.compile(r"(?<![-\w])del(?![-\w])"),      # Windows delete
+    re.compile(r"(?<![-\w])rmdir(?![-\w])"),
+    re.compile(r"(?<![-\w])format(?![-\w])"),
+    re.compile(r"(?<![-\w])dd(?![-\w])"),
     re.compile(r">/dev/"),       # redirect to device
 ]
 
