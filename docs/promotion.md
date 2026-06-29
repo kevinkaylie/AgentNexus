@@ -1,7 +1,7 @@
 # AgentNexus Promotion Checklist
 
 > Status: developer preview launch pack
-> Last updated: 2026-06-26
+> Last updated: 2026-06-29
 
 ## Positioning
 
@@ -19,14 +19,14 @@ Do not lead with every subsystem at once. Lead with one problem:
 
 | Area | Weight | Current | To reach 100% |
 |------|--------|---------|---------------|
-| First-run experience | 25 | 20 | Keep `quickstart.md`, `quickstart-coding-coordination.md` and `quickstart-objective-loop.md` synchronized with current CLI behavior |
+| First-run experience | 25 | 22 | Keep `quickstart.md`, `quickstart-coding-coordination.md` and `quickstart-objective-loop.md` synchronized with current CLI behavior |
 | Public positioning | 20 | 18 | Keep README focused on DID + authorization + artifacts + objective loop, not only "WhatsApp for agents" |
-| Status consistency | 15 | 13 | Keep version, test count, release boundary and WIP aligned across README, `project-status.md`, package metadata and changelog |
-| Demo proof | 20 | 16 | Add one reproducible L0 run with real local Worker DIDs, not only fake/demo workers |
+| Status consistency | 15 | 14 | Keep version, test count, release boundary and WIP aligned across README, `project-status.md`, package metadata and changelog |
+| Demo proof | 20 | 19 | Keep the reproducible L0 real-worker smoke script and evidence screenshot aligned with current CLI behavior |
 | Contribution surface | 10 | 8 | Keep issues, discussion prompts and integration asks small enough for early contributors |
 | Distribution assets | 10 | 9 | Add a short GIF after the screenshot-based launch |
 
-Current promotion readiness: about 84/100 after documentation, metadata, release notes and Dashboard screenshot fixes.
+Current promotion readiness: about 90/100 after documentation, metadata, release notes, Dashboard screenshot fixes and the L0 real-worker smoke script.
 
 ## Launch Boundary
 
@@ -64,8 +64,10 @@ Expected result:
 Current local evidence:
 
 ![Objective Loop Dashboard evidence](assets/objective-loop-dashboard-stages.png)
+![L0-ready real worker evidence](assets/l0-ready-real-workers-evidence.png)
 
 Dashboard launch fixes completed on 2026-06-26: API paths now resolve on the current origin, `actor_did` deep links can restore local identity, and run detail stage status now aggregates artifacts + approved receipts for Objective Loop demo runs.
+L0-ready real-worker smoke completed on 2026-06-29: `scripts/l0_ready_real_workers_demo.py` registered three Worker DIDs and completed one Objective Loop with 6 executions, 6 artifacts and 7 receipts.
 
 ## First Outreach Targets
 
@@ -124,19 +126,18 @@ Repo: https://github.com/kevinkaylie/AgentNexus
 
 Open these as small, contributor-friendly issues when the launch branch is merged:
 
-1. Add a real local-worker smoke script using three Worker DIDs.
-2. Add Docker Compose quickstart for daemon + relay.
-3. Add an integration example for a CLI coding worker.
-4. Add a short GIF for the Objective Loop Dashboard after the screenshot-based launch.
-5. Review DID/capability token wording for external protocol readers.
+1. Add Docker Compose quickstart for daemon + relay.
+2. Add an integration example for a CLI coding worker.
+3. Add a short GIF for the Objective Loop Dashboard after the screenshot-based launch.
+4. Review DID/capability token wording for external protocol readers.
 
 ## Launch Gate
 
 Before moving from developer preview to L0-ready preview:
 
 - [ ] `python main.py node objective demo` works from a clean clone.
-- [ ] At least three real local Worker DIDs complete an L0 objective loop.
+- [x] At least three real local Worker DIDs complete an L0 objective loop.
 - [ ] README, `project-status.md`, package versions and test badges match.
 - [x] A screenshot of the Dashboard is linked from README.
 - [ ] The latest GitHub Actions CI run is green on `main`.
-- [ ] A GitHub release notes draft states the developer-preview boundary.
+- [x] A GitHub release notes draft states the developer-preview boundary.

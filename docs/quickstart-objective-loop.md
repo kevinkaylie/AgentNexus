@@ -146,7 +146,46 @@ workers:
 
 Runner 会自动将 objective、artifact refs、constraints 和 acceptance criteria 注入 prompt 模板。
 
-## 8. API 速查
+## 8. L0-Ready 真实 Worker 烟测
+
+如果本机已安装 Claude CLI 和 OpenClaw CLI，可以运行一个更接近推广验收的真实 Worker demo：
+
+```bash
+python scripts/l0_ready_real_workers_demo.py
+```
+
+Windows 上如果 CLI 不在 `PATH`，可以显式传入命令路径：
+
+```bash
+python scripts/l0_ready_real_workers_demo.py --base-url http://127.0.0.1:8765 --claude-command D:\npm-global\claude.cmd --openclaw-command D:\AI\pnpm-global\openclaw.CMD
+```
+
+这个脚本会注册 1 个 Owner DID 和 3 个真实 Worker DID：
+
+| Worker | 负责 stage | 输出适配 |
+|--------|------------|----------|
+| script/pytest | `clarify` / `design` / `test` | `agentnexus_json_v1` |
+| Claude CLI | `implement` | `text_artifact` |
+| OpenClaw CLI | `design_review` / `code_review` | `openclaw_json` |
+
+成功时输出应接近：
+
+```json
+{
+  "session_status": "completed",
+  "artifact_count": 6,
+  "receipt_count": 7,
+  "execution_count": 6
+}
+```
+
+`coding.v1` 的 `final` stage 由 advance API 自动收口，所以完整结果是 6 次 Worker execution、6 个 artifact、7 个 receipt。
+
+当前本地验收证据：
+
+![L0-ready real worker evidence](assets/l0-ready-real-workers-evidence.png)
+
+## 9. API 速查
 
 | 端点 | 用途 |
 |------|------|
@@ -161,7 +200,7 @@ Runner 会自动将 objective、artifact refs、constraints 和 acceptance crite
 | `GET /coordination/sessions/{id}/artifacts` | 产物列表 |
 | `GET /coordination/sessions/{id}/receipts` | 收据列表 |
 
-## 9. 测试
+## 10. 测试
 
 ```bash
 # 运行全部 Objective Loop 测试
@@ -171,7 +210,7 @@ python -m pytest tests/test_objective_*.py tests/test_local_cli_backend.py tests
 python -m pytest tests/test_objective_loop_engine.py -v
 ```
 
-## 10. 常见问题
+## 11. 常见问题
 
 **Q: Demo 报 "Failed to create owner: 404"**
 A: Daemon 未启动。先运行 `python main.py node start`。

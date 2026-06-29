@@ -155,7 +155,7 @@ async function renderDetail(id, actor) {
   window._actorDid = actor;
   main.innerHTML = '<div class="loader">Loading session detail...</div>';
   try {
-    const [sess, timeline, artifacts, receipts, closures, execs, nextAction] = await Promise.all([
+    const [sess, timeline, artifacts, receipts, closures, execResp, nextAction] = await Promise.all([
       api(`/sessions/${id}`, { actor_did: actor }),
       api(`/sessions/${id}/timeline`, { actor_did: actor }),
       api(`/sessions/${id}/artifacts`, { actor_did: actor }),
@@ -169,7 +169,7 @@ async function renderDetail(id, actor) {
     const arts = artifacts.artifacts || [];
     const rcs = receipts.receipts || [];
     const cls = closures.closures || [];
-    const execs = (execs && execs.executions) ? execs.executions : [];
+    const execs = (execResp && execResp.executions) ? execResp.executions : [];
     const na = (nextAction && nextAction.action) ? nextAction.action : {};
     const decisions = await loadDecisions(s, actor);
     const manifests = await loadManifestDetails(s, cls, actor);

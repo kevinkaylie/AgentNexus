@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### L0-Ready Real Worker Smoke（2026-06-29）
+
+- 新增 `scripts/l0_ready_real_workers_demo.py`，可复现注册 Owner DID 和 3 个真实本机 Worker DID，并以 script/pytest、Claude CLI、OpenClaw CLI 跑完整 Objective Loop。
+- 成功验收形态：`session_status=completed`、6 次 worker execution、6 个 artifact、7 个 receipt；`coding.v1` final stage 由 advance API 自动收口。
+- 新增 `docs/assets/l0-ready-real-workers-evidence.png`，README、Objective Loop Quickstart、release notes 和推广清单同步引用。
+- 修复 `agent_net/node/static/coordination.html` 中 `execs` 同名声明导致 session detail 页面 `SyntaxError` 的问题。
+
 ### Agent Adapter Contract（2026-06-29）
 
 - LocalCLIBackend 新增输出归一化器，支持 `agentnexus_json_v1`、`openclaw_json`、`json_text`、`text_artifact` 四种 `output_adapter`。

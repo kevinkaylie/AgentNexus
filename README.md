@@ -32,9 +32,10 @@ AgentNexus 当前适合技术预览、协议评审和本机多 Agent 工作流�
 | 查看当前完成度和风险 | [项目现状速览](docs/project-status.md) |
 | 参与推广、反馈或集成讨论 | [推广与发布清单](docs/promotion.md) |
 
-当前公开定位：**给 AI Agent 提供 DID 身份、授权、产物交付和目标循环的协作底座**。v1.1 只承诺 L0 本机 Objective Loop；LAN / Relay 远程 Worker、桌面壳、per-agent token、Strict JCS 和签名交付包属于后续版本。
+当前公开定位：**给 AI Agent 提供 DID 身份、授权、产物交付和目标循环的协作底座**。v1.1 只承诺 L0 本机 Objective Loop；LAN / Relay 远程 Worker、桌面壳、per-agent token、Strict JCS 和签名交付包属于后续版本。L0 真实 Worker 烟测已跑通：script/pytest、Claude CLI、OpenClaw CLI 以 3 个 Worker DID 完成同一条 Objective Loop。
 
 ![Objective Loop Dashboard](docs/assets/objective-loop-dashboard-stages.png)
+![L0-ready real worker evidence](docs/assets/l0-ready-real-workers-evidence.png)
 
 ### AgentNexus 是什么
 
@@ -120,7 +121,7 @@ AgentNexus 的价值在更底层：
 
 当前 `v1.0.x` 范围是团队协作开发者预览：Orchestration SDK + Secretary Phase B 基础闭环 + Web Dashboard 基础入口。Coding Coordination V1 release closure 已完成，SDK facade、CLI demo、runtime-mock、Dashboard detail、Quickstart 和 Delivery Manifest closure 都已可验证。
 
-`v1.1` 主线是 Objective Loop：把 Local Runner、Execution Backend、Loop Engine、Secretary 人工决策点和 Dashboard 详情页串成一条本机自动目标闭环。当前 L0-Ready hardening 已完成，正在做真实 Worker 验收；LAN / Relay Worker 后移到 v1.2+。设计见 [docs/design/design-objective-loop-v1.1.md](docs/design/design-objective-loop-v1.1.md)。
+`v1.1` 主线是 Objective Loop：把 Local Runner、Execution Backend、Loop Engine、Secretary 人工决策点和 Dashboard 详情页串成一条本机自动目标闭环。当前 L0-Ready hardening 和 3 Worker DID 真实本机烟测已完成；LAN / Relay Worker 后移到 v1.2+。设计见 [docs/design/design-objective-loop-v1.1.md](docs/design/design-objective-loop-v1.1.md)。
 
 项目状态以 [docs/project-status.md](docs/project-status.md) 为准。
 
@@ -361,6 +362,7 @@ AgentNexus is ready for technical preview, protocol review and local multi-agent
 | Help with launch, feedback or integrations | [Promotion Checklist](docs/promotion.md) |
 
 Public positioning: **DID identity, authorization, artifact delivery and objective-loop collaboration infrastructure for AI agents**. v1.1 only promises the L0 local Objective Loop; LAN / Relay workers, desktop shell, per-agent tokens, Strict JCS and signed delivery packages are future work.
+The L0 real-worker smoke path now completes with three Worker DIDs: script/pytest, Claude CLI and OpenClaw CLI.
 
 It started as “WhatsApp for AI Agents”: every agent gets a DID address, discovers peers, performs secure handshakes, and exchanges messages across local or federated networks.
 
