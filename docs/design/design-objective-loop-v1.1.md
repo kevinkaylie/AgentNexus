@@ -441,6 +441,7 @@ defaults:
   max_retries_per_stage: 2
   network_access: deny_by_default
   max_output_bytes: 1048576
+  allowed_commands: [python, python3, pytest, claude, claude.cmd, codex, codex.cmd, openclaw, openclaw.cmd]
 
 workers:
   claude_developer:
@@ -449,10 +450,11 @@ workers:
     worker_type: interactive_cli
     adapter: local_cli
     command: claude
-    args: ["-p", "{prompt}"]
+    args: ["-p", "{prompt}", "--output-format", "text", "--max-turns", "1"]
     roles: ["developer", "implement"]
     capabilities: ["Code", "Debug", "Implement"]
     output_contract: agentnexus_json_v1
+    output_adapter: agentnexus_json_v1
     workdir: D:\PycharmProjects\AgentNexus
 
   codex_reviewer:
@@ -465,6 +467,20 @@ workers:
     roles: ["reviewer", "code_review"]
     capabilities: ["Review", "Code", "QA"]
     output_contract: agentnexus_json_v1
+    output_adapter: agentnexus_json_v1
+
+  openclaw_worker:
+    worker_did: did:agentnexus:z6MkOpenClawWorker...
+    agent_name: OpenClawWorker
+    worker_type: interactive_cli
+    adapter: local_cli
+    command: openclaw
+    args: ["agent", "--local", "--json", "--session-key", "agent:agentnexus:{stage}", "--message", "{prompt}"]
+    roles: ["developer", "reviewer", "tester", "implement", "code_review", "test"]
+    capabilities: ["Code", "Review", "Test"]
+    output_contract: agentnexus_json_v1
+    output_adapter: openclaw_json
+    artifact_type: OpenClawArtifact
 
   pytest_runner:
     worker_did: did:agentnexus:z6MkLocalTestRunner...
@@ -476,6 +492,8 @@ workers:
     roles: ["tester", "test"]
     capabilities: ["Test"]
     output_contract: agentnexus_json_v1
+    output_adapter: text_artifact
+    artifact_type: TestResultArtifact
 ```
 
 ### 6.3 Prompt Contract
@@ -538,7 +556,20 @@ Return a JSON block with:
 - `status=blocked` 必须附带 `human_decision_request`；否则按 `low_confidence` 处理。
 - `changes_requested` 必须说明需要回退的原因，Loop Engine 根据 Playbook `on_reject` 决定回退 stage。
 
-#### 6.3.2 推荐 CLI Profile
+#### 6.3.2 Output Adapter Contract
+
+不同 Agent 框架的 stdout 形态不同。v1.1 不要求所有框架内部改造成 AgentNexus 原生 worker，而是在 local-runner 中增加 output adapter，把外部输出归一为 `agentnexus_json_v1`：
+
+| Adapter | 输入形态 | 行为 |
+|---------|----------|------|
+| `agentnexus_json_v1` | stdout 中直接包含 AgentNexus JSON object | 直接解析 structured result |
+| `openclaw_json` | OpenClaw `--json` wrapper | 从 `payloads[].text` / `meta.finalAssistantRawText` 提取 assistant text；若其中包含 contract JSON 则使用，否则包装为 artifact |
+| `json_text` | 任意 JSON wrapper | 按 `output_text_paths` 提取文本，再解析或包装 |
+| `text_artifact` | 普通 stdout | 直接包装成指定 `artifact_type` |
+
+这形成通用接入范式：**DID 负责身份，roles/capabilities 负责路由，local_cli 负责启动，output_adapter 负责归一化**。OpenClaw、Codex、Claude Code、Dify/Coze wrapper、CrewAI/AutoGen 脚本都可以落在同一模型里。
+
+#### 6.3.3 推荐 CLI Profile
 
 L0-Ready 必须提供并验收以下内置 profile 示例，而不是只提供 fake worker：
 
@@ -546,6 +577,7 @@ L0-Ready 必须提供并验收以下内置 profile 示例，而不是只提供 f
 |---------|------|----------|----------|
 | `codex_exec` | 实现、评审、修复 | `codex exec {prompt}` | 必须固定 working tree，输出 JSON result，不直接提交 git |
 | `claude_code_print` | 设计、实现、评审 | `claude -p {prompt}` | 必须限制输出大小，失败时保留 raw output |
+| `openclaw_json` | 任意角色 worker / 本地 PM Agent | `openclaw agent --local --json --session-key ... --message {prompt}` | 需要 session selector；由 `openclaw_json` adapter 解 wrapper |
 | `pytest` | 测试阶段 | `python -m pytest <path>` | Runner 包装 pytest 输出为 `TestResultArtifact` |
 | `script_json` | 可重复脚本 worker | `python script.py --input <json>` | 脚本直接输出 `agentnexus_json_v1` |
 

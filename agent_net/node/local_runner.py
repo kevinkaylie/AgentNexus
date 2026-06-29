@@ -34,6 +34,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_total_executions": 30,       # NEW
         "max_wall_clock_sec": 14400,      # NEW
         "require_final_acceptance": False, # NEW
+        "allowed_commands": [
+            "python", "python3", "pytest",
+            "claude", "claude.cmd",
+            "codex", "codex.cmd",
+            "openclaw", "openclaw.cmd",
+        ],
     },
     "workers": {},
 }
@@ -77,7 +83,7 @@ def load_runner_config(path: str) -> dict[str, Any]:
         for k in ("workdir", "timeout_sec", "max_retries_per_stage",
                   "max_total_executions", "max_wall_clock_sec",
                   "require_final_acceptance",
-                  "max_output_bytes", "network_access"):
+                  "max_output_bytes", "network_access", "allowed_commands"):
             if k in raw["defaults"]:
                 cfg["defaults"][k] = raw["defaults"][k]
 
@@ -294,7 +300,12 @@ async def reconcile_workers(
 # ── Stage execution ─────────────────────────────────────────────────
 
 # Built-in allowed commands for the local_cli backend
-DEFAULT_ALLOWED_COMMANDS = {"python", "python3", "claude", "codex", "pytest"}
+DEFAULT_ALLOWED_COMMANDS = {
+    "python", "python3", "pytest",
+    "claude", "claude.cmd",
+    "codex", "codex.cmd",
+    "openclaw", "openclaw.cmd",
+}
 
 
 async def execute_stage(

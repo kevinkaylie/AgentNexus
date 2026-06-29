@@ -26,7 +26,8 @@ def _build_constraints(config: dict[str, Any], worker: dict[str, Any]) -> dict[s
     """Build execution constraints from config defaults merged with worker overrides.
 
     Worker-level fields take precedence over defaults. Propagates:
-    timeout_sec, workdir, max_output_bytes, network_access, env.
+    timeout_sec, workdir, max_output_bytes, network_access, output adapter,
+    allowed_commands, env.
     Design ref: docs/design/design-objective-loop-v1.1.md Sections 6.1-6.2
     """
     defaults = config.get("defaults", {})
@@ -37,7 +38,16 @@ def _build_constraints(config: dict[str, Any], worker: dict[str, Any]) -> dict[s
                                         defaults.get("max_output_bytes", 1_048_576)),
         "network_access": worker.get("network_access",
                                       defaults.get("network_access", "deny_by_default")),
+        "output_adapter": worker.get("output_adapter",
+                                      defaults.get("output_adapter", "agentnexus_json_v1")),
+        "artifact_type": worker.get("artifact_type",
+                                    defaults.get("artifact_type", "TextArtifact")),
+        "allowed_commands": worker.get("allowed_commands",
+                                       defaults.get("allowed_commands", [])),
     }
+    output_text_paths = worker.get("output_text_paths", defaults.get("output_text_paths"))
+    if output_text_paths:
+        constraints["output_text_paths"] = output_text_paths
     # env: only from worker; defaults.env would be too broad
     worker_env = worker.get("env")
     if worker_env and isinstance(worker_env, dict):
@@ -108,12 +118,13 @@ Return a JSON block with:
     return prompt
 
 
-def _substitute_template_args(args: list[str], prompt: str) -> list[str]:
+def _substitute_template_args(args: list[str], prompt: str, **variables: str) -> list[str]:
     """Replace {prompt} and other template variables in command args."""
     result = []
+    replacements = {"prompt": prompt, **variables}
     for arg in args:
-        # Replace {prompt} with the actual prompt text
-        arg = arg.replace("{prompt}", prompt)
+        for key, value in replacements.items():
+            arg = arg.replace("{" + key + "}", str(value))
         result.append(arg)
     return result
 
@@ -224,7 +235,9 @@ async def runner_tick(
 
             # Substitute template args with actual prompt
             command = [worker["command"]] + _substitute_template_args(
-                worker.get("args", []), prompt
+                worker.get("args", []), prompt,
+                stage=stage, role=role, objective=objective,
+                coordination_session_id=sid, run_id=rid,
             )
 
             # Create execution record
@@ -262,6 +275,7 @@ async def runner_tick(
                     backend_kind=worker.get("adapter", "local_cli"),
                     command=command,
                     constraints=constraints,
+                    allowed_commands=set(constraints.get("allowed_commands") or []),
                     timeout_sec=constraints.get("timeout_sec", 1800),
                     max_output_bytes=constraints.get("max_output_bytes", 1_048_576),
                 )
@@ -276,7 +290,9 @@ async def runner_tick(
             if result.status == "changes_requested":
                 retry_prompt = "Your previous response could not be parsed as valid JSON. Please reformat your result as the specified JSON structure only."
                 retry_command = [worker["command"]] + _substitute_template_args(
-                    worker.get("args", []), retry_prompt
+                    worker.get("args", []), retry_prompt,
+                    stage=stage, role=role, objective=objective,
+                    coordination_session_id=sid, run_id=rid,
                 )
                 try:
                     result = await execute_stage(
@@ -287,6 +303,7 @@ async def runner_tick(
                         backend_kind=worker.get("adapter", "local_cli"),
                         command=retry_command,
                         constraints=constraints,
+                        allowed_commands=set(constraints.get("allowed_commands") or []),
                         timeout_sec=constraints.get("timeout_sec", 1800),
                         max_output_bytes=constraints.get("max_output_bytes", 1_048_576),
                     )
@@ -444,7 +461,9 @@ async def process_action(
         objective=objective,
     )
     command = [worker["command"]] + _substitute_template_args(
-        worker.get("args", []), prompt
+        worker.get("args", []), prompt,
+        stage=stage, role=role, objective=objective,
+        coordination_session_id=session_id, run_id=run_id,
     )
 
     constraints = _build_constraints(config, worker)
@@ -457,6 +476,7 @@ async def process_action(
         backend_kind=worker.get("adapter", "local_cli"),
         command=command,
         constraints=constraints,
+        allowed_commands=set(constraints.get("allowed_commands") or []),
         timeout_sec=constraints.get("timeout_sec", 1800),
         max_output_bytes=constraints.get("max_output_bytes", 1_048_576),
     )

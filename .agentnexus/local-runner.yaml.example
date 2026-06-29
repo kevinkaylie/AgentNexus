@@ -18,6 +18,16 @@ defaults:
   require_final_acceptance: false
   network_access: deny_by_default
   max_output_bytes: 1048576
+  allowed_commands:
+    - python
+    - python3
+    - pytest
+    - claude
+    - claude.cmd
+    - codex
+    - codex.cmd
+    - openclaw
+    - openclaw.cmd
 
 workers:
   # ── Claude Code as developer ─────────────────────────────────────────
@@ -27,10 +37,11 @@ workers:
   #   worker_type: interactive_cli
   #   adapter: local_cli
   #   command: claude
-  #   args: ["-p", "{prompt}"]
+  #   args: ["-p", "{prompt}", "--output-format", "text", "--max-turns", "1"]
   #   roles: ["developer", "implement"]
   #   capabilities: ["Code", "Debug", "Implement"]
   #   output_contract: agentnexus_json_v1
+  #   output_adapter: agentnexus_json_v1
   #   workdir: /path/to/your/project
 
   # ── Codex as reviewer ────────────────────────────────────────────────
@@ -44,6 +55,45 @@ workers:
   #   roles: ["reviewer", "code_review"]
   #   capabilities: ["Review", "Code", "QA"]
   #   output_contract: agentnexus_json_v1
+  #   output_adapter: agentnexus_json_v1
+  #
+  # Windows note: if the Store-installed codex.exe is blocked by WindowsApps
+  # permissions, point command to a usable codex.cmd/npm shim or wrapper script
+  # and add its basename to allowed_commands.
+
+  # ── OpenClaw as general worker ───────────────────────────────────────
+  # OpenClaw --json returns a platform wrapper. output_adapter unwraps
+  # payloads[].text / meta.finalAssistantRawText into an AgentNexus result.
+  # openclaw_worker:
+  #   worker_did: did:agentnexus:z6MkOpenClawWorker...
+  #   agent_name: OpenClawWorker
+  #   worker_type: interactive_cli
+  #   adapter: local_cli
+  #   command: openclaw
+  #   args: ["agent", "--local", "--json", "--session-key", "agent:agentnexus:{stage}", "--message", "{prompt}"]
+  #   roles: ["developer", "reviewer", "tester", "implement", "code_review", "test"]
+  #   capabilities: ["Code", "Review", "Test"]
+  #   output_contract: agentnexus_json_v1
+  #   output_adapter: openclaw_json
+  #   artifact_type: OpenClawArtifact
+
+  # ── Generic JSON wrapper adapter ────────────────────────────────────
+  # Use this for any CLI/agent that returns {"result": {"text": "..."}}
+  # or another wrapper around assistant text.
+  # generic_json_agent:
+  #   worker_did: did:agentnexus:z6MkGenericAgent...
+  #   agent_name: GenericJsonAgent
+  #   worker_type: interactive_cli
+  #   adapter: local_cli
+  #   command: my-agent-cli
+  #   args: ["run", "--json", "--prompt", "{prompt}"]
+  #   allowed_commands: ["my-agent-cli"]
+  #   roles: ["developer"]
+  #   capabilities: ["Code"]
+  #   output_contract: agentnexus_json_v1
+  #   output_adapter: json_text
+  #   output_text_paths: ["result.text", "message.content"]
+  #   artifact_type: GenericAgentArtifact
 
   # ── Pytest as tester ─────────────────────────────────────────────────
   # pytest_runner:

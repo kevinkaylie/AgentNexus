@@ -8,6 +8,49 @@ import uuid
 from unittest.mock import AsyncMock, patch, MagicMock
 
 
+def test_obj_runner_build_constraints_passes_agent_adapter_options():
+    """Worker-level adapter settings are passed into backend constraints."""
+    from agent_net.node.runner_loop import _build_constraints
+
+    config = {
+        "defaults": {
+            "timeout_sec": 30,
+            "allowed_commands": ["python", "openclaw.cmd"],
+            "output_adapter": "agentnexus_json_v1",
+            "artifact_type": "TextArtifact",
+        },
+    }
+    worker = {
+        "timeout_sec": 10,
+        "output_adapter": "openclaw_json",
+        "output_text_paths": ["meta.finalAssistantRawText"],
+        "artifact_type": "OpenClawArtifact",
+    }
+
+    constraints = _build_constraints(config, worker)
+
+    assert constraints["timeout_sec"] == 10
+    assert constraints["allowed_commands"] == ["python", "openclaw.cmd"]
+    assert constraints["output_adapter"] == "openclaw_json"
+    assert constraints["output_text_paths"] == ["meta.finalAssistantRawText"]
+    assert constraints["artifact_type"] == "OpenClawArtifact"
+
+
+def test_obj_runner_substitute_template_args_supports_stage_variables():
+    """Command templates can include prompt and runtime identifiers."""
+    from agent_net.node.runner_loop import _substitute_template_args
+
+    args = _substitute_template_args(
+        ["agent:agentnexus:{stage}", "{role}", "{run_id}", "{prompt}"],
+        "hello",
+        stage="implement",
+        role="developer",
+        run_id="run_123",
+    )
+
+    assert args == ["agent:agentnexus:implement", "developer", "run_123", "hello"]
+
+
 # ═══════════════════════════════════════════════════════════════
 # Runner tick() — single iteration of the poll loop
 # ═══════════════════════════════════════════════════════════════

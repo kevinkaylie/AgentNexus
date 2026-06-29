@@ -4,6 +4,7 @@ Design ref: docs/design/design-objective-loop-v1.1.md Sections 4.3, 6.1-6.3
 """
 import json
 import os
+import sys
 import tempfile
 import time
 import pytest
@@ -105,6 +106,31 @@ print(json.dumps({"summary": "ok", "status": "completed", "artifact_type": "T",
     "artifact_body": "", "evidence_refs": []}))
 '''
 
+OPENCLAW_WRAPPER_WITH_CONTRACT = r'''
+import json
+print(json.dumps({
+    "payloads": [{
+        "text": json.dumps({
+            "contract": "agentnexus_json_v1",
+            "summary": "OpenClaw normalized",
+            "status": "completed",
+            "artifact_type": "SmokeTest",
+            "artifact_body": "ok",
+            "evidence_refs": []
+        })
+    }],
+    "meta": {"finalAssistantRawText": ""}
+}))
+'''
+
+OPENCLAW_WRAPPER_WITH_TEXT = r'''
+import json
+print(json.dumps({
+    "payloads": [{"text": "OpenClaw produced plain text"}],
+    "meta": {"finalAssistantRawText": "OpenClaw produced plain text"}
+}))
+'''
+
 
 def test_obj_local_cli_destructive_detection_ignores_option_names():
     """Dangerous command detection must not flag benign hyphenated options."""
@@ -125,6 +151,34 @@ def _write_script(content: str, dir_: str, name: str) -> str:
     with open(path, "w") as f:
         f.write(content)
     return path
+
+
+async def _run_python_script(script_content: str, constraints: dict | None = None):
+    from agent_net.node.execution_backends.local_cli import LocalCLIBackend
+
+    with tempfile.TemporaryDirectory() as tmp:
+        script = _write_script(script_content, tmp, "worker")
+        backend = LocalCLIBackend(
+            allowed_commands={os.path.basename(sys.executable).upper()},
+            default_timeout_sec=10,
+            max_output_bytes=1_000_000,
+        )
+        handle = await backend.start_execution(
+            coordination_session_id="cs_test",
+            run_id="run_test",
+            stage="implement",
+            worker_did="did:agentnexus:w1",
+            input_refs=[],
+            constraints=constraints or {"timeout_sec": 10},
+            command=[sys.executable, script],
+        )
+
+        for _ in range(30):
+            await asyncio.sleep(0.1)
+            handle = await backend.poll_execution(handle)
+            if handle.status in ("completed", "failed", "blocked", "timed_out"):
+                break
+        return await backend.collect_result(handle)
 
 
 @pytest.mark.asyncio
@@ -170,6 +224,42 @@ async def test_obj_local_cli_backend_successful_run():
         assert result.artifact_body == "test output"
         assert result.summary == "Task completed"
         assert "ref1" in result.evidence_refs
+
+
+@pytest.mark.asyncio
+async def test_obj_local_cli_backend_openclaw_wrapper_with_contract():
+    """OpenClaw JSON wrapper can carry an AgentNexus contract in assistant text."""
+    result = await _run_python_script(
+        OPENCLAW_WRAPPER_WITH_CONTRACT,
+        constraints={
+            "timeout_sec": 10,
+            "output_adapter": "openclaw_json",
+            "artifact_type": "OpenClawArtifact",
+        },
+    )
+
+    assert result.status == "completed"
+    assert result.artifact_type == "SmokeTest"
+    assert result.summary == "OpenClaw normalized"
+    assert result.artifact_body == "ok"
+
+
+@pytest.mark.asyncio
+async def test_obj_local_cli_backend_openclaw_wrapper_with_plain_text():
+    """OpenClaw plain assistant text is wrapped as an AgentNexus artifact."""
+    result = await _run_python_script(
+        OPENCLAW_WRAPPER_WITH_TEXT,
+        constraints={
+            "timeout_sec": 10,
+            "output_adapter": "openclaw_json",
+            "artifact_type": "OpenClawArtifact",
+        },
+    )
+
+    assert result.status == "completed"
+    assert result.artifact_type == "OpenClawArtifact"
+    assert result.summary == "OpenClaw produced plain text"
+    assert result.artifact_body == "OpenClaw produced plain text"
 
 
 @pytest.mark.asyncio

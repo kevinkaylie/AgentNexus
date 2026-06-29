@@ -30,6 +30,15 @@ _DESTRUCTIVE_PATTERNS = [
 
 # Max bytes to scan for JSON extraction
 _JSON_SCAN_LIMIT = 500_000
+_CONTRACT = "agentnexus_json_v1"
+
+
+def _short_summary(text: str, limit: int = 200) -> str:
+    for line in text.splitlines():
+        line = line.strip()
+        if line:
+            return line[:limit]
+    return text.strip()[:limit]
 
 
 def _is_destructive(argv: list[str]) -> bool:
@@ -62,6 +71,111 @@ def _extract_json(text: str) -> dict | None:
             return json.loads(cand)
         except json.JSONDecodeError:
             continue
+    return None
+
+
+def _get_path(data: object, path: str) -> object:
+    """Read a simple dotted path with optional [index] selectors from JSON data."""
+    current = data
+    for part in path.split("."):
+        if current is None:
+            return None
+        while part:
+            if "[" in part:
+                key, rest = part.split("[", 1)
+                if key:
+                    if not isinstance(current, dict):
+                        return None
+                    current = current.get(key)
+                idx_text, part = rest.split("]", 1)
+                if not isinstance(current, list):
+                    return None
+                try:
+                    current = current[int(idx_text)]
+                except (ValueError, IndexError):
+                    return None
+                if part.startswith("."):
+                    part = part[1:]
+            else:
+                if not isinstance(current, dict):
+                    return None
+                current = current.get(part)
+                part = ""
+    return current
+
+
+def _extract_text_candidates(parsed: dict, paths: list[str]) -> list[str]:
+    candidates: list[str] = []
+    for path in paths:
+        value = _get_path(parsed, path)
+        if isinstance(value, str) and value.strip():
+            candidates.append(value)
+
+    payloads = parsed.get("payloads")
+    if isinstance(payloads, list):
+        for payload in payloads:
+            if isinstance(payload, dict):
+                text = payload.get("text")
+                if isinstance(text, str) and text.strip():
+                    candidates.append(text)
+    return candidates
+
+
+def _wrap_text_result(text: str, artifact_type: str = "TextArtifact") -> dict:
+    return {
+        "contract": _CONTRACT,
+        "status": "completed",
+        "artifact_type": artifact_type,
+        "artifact_body": text,
+        "summary": _short_summary(text) or "Text output captured",
+        "evidence_refs": [],
+    }
+
+
+def _normalize_output(
+    stdout: str,
+    *,
+    output_adapter: str = _CONTRACT,
+    output_text_paths: list[str] | None = None,
+    default_artifact_type: str = "TextArtifact",
+) -> dict | None:
+    """Normalize CLI-specific stdout into the AgentNexus result contract.
+
+    Supported adapters:
+    - agentnexus_json_v1: stdout already contains an AgentNexus JSON result.
+    - openclaw_json: stdout is OpenClaw's JSON wrapper; unwrap assistant text.
+    - json_text: stdout is a generic JSON wrapper; extract text paths.
+    - text_artifact: wrap plain stdout as an artifact.
+    """
+    adapter = output_adapter or _CONTRACT
+
+    if adapter == "text_artifact":
+        return _wrap_text_result(stdout, default_artifact_type)
+
+    parsed = _extract_json(stdout)
+    if parsed is None:
+        return None
+
+    if adapter == _CONTRACT:
+        return parsed
+
+    paths = output_text_paths or []
+    if adapter == "openclaw_json":
+        paths = paths or [
+            "meta.finalAssistantRawText",
+            "meta.finalAssistantVisibleText",
+            "payloads[0].text",
+        ]
+    elif adapter != "json_text":
+        return parsed
+
+    for candidate in _extract_text_candidates(parsed, paths):
+        nested = _extract_json(candidate)
+        if nested:
+            return nested
+        if candidate.strip():
+            return _wrap_text_result(candidate, default_artifact_type)
+
     return None
 
 
@@ -119,7 +233,9 @@ class LocalCLIBackend:
         # Validate command
         exe = command[0]
         exe_name = os.path.basename(exe)
-        if exe_name not in self.allowed_commands and exe not in self.allowed_commands:
+        allowed = {str(cmd).lower() for cmd in self.allowed_commands}
+        allowed.update(os.path.basename(str(cmd)).lower() for cmd in self.allowed_commands)
+        if exe_name.lower() not in allowed and exe.lower() not in allowed:
             h = ExecutionHandle(
                 execution_id=execution_id, backend_kind=self.kind,
                 worker_did=worker_did, stage=stage, status="blocked",
@@ -185,6 +301,9 @@ class LocalCLIBackend:
             handle_meta["cwd"] = kwargs["cwd"]
         if kwargs.get("env"):
             handle_meta["env"] = kwargs["env"]
+        for key in ("output_adapter", "output_text_paths", "artifact_type"):
+            if key in constraints:
+                handle_meta[key] = constraints[key]
 
         handle = ExecutionHandle(
             execution_id=execution_id, backend_kind=self.kind,
@@ -266,14 +385,19 @@ class LocalCLIBackend:
 
         # Parse worker output
         stdout = meta.get("stdout", "")
-        parsed = _extract_json(stdout)
+        parsed = _normalize_output(
+            stdout,
+            output_adapter=meta.get("output_adapter", _CONTRACT),
+            output_text_paths=meta.get("output_text_paths"),
+            default_artifact_type=meta.get("artifact_type", "TextArtifact"),
+        )
 
         if parsed:
             contract = parsed.get("contract", "")
-            if contract != "agentnexus_json_v1":
+            if contract != _CONTRACT:
                 import logging
                 logging.getLogger("agentnexus").warning(
-                    f"Worker {current.worker_did} output missing agentnexus_json_v1 "
+                    f"Worker {current.worker_did} output missing {_CONTRACT} "
                     f"contract (got: {contract or 'none'}). This is required for L0-Ready."
                 )
             return ExecutionResult(
@@ -317,13 +441,18 @@ class LocalCLIBackend:
                     retry_stdout_str = retry_stdout.decode("utf-8", errors="replace")[:self.max_output_bytes]
                     # Try parsing the fresh output
                     self._outputs[eid] = (retry_stdout_str, retry_stderr.decode("utf-8", errors="replace")[:self.max_output_bytes])
-                    parsed = _extract_json(retry_stdout_str)
+                    parsed = _normalize_output(
+                        retry_stdout_str,
+                        output_adapter=retry_meta.get("output_adapter", _CONTRACT),
+                        output_text_paths=retry_meta.get("output_text_paths"),
+                        default_artifact_type=retry_meta.get("artifact_type", "TextArtifact"),
+                    )
                     if parsed:
                         contract = parsed.get("contract", "")
-                        if contract != "agentnexus_json_v1":
+                        if contract != _CONTRACT:
                             import logging
                             logging.getLogger("agentnexus").warning(
-                                f"Worker {current.worker_did} output missing agentnexus_json_v1 "
+                                f"Worker {current.worker_did} output missing {_CONTRACT} "
                                 f"contract (got: {contract or 'none'}). This is required for L0-Ready."
                             )
                         return ExecutionResult(

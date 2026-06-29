@@ -99,6 +99,26 @@ def test_obj_runner_load_config_defaults():
     os.unlink(path)
 
 
+def test_obj_runner_load_config_allowed_commands_default():
+    """Default config includes common CLI agent command shims."""
+    from agent_net.node.local_runner import load_runner_config
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", delete=False
+    ) as f:
+        f.write("daemon_url: http://localhost:8765\n")
+        path = f.name
+
+    try:
+        cfg = load_runner_config(path)
+        allowed = cfg["defaults"]["allowed_commands"]
+        assert "claude.cmd" in allowed
+        assert "codex.cmd" in allowed
+        assert "openclaw.cmd" in allowed
+    finally:
+        os.unlink(path)
+
+
 def test_obj_runner_load_config_does_not_mutate_defaults():
     """YAML defaults are merged without leaking into module-level DEFAULT_CONFIG."""
     from agent_net.node.local_runner import DEFAULT_CONFIG, load_runner_config

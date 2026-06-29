@@ -15,14 +15,14 @@
 
 ## 一句话总结
 
-AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0.x 收敛为”团队协作开发者预览”：Orchestration SDK + 常驻秘书 + Enclave/Playbook + 基础 Web 入口。Coding Coordination V1 后端闭环、SDK facade、CLI demo/runtime-mock、Dashboard detail、Quickstart、Delivery Manifest closure 已完成。Objective Loop V1.1 核心模块（storage/backend/runner/loop engine/gateway）已开发完成；L0-Ready hardening 完成（worker_did 真实 DID、contract 校验、Registry reconcile、lease 恢复、loop budget、fallback chain、DecisionGate 终端路径）；进入 L0-Ready 真实 Worker 验收阶段。
+AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——去中心化身份 + 联邦发现 + 端到端加密 + 智能路由 + 协作协议 + Enclave/Playbook + Context Budget + 治理信任。v1.0.x 收敛为”团队协作开发者预览”：Orchestration SDK + 常驻秘书 + Enclave/Playbook + 基础 Web 入口。Coding Coordination V1 后端闭环、SDK facade、CLI demo/runtime-mock、Dashboard detail、Quickstart、Delivery Manifest closure 已完成。Objective Loop V1.1 核心模块（storage/backend/runner/loop engine/gateway）已开发完成；L0-Ready hardening 完成（worker_did 真实 DID、contract 校验、Registry reconcile、lease 恢复、loop budget、fallback chain、DecisionGate 终端路径）；新增 Agent Adapter Contract，可将 Claude Code / Codex / OpenClaw / 任意 CLI wrapper 输出归一为 `agentnexus_json_v1`；进入 L0-Ready 真实 Worker 验收阶段。
 
 ## 关键数字
 
 | 指标 | 值 |
 |------|-----|
 | 当前版本 | v1.0.1 developer preview → v1.1 L0-Ready 过渡中（团队协作开发者预览已发布；Coding Coordination V1 release closure 完成；Objective Loop V1.1 L0-Ready hardening 完成，待真实 Worker 验收） |
-| 测试数 | 全量：547 passed, 8 skipped（含 59 个 Objective Loop 测试）；前端 build 通过 |
+| 测试数 | 全量：547+ passed, 8 skipped（含 Objective Loop / Adapter Contract 回归）；前端 build 通过 |
 | MCP 工具数 | 37 |
 | Python | 3.10+ |
 | 存储 | SQLite (aiosqlite) |
@@ -35,7 +35,7 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | 第一版推广 | ✅ 可启动 | 以 developer preview 口径推广，目标是技术反馈、协议评审和早期集成，不承诺生产级多机运行 |
 | 对外主叙事 | ✅ 已收敛 | DID 身份、授权、产物交付和目标循环的多 Agent 协作底座 |
 | 最短验证路径 | ✅ 已具备 | `docs/quickstart.md`、`docs/quickstart-coding-coordination.md`、`docs/quickstart-objective-loop.md` |
-| L0 真实 Worker 验收 | 🚧 进行中 | 完成后可把推广口径从 developer preview 提升到 L0-ready preview |
+| L0 真实 Worker 验收 | 🚧 进行中 | Claude CLI + 真实 DID 烟测已通过；OpenClaw wrapper 已有输出适配，仍需完整 objective loop 多 Worker 验收 |
 | 生产级安全承诺 | 📋 后续 | per-agent token、Strict JCS、signed delivery package、hard-enforce `/deliver` 后移 |
 
 ## 版本状态
@@ -51,7 +51,7 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | v1.0.1 | ✅ Developer Preview | 团队协作开发者预览：意图路由、鉴权矩阵 v3、Orchestration SDK、Secretary Phase B、Dashboard/Setup 主链路已完成；代码评审阻塞项已解决 |
 | Coding Coordination V1 | ✅ 已实现 | 以 coding 场景验证 protocol-agnostic trusted coordination loop；PlaybookRun 作为运行态状态源，closure 自动生成 Delivery Manifest 并写入 Enclave Vault；63 个 coordination/manifest 回归测试通过 |
 | Coding Coordination V1 Release Closure | ✅ 已完成 | SDK facade、CLI demo、runtime-mock、Dashboard detail、Quickstart 已全部完成；新开发者可通过 SDK 示例或 CLI 命令跑通完整 coding coordination 闭环 |
-| v1.1 | 🚧 开发中 | Objective Loop（L0 本机）：P0-1~P0-6 全部完成（含 Execution API、Daemon 集成、Quickstart）；Runner poll loop 验证中；L1/L2 后移到 v1.2+ |
+| v1.1 | 🚧 开发中 | Objective Loop（L0 本机）：P0-1~P0-7 全部完成；Agent Adapter Contract 已加入本机 runner；真实异构 Worker 完整验收中；L1/L2 后移到 v1.2+ |
 | v1.5 | 📋 规划中 | 企业版 MVP：per-agent token、Admin API、审计日志、多租户、RBAC、统一策略引擎、强授权与可信交付 |
 
 ## 模块状态
@@ -77,7 +77,7 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 | 秘书编排（Phase B） | ✅ | 已完成开发：Presence、Adapter Contract、Message Envelope、Delivery Manifest、Context Budget & Handoff、Owner abort、SDK/CLI 原生入口 |
 | Coding Coordination V1 | ✅ | 将 Secretary 升级为 Coordination Controller：PlaybookRun 作为运行态状态源，closure 自动生成 Delivery Manifest 并写入 Enclave Vault；63 个 coordination/manifest 回归测试通过 |
 | Coding Coordination V1 Release Closure | ✅ | SDK facade、CLI demo、runtime-mock、Dashboard detail、Quickstart 已全部完成；新开发者可通过 SDK 示例或 CLI 命令跑通完整 coding coordination 闭环 |
-| Objective Loop V1.1 P0-1~P0-5 | ✅ | objective_executions 表 + CRUD、ExecutionBackend/Protocol + LocalCLIBackend、local_runner YAML + stage 执行、Loop Engine next_action() 状态机、Secretary DecisionGate handler；新增 56 个测试 |
+| Objective Loop V1.1 P0-1~P0-7 | ✅ | objective_executions 表 + CRUD、ExecutionBackend/Protocol + LocalCLIBackend、local_runner YAML + stage 执行、Loop Engine next_action() 状态机、Secretary DecisionGate handler、Agent Adapter Contract；支持 `agentnexus_json_v1` / `openclaw_json` / `json_text` / `text_artifact` 输出归一化 |
 | Objective Loop Daemon 集成 | ✅ | Execution API endpoints（POST/GET executions、runner poll loop）、execution 集成测试已完成 |
 | Web 仪表盘 | ✅ | Setup 六步闭环（Token→Owner→Secretary→Workers→Dispatch→Result）、Dashboard 聚合视图、Agents worker_type/presence、Enclaves Run 详情/manifest/context_budget 已实现并构建同步 |
 | 鉴权矩阵 v3 | ✅ | 已实现 v1.0 阶段性边界：token + actor DID 校验、读接口私有化、/deliver soft-enforce 签名验证；per-agent token 和 hard-enforce 后移 |
@@ -87,8 +87,8 @@ AgentNexus 是 AI Agent 的通信基础设施与团队协作编排底座——�
 
 | 类别 | 内容 |
 |------|------|
-| 已完成 | P0-1 objective_executions 存储、P0-2 ExecutionBackend + LocalCLIBackend、P0-3 local_runner + YAML config + worker 匹配、P0-4 Loop Engine next_action() 状态机、P0-5 Secretary DecisionGate handler、P0-6 Execution API endpoints + daemon 集成 + Quickstart；P0-7 L0-Ready hardening（worker_did 真实 DID、agentnexus_json_v1 contract 校验、Worker Registry reconcile、lease 过期恢复、loop budget、fallback chain、DecisionGate 终端路径）；59 个测试 |
-| 进行中 | L0-Ready 真实 Worker 验收（需要 3 个真实本机 Worker DID 注册并跑通完整 objective loop） |
+| 已完成 | P0-1 objective_executions 存储、P0-2 ExecutionBackend + LocalCLIBackend、P0-3 local_runner + YAML config + worker 匹配、P0-4 Loop Engine next_action() 状态机、P0-5 Secretary DecisionGate handler、P0-6 Execution API endpoints + daemon 集成 + Quickstart；P0-7 L0-Ready hardening（worker_did 真实 DID、agentnexus_json_v1 contract 校验、Worker Registry reconcile、lease 过期恢复、loop budget、fallback chain、DecisionGate 终端路径）；P0-8 Agent Adapter Contract（OpenClaw wrapper / generic JSON text / plain text artifact 输出归一化） |
+| 进行中 | L0-Ready 真实 Worker 验收（需要 3 个真实本机 Worker DID 注册并跑通完整 objective loop；Claude 单 Worker 烟测已通过） |
 | 后移到 v1.2 | LAN Worker、Relay Worker、artifact transport 跨网络 |
 | 后移到 v1.3+ | Productization：Tauri 桌面壳、系统托盘通知、Adapter marketplace |
 

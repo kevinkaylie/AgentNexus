@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Agent Adapter Contract（2026-06-29）
+
+- LocalCLIBackend 新增输出归一化器，支持 `agentnexus_json_v1`、`openclaw_json`、`json_text`、`text_artifact` 四种 `output_adapter`。
+- OpenClaw `--json` wrapper 可通过 `payloads[].text` / `meta.finalAssistantRawText` 归一为 AgentNexus artifact；任意 JSON wrapper 可通过 `output_text_paths` 接入。
+- local-runner 默认命令 allowlist 增加 `claude.cmd`、`codex.cmd`、`openclaw.cmd`，并支持大小写不敏感的 basename / 全路径匹配。
+- runner 命令模板支持 `{stage}`、`{role}`、`{objective}`、`{coordination_session_id}`、`{run_id}`，用于 OpenClaw session key、外部 agent routing key 等场景。
+- 新增 `docs/integrations/agent-adapter-contract.md`，明确任意 Agent 接入范式：DID 负责身份，roles/capabilities 负责路由，local_cli 负责启动，output_adapter 负责输出归一化。
+
 ### Developer Preview 推广收口（2026-06-26）
 
 - README 首屏新增 Developer Preview 入口，明确第一版公开定位：DID 身份、授权、产物交付和 Objective Loop 的多 Agent 协作底座。
