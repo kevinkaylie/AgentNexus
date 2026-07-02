@@ -78,10 +78,13 @@ async def main():
         owner_did=owner_did,
         actor_did=secretary_did,
         objective="Implement demo login module",
+        enclave_id=enclave_id,
         complexity="medium",
     )
     session_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
     print(f"Session: {session_id}")
+    print(f"Run:     {run_id}")
 
     workflow = [
         ("clarify", "RequirementSpec", designer_did, "ClarifyReceipt", reviewer_did, "clarify.md"),
@@ -96,6 +99,7 @@ async def main():
     for stage, artifact_type, producer_did, receipt_type, issuer_did, vault_key in workflow:
         artifact = await nexus.coordination.submit_artifact(
             coordination_session_id=session_id,
+            run_id=run_id,
             stage=stage,
             artifact_type=artifact_type,
             producer_did=producer_did,
@@ -105,6 +109,7 @@ async def main():
 
         receipt = await nexus.coordination.submit_receipt(
             coordination_session_id=session_id,
+            run_id=run_id,
             stage=stage,
             receipt_type=receipt_type,
             issuer_did=issuer_did,
@@ -115,6 +120,7 @@ async def main():
 
         state = await nexus.coordination.advance(
             coordination_session_id=session_id,
+            run_id=run_id,
             actor_did=secretary_did,
         )
         label = "completed" if state.get("status") == "completed" else state.get("current_stage", "")

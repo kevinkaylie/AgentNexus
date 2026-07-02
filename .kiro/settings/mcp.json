@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "nexus-secretary": {
+      "command": "python",
+      "args": [
+        "D:\\PycharmProjects\\AgentNexus\\main.py",
+        "node",
+        "mcp",
+        "--name",
+        "OpenClawSecretary",
+        "--caps",
+        "Planning,Coordination,Notification"
+      ]
+    }
+  }
+}

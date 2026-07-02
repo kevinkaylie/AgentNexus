@@ -41,6 +41,13 @@
   .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
   .badge-approved { background: rgba(74,222,128,0.15); color: var(--green); }
   .badge-rejected { background: rgba(248,113,113,0.15); color: var(--red); }
+  .badge-pending { background: rgba(251,191,36,0.15); color: var(--yellow); }
+  .badge-running { background: rgba(108,140,255,0.15); color: var(--accent); }
+  .mono { font-family: monospace; font-size: 11px; color: var(--text-muted); word-break: break-all; }
+  .kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; font-size: 12px; margin-top: 10px; }
+  .kv .label { color: var(--text-muted); }
+  .manifest-list { display: flex; flex-direction: column; gap: 12px; }
+  .manifest-body { margin-top: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; white-space: pre-wrap; overflow-x: auto; font-size: 11px; line-height: 1.45; }
   .loader { color: var(--text-muted); text-align: center; padding: 40px; }
   .error-box { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); border-radius: 8px; padding: 12px; color: var(--red); font-size: 13px; margin-bottom: 16px; }
   .nav-back { font-size: 12px; color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 12px; }
@@ -71,11 +78,37 @@ const API = '/coordination';
 let selectedId = null;
 
 function fmtDid(did) { return did ? did.substring(0, 24) + '...' : '—'; }
-function fmtTime(ts) { return ts ? new Date(ts).toLocaleString() : '—'; }
+function fmtTime(ts) {
+  if (!ts) return '—';
+  const n = Number(ts);
+  return new Date(n < 1000000000000 ? n * 1000 : n).toLocaleString();
+}
 
 async function api(path, params) {
   const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-  const r = await fetch(API + path + qs);
+  const headers = {};
+  const token = localStorage.getItem('daemon_token');
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const r = await fetch(API + path + qs, { headers });
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()));
+  return r.json();
+}
+
+async function apiRoot(path, params) {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  const headers = {};
+  const token = localStorage.getItem('daemon_token');
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const r = await fetch(path + qs, { headers });
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()));
+  return r.json();
+}
+
+async function postRoot(path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const token = localStorage.getItem('daemon_token');
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const r = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body || {}) });
   if (!r.ok) throw new Error(r.status + ' ' + (await r.text()));
   return r.json();
 }
@@ -119,20 +152,39 @@ function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 async function renderDetail(id, actor) {
   const main = document.getElementById('mainContent');
+  window._actorDid = actor;
   main.innerHTML = '<div class="loader">Loading session detail...</div>';
   try {
-    const [sess, timeline, artifacts, receipts, closures] = await Promise.all([
+    const [sess, timeline, artifacts, receipts, closures, execResp, nextAction] = await Promise.all([
       api(`/sessions/${id}`, { actor_did: actor }),
       api(`/sessions/${id}/timeline`, { actor_did: actor }),
       api(`/sessions/${id}/artifacts`, { actor_did: actor }),
       api(`/sessions/${id}/receipts`, { actor_did: actor }),
       api(`/sessions/${id}/closures`, { actor_did: actor }),
+      api(`/sessions/${id}/executions`, { actor_did: actor }).catch(() => ({ executions: [] })),
+      api(`/sessions/${id}/next-action`, { actor_did: actor }).catch(() => ({ action: {} })),
     ]);
     const s = sess.session || sess;
     const tl = timeline.timeline || [];
     const arts = artifacts.artifacts || [];
     const rcs = receipts.receipts || [];
     const cls = closures.closures || [];
+    const execs = (execResp && execResp.executions) ? execResp.executions : [];
+    const na = (nextAction && nextAction.action) ? nextAction.action : {};
+    const decisions = await loadDecisions(s, actor);
+    const manifests = await loadManifestDetails(s, cls, actor);
+
+    const nextActionHtml = na.action_type ? `
+      <div class="card" style="border-color: var(--accent);">
+        <h3>Next Action (Loop Engine)</h3>
+        <div class="kv">
+          <span class="label">Action</span><span><span class="badge badge-running">${esc(na.action_type)}</span></span>
+          <span class="label">Stage</span><span>${esc(na.stage || '—')}</span>
+          <span class="label">Role</span><span>${esc(na.role || '—')}</span>
+          <span class="label">Reason</span><span style="font-size:11px;color:var(--text-muted)">${esc(na.reason || '—')}</span>
+          ${na.gate ? `<span class="label">Gate</span><span><span class="badge badge-rejected">${esc(na.gate)}</span></span>` : ''}
+        </div>
+      </div>` : '';
 
     main.innerHTML = `
       <div class="header">
@@ -140,9 +192,13 @@ async function renderDetail(id, actor) {
         <h1>${esc(s.objective || 'Untitled')}</h1>
         <div class="sub">${esc(s.coordination_session_id)}</div>
       </div>
+      ${nextActionHtml}
       <div class="detail-grid">
         <div><span class="label">Status</span>: <span class="badge badge-approved">${esc(s.status || '—')}</span></div>
-        <div><span class="label">Workflow</span>: ${esc(s.workflow_id || '—')}</div>
+        <div><span class="label">Playbook</span>: ${esc(s.playbook_id || '—')}</div>
+        <div><span class="label">Current Stage</span>: ${esc(s.current_stage || '—')}</div>
+        <div><span class="label">Primary Run</span>: <span class="mono">${esc(s.playbook_run_id || '—')}</span></div>
+        <div><span class="label">Enclave</span>: <span class="mono">${esc(s.enclave_id || '—')}</span></div>
         <div><span class="label">Owner</span>: <span title="${esc(s.owner_did)}">${fmtDid(s.owner_did)}</span></div>
         <div><span class="label">Controller</span>: <span title="${esc(s.controller_did)}">${fmtDid(s.controller_did)}</span></div>
         <div><span class="label">Created</span>: ${fmtTime(s.created_at)}</div>
@@ -152,14 +208,69 @@ async function renderDetail(id, actor) {
         <button class="tab active" onclick="switchTab('timeline', event)">Timeline (${tl.length})</button>
         <button class="tab" onclick="switchTab('artifacts', event)">Artifacts (${arts.length})</button>
         <button class="tab" onclick="switchTab('receipts', event)">Receipts (${rcs.length})</button>
+        <button class="tab" onclick="switchTab('executions', event)">Executions (${execs.length})</button>
+        <button class="tab" onclick="switchTab('decisions', event)">Decisions (${decisions.length})</button>
         <button class="tab" onclick="switchTab('closures', event)">Closures (${cls.length})</button>
+        <button class="tab" onclick="switchTab('manifests', event)">Manifests (${manifests.length})</button>
       </div>
       <div id="tabContent">${renderTimeline(tl)}</div>
     `;
-    window._tabData = { timeline: tl, artifacts: arts, receipts: rcs, closures: cls };
+    window._tabData = { timeline: tl, artifacts: arts, receipts: rcs, executions: execs, decisions, closures: cls, manifests };
   } catch (e) {
     main.innerHTML = `<div class="error-box">Failed to load session: ${esc(e.message)}</div>`;
   }
+}
+
+async function loadDecisions(session, actor) {
+  if (!session.owner_did || !actor) return [];
+  try {
+    const data = await apiRoot('/owner/decisions', { owner_did: session.owner_did, actor_did: actor, status: '' });
+    return (data.decisions || []).filter(d => d.coordination_session_id === session.coordination_session_id);
+  } catch (_) {
+    return [];
+  }
+}
+
+function _vaultKeyPath(key) {
+  return key.split('/').map(encodeURIComponent).join('/');
+}
+
+function _manifestRefsFromClosures(cls) {
+  const refs = [];
+  for (const c of cls) {
+    const dm = c.sla_metrics && c.sla_metrics.delivery_manifest;
+    if (dm && dm.ref) refs.push(dm.ref);
+    for (const ref of (c.evidence_refs || [])) {
+      if (ref.startsWith('vault://') && ref.includes('/manifests/')) refs.push(ref);
+    }
+  }
+  return [...new Set(refs)];
+}
+
+function _parseVaultRef(ref) {
+  if (!ref || !ref.startsWith('vault://')) return null;
+  const rest = ref.substring('vault://'.length);
+  const idx = rest.indexOf('/');
+  if (idx <= 0) return null;
+  return { enclave_id: rest.substring(0, idx), key: rest.substring(idx + 1), ref };
+}
+
+async function loadManifestDetails(session, closures, actor) {
+  const refs = _manifestRefsFromClosures(closures);
+  const out = [];
+  for (const ref of refs) {
+    const parsed = _parseVaultRef(ref);
+    if (!parsed) continue;
+    try {
+      const entry = await apiRoot(`/enclaves/${encodeURIComponent(parsed.enclave_id)}/vault/${_vaultKeyPath(parsed.key)}`, { actor_did: actor });
+      let value = entry.value || '';
+      try { value = JSON.stringify(JSON.parse(value), null, 2); } catch (_) {}
+      out.push({ ref, key: parsed.key, value, error: '' });
+    } catch (e) {
+      out.push({ ref, key: parsed.key, value: '', error: e.message });
+    }
+  }
+  return out;
 }
 
 function renderTimeline(tl) {
@@ -191,18 +302,103 @@ function renderReceipts(rcs) {
       <span class="stage">${esc(r.stage || '')}</span>
       <span class="type">${esc(r.receipt_type)}</span>
       <span class="actor">${fmtDid(r.issuer_did)}</span>
-      <span class="badge ${r.decision === 'approved' ? 'badge-approved' : 'badge-rejected'}">${esc(r.decision)}</span>
+      <span class="badge ${['approved','passed'].includes(r.decision) ? 'badge-approved' : 'badge-rejected'}">${esc(r.decision)}</span>
     </div>`).join('') + '</div>';
+}
+
+function renderExecutions(execs) {
+  if (!execs || !execs.length) return '<div class="empty"><h3>No Executions</h3><p>No objective_executions found. Run the local-runner to create executions.</p></div>';
+  return '<div class="card"><h3>Executions (' + execs.length + ')</h3>' + execs.map(e => {
+    const badgeMap = { pending: 'badge-pending', running: 'badge-running', completed: 'badge-approved', failed: 'badge-rejected', timed_out: 'badge-rejected', blocked: 'badge-rejected', cancelled: 'badge-rejected' };
+    const badge = badgeMap[e.status] || 'badge-pending';
+    return "<div style='padding:10px 0;border-bottom:1px solid var(--border)'>" +
+      "<div class='row' style='border-bottom:none'>" +
+        "<span class='stage'>" + esc(e.stage) + "</span>" +
+        "<span class='badge ' + badge + ">" + esc(e.status) + "</span>" +
+        "<span class='actor' title='" + esc(e.worker_did) + "'>" + esc(e.backend_kind) + "</span>" +
+        "<span style='font-size:10px;color:var(--text-muted);margin-left:auto'>attempt #" + (e.attempt || 1) + "</span>" +
+      "</div>" +
+      "<div class='kv' style='margin-top:6px'>" +
+        "<span class='label'>ID</span><span class='mono'>" + esc(e.execution_id) + "</span>" +
+        (e.artifact_id ? "<span class='label'>Artifact</span><span class='mono'>" + esc(e.artifact_id) + "</span>" : '') +
+        (e.receipt_id ? "<span class='label'>Receipt</span><span class='mono'>" + esc(e.receipt_id) + "</span>" : '') +
+        (e.completed_at ? "<span class='label'>Completed</span><span>" + fmtTime(e.completed_at) + "</span>" : '') +
+        "<span class='label'>Created</span><span>" + fmtTime(e.created_at) + "</span>" +
+      "</div>" +
+      (e.result_hash ? "<div style='font-size:10px;color:var(--text-muted);margin-top:4px'>Hash: " + esc(e.result_hash.substring(0,32)) + "...</div>" : '') +
+      (e.error ? "<div style='font-size:11px;color:var(--red);margin-top:4px'>Error: " + esc(e.error) + "</div>" : '') +
+    "</div>";
+  }).join('') + '</div>';
+}
+
+function renderDecisions(items) {
+  if (!items.length) return '<p style="color:var(--text-muted);font-size:13px">No owner decisions.</p>';
+  return '<div class="card"><h3>Owner Decisions</h3>' + items.map(d => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div class="row" style="border-bottom:none">
+        <span class="stage">${esc(d.stage || '')}</span>
+        <span class="type">${esc(d.decision_id)}</span>
+        <span class="actor">${fmtDid(d.owner_did)}</span>
+        <span class="badge ${d.status === 'resolved' ? 'badge-approved' : 'badge-rejected'}">${esc(d.status)}</span>
+      </div>
+      <div class="kv">
+        <span class="label">Question</span><span>${esc(d.question || '')}</span>
+        <span class="label">Recommended</span><span class="mono">${esc(d.recommended_option || '—')}</span>
+        <span class="label">Response</span><span class="mono">${esc(JSON.stringify(d.response || {}, null, 2))}</span>
+      </div>
+      ${d.status === 'pending' ? `
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <input id="comment-${esc(d.decision_id)}" style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:6px;font-size:12px" placeholder="Comment" />
+          <button class="tab" style="border:1px solid var(--border);border-radius:6px" onclick="respondDecision('${esc(d.decision_id)}','approved')">Approve</button>
+          <button class="tab" style="border:1px solid var(--border);border-radius:6px" onclick="respondDecision('${esc(d.decision_id)}','changes_requested')">Request Changes</button>
+          <button class="tab" style="border:1px solid var(--border);border-radius:6px" onclick="respondDecision('${esc(d.decision_id)}','rejected')">Reject</button>
+          <button class="tab" style="border:1px solid var(--border);border-radius:6px;color:var(--red)" onclick="respondDecision('${esc(d.decision_id)}','aborted')">Abort</button>
+        </div>` : ''}
+    </div>`).join('') + '</div>';
+}
+
+async function respondDecision(decisionId, decision) {
+  const actor = window._actorDid || document.getElementById('filterOwner').value.trim();
+  const input = document.getElementById('comment-' + decisionId);
+  try {
+    await postRoot(`/owner/decisions/${encodeURIComponent(decisionId)}/respond`, {
+      actor_did: actor,
+      decision,
+      comment: input ? input.value : '',
+      channel_ref: 'dashboard://coordination'
+    });
+    if (selectedId) await selectSession(selectedId);
+  } catch (e) {
+    document.getElementById('tabContent').insertAdjacentHTML('afterbegin', `<div class="error-box">${esc(e.message)}</div>`);
+  }
 }
 
 function renderClosures(cls) {
   if (!cls.length) return '<p style="color:var(--text-muted);font-size:13px">No closures.</p>';
   return '<div class="card"><h3>Closures</h3>' + cls.map(c => `
-    <div class="row">
-      <span class="stage" style="width:auto">${esc(c.closure_id)}</span>
-      <span style="flex:1"></span>
-      <span class="badge ${c.sla_status === 'met' ? 'badge-approved' : 'badge-rejected'}">SLA: ${esc(c.sla_status || '—')}</span>
-      <span style="font-size:11px;color:var(--text-muted);margin-left:12px">${fmtTime(c.recorded_at)}</span>
+    <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div class="row" style="border-bottom:none">
+        <span class="stage" style="width:auto">${esc(c.closure_id)}</span>
+        <span style="flex:1"></span>
+        <span class="badge ${c.sla_status === 'met' ? 'badge-approved' : 'badge-rejected'}">SLA: ${esc(c.sla_status || '—')}</span>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:12px">${fmtTime(c.created_at || c.recorded_at)}</span>
+      </div>
+      <div class="kv">
+        <span class="label">Run</span><span class="mono">${esc((c.sla_metrics || {}).run_id || '—')}</span>
+        <span class="label">Receipt</span><span class="mono">${esc(c.receipt_id || '—')}</span>
+        <span class="label">Final Manifest</span><span class="mono">${esc(((c.sla_metrics || {}).delivery_manifest || {}).ref || '—')}</span>
+        <span class="label">Evidence</span><span class="mono">${esc((c.evidence_refs || []).join('\\n'))}</span>
+      </div>
+    </div>`).join('') + '</div>';
+}
+
+function renderManifests(items) {
+  if (!items.length) return '<p style="color:var(--text-muted);font-size:13px">No delivery manifests.</p>';
+  return '<div class="manifest-list">' + items.map(m => `
+    <div class="card">
+      <h3>${esc(m.key || 'Manifest')}</h3>
+      <div class="mono">${esc(m.ref)}</div>
+      ${m.error ? `<div class="error-box" style="margin-top:10px">${esc(m.error)}</div>` : `<pre class="manifest-body">${esc(m.value)}</pre>`}
     </div>`).join('') + '</div>';
 }
 
@@ -210,7 +406,7 @@ function switchTab(name, evt) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   if (evt && evt.target) evt.target.classList.add('active');
   const data = window._tabData || {};
-  const renderers = { timeline: renderTimeline, artifacts: renderArtifacts, receipts: renderReceipts, closures: renderClosures };
+  const renderers = { timeline: renderTimeline, artifacts: renderArtifacts, receipts: renderReceipts, executions: renderExecutions, decisions: renderDecisions, closures: renderClosures, manifests: renderManifests };
   document.getElementById('tabContent').innerHTML = renderers[name](data[name] || []);
 }
 

@@ -158,7 +158,8 @@ class CreateCoordinationSessionRequest(BaseModel):
     owner_did: str
     controller_did: str
     objective: str
-    workflow_id: str = "coding.v1"
+    playbook_id: str = "coding.v1"
+    enclave_id: Optional[str] = None
     intake_session_id: Optional[str] = None
     parent_session_id: Optional[str] = None
     coordination_session_id: Optional[str] = None
@@ -174,6 +175,7 @@ class ForkSessionRequest(BaseModel):
 
 
 class CreateDelegationRequest(BaseModel):
+    run_id: Optional[str] = None
     role: str
     delegator_did: str = ""
     delegatee_did: str
@@ -194,6 +196,7 @@ class RejectDelegationRequest(BaseModel):
 
 class SubmitArtifactRequest(BaseModel):
     coordination_session_id: str
+    run_id: Optional[str] = None
     stage: str
     artifact_type: str
     producer_did: str
@@ -204,6 +207,7 @@ class SubmitArtifactRequest(BaseModel):
 
 class SubmitReceiptRequest(BaseModel):
     coordination_session_id: str
+    run_id: Optional[str] = None
     stage: str
     receipt_type: str
     issuer_did: str
@@ -232,6 +236,7 @@ class CodingIntakeRequest(BaseModel):
     owner_did: str
     actor_did: str
     objective: str
+    enclave_id: Optional[str] = None
     complexity: str = "medium"
     risk_level: str = "normal"
     cost_policy: str = "balanced"
@@ -244,9 +249,45 @@ class CodingIntakeRequest(BaseModel):
 
 class CodingClarifyRequest(BaseModel):
     actor_did: str
+    run_id: Optional[str] = None
     requirement_spec: dict = {}
     content_ref: Optional[str] = None
 
 
 class CodingAdvanceRequest(BaseModel):
     actor_did: str
+
+
+# ── Objective Loop V1.1 request models ─────────────────────────────
+
+class CreateExecutionRequest(BaseModel):
+    coordination_session_id: str
+    run_id: str
+    stage: str
+    worker_did: str
+    backend_kind: str
+    actor_did: str
+    lease_ttl_sec: int = 1800
+    metadata: dict | None = None
+
+
+class UpdateExecutionRequest(BaseModel):
+    actor_did: str
+    status: str | None = None
+    lease_ttl_sec: int | None = None
+    external_session_id: str | None = None
+    metadata: dict | None = None
+
+
+class ExecutionResultPayload(BaseModel):
+    status: str  # completed | changes_requested | failed | blocked
+    artifact_type: str
+    artifact_body: str
+    summary: str
+    evidence_refs: list[str] = []
+    human_decision_request: dict | None = None
+
+
+class SubmitExecutionResultRequest(BaseModel):
+    actor_did: str
+    result: ExecutionResultPayload

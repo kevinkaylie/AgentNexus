@@ -1,5 +1,6 @@
 """秘书编排端点 — D-SEC-02"""
 import json
+import hashlib
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -14,10 +15,15 @@ from agent_net.storage import (
     list_workers, get_owner, is_secretary,
     create_enclave, add_enclave_member, get_enclave,
     create_playbook, get_playbook, create_playbook_run, get_playbook_run,
-    update_playbook_run,
+    update_playbook_run, create_coordination_session, emit_event,
 )
 
 router = APIRouter()
+
+
+def _playbook_fingerprint(stages: list[dict]) -> str:
+    body = json.dumps(stages, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 # ── Intake 管理 ──────────────────────────────────────────────
@@ -228,17 +234,22 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
             playbook_id=playbook_id, name="default-orchestration",
             stages=stages, description="Default secretary playbook",
             created_by=actor_did,
+            version="1",
+            fingerprint=_playbook_fingerprint(stages),
         )
         playbook = await get_playbook(playbook_id)
 
     if stages is None:
         stages = playbook.get("stages", [])
 
+    coordination_session_id = f"cs_{uuid.uuid4().hex[:16]}"
+
     # 6. 创建 Run
     run_id = PlaybookRun.gen_id()
     await create_playbook_run(
         run_id=run_id, enclave_id=enclave_id,
         playbook_id=playbook["playbook_id"], playbook_name=playbook["name"],
+        coordination_session_id=coordination_session_id,
     )
 
     # 7. 建立 session_id -> run_id 绑定（P1_2: 先创建 intake 再更新）
@@ -254,9 +265,13 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
     # 8. 初始化 Context Snapshot
     snapshot = {
         "thread_id": run_id,
+        "coordination_session_id": coordination_session_id,
         "session_id": session_id,
         "objective": objective,
         "current_stage": stages[0]["name"] if stages else None,
+        "playbook_version": playbook.get("version", "1"),
+        "playbook_fingerprint": playbook.get("fingerprint") or _playbook_fingerprint(stages or []),
+        "stage_snapshots": stages or [],
         "intake": {
             "session_id": session_id,
             "source": req.get("source", {}),
@@ -264,6 +279,56 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
         },
     }
     await update_playbook_run(run_id, current_stage=stages[0]["name"] if stages else None, context=snapshot)
+
+    # 8.1 创建 CoordinationSession，作为本次协作的审计容器
+    stage_snapshots = stages or []
+    current_stage = stage_snapshots[0]["name"] if stage_snapshots else ""
+    playbook_fingerprint = playbook.get("fingerprint") or _playbook_fingerprint(stage_snapshots)
+    await create_coordination_session(
+        coordination_session_id=coordination_session_id,
+        owner_did=owner_did,
+        controller_did=actor_did,
+        objective=objective,
+        enclave_id=enclave_id,
+        playbook_id=playbook["playbook_id"],
+        playbook_version=playbook.get("version", "1"),
+        playbook_fingerprint=playbook_fingerprint,
+        playbook_run_id=run_id,
+        current_stage=current_stage,
+        stage_snapshots=stage_snapshots,
+        intake_session_id=session_id,
+        policy={"required_roles": required_roles},
+        context_snapshot=snapshot,
+    )
+    await update_intake(
+        session_id,
+        coordination_session_id=coordination_session_id,
+        run_id=run_id,
+    )
+    await emit_event(
+        coordination_session_id=coordination_session_id,
+        event_type="session.created",
+        actor_did=actor_did,
+        session_id=session_id,
+        run_id=run_id,
+        payload={
+            "objective": objective,
+            "playbook_id": playbook["playbook_id"],
+            "playbook_version": playbook.get("version", "1"),
+            "playbook_fingerprint": playbook_fingerprint,
+            "enclave_id": enclave_id,
+        },
+    )
+    if current_stage:
+        await emit_event(
+            coordination_session_id=coordination_session_id,
+            event_type="stage.started",
+            stage=current_stage,
+            actor_did=actor_did,
+            session_id=session_id,
+            run_id=run_id,
+            payload={"source": "secretary.dispatch"},
+        )
 
     # 9. 启动第一个 stage — 通过 PlaybookEngine 发送 task_propose
     if stages:
@@ -293,9 +358,11 @@ async def api_dispatch(req: dict, _=Depends(_require_token)):
 
     return {
         "status": "started",
+        "coordination_session_id": coordination_session_id,
         "run_id": run_id,
         "enclave_id": enclave_id,
         "playbook_name": playbook["name"],
+        "playbook_id": playbook["playbook_id"],
         "current_stage": stages[0]["name"] if stages else None,
         "selected_workers": selected_workers,
     }

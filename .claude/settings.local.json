@@ -7,5 +7,9 @@
       "Bash(python3 main.py test)",
       "Bash(python3:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "nexus-claude-dev"
+  ],
+  "enableAllProjectMcpServers": true
 }

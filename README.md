@@ -9,7 +9,7 @@
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
-  [![Tests](https://img.shields.io/badge/Tests-421%20passed-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
+  [![Tests](https://img.shields.io/badge/Tests-547%20passed-brightgreen)](https://github.com/kevinkaylie/AgentNexus/actions)
   [![CI](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinkaylie/AgentNexus/actions/workflows/ci.yml)
 
   **[中文](#中文) | [English](#english)**
@@ -18,6 +18,24 @@
 ---
 
 ## 中文
+
+### Developer Preview
+
+AgentNexus 当前适合技术预览、协议评审和本机多 Agent 工作流试用。推荐从两条路径开始：
+
+| 目标 | 入口 |
+|------|------|
+| 先理解 AgentNexus 解决什么问题 | [产品概览](docs/product.md) |
+| 跑通基础 DID / Relay / MCP 通信 | [快速开始](docs/quickstart.md) |
+| 跑通 7-stage coding coordination 闭环 | [Coding Coordination Quickstart](docs/quickstart-coding-coordination.md) |
+| 试用 v1.1 L0 本机 Objective Loop | [Objective Loop Quickstart](docs/quickstart-objective-loop.md) |
+| 查看当前完成度和风险 | [项目现状速览](docs/project-status.md) |
+| 参与推广、反馈或集成讨论 | [推广与发布清单](docs/promotion.md) |
+
+当前公开定位：**给 AI Agent 提供 DID 身份、授权、产物交付和目标循环的协作底座**。v1.1 只承诺 L0 本机 Objective Loop；LAN / Relay 远程 Worker、桌面壳、per-agent token、Strict JCS 和签名交付包属于后续版本。L0 真实 Worker 烟测已跑通：script/pytest、Claude CLI、OpenClaw CLI 以 3 个 Worker DID 完成同一条 Objective Loop。
+
+![Objective Loop Dashboard](docs/assets/objective-loop-dashboard-stages.png)
+![L0-ready real worker evidence](docs/assets/l0-ready-real-workers-evidence.png)
 
 ### AgentNexus 是什么
 
@@ -34,6 +52,12 @@ AgentNexus 最初的目标是做 **AI Agent 的微信 / WhatsApp**：每个 Agen
 因此，AgentNexus 当前的产品定位收敛为：
 
 > 基于 DID、Relay、加密消息、访问控制、Vault 和 Playbook 的 Agent 团队协作与流程编排底座。
+
+面向 v1.1，AgentNexus 的产品主线进一步明确为 **面向异构 Agent 的网络原生目标循环（Objective Loop）**：
+
+> 让本机、局域网和公网 Relay 上的 Worker，在 DID 身份、授权委托、产物交接、验收收据和秘书人机交互下，自动协作完成目标。
+
+这意味着 AgentNexus 不只是在多个 Agent 之间传消息，也不只是本机多 Agent team mode。它的目标是给定一个 objective 后，系统能持续规划、分派、执行、验收、返工或升级人工决策，直到目标达成、失败闭环或由 Owner 接管。
 
 开发团队协作是第一个高频模板，但不是唯一场景。同一套机制也适用于客服升级、采购审批、合同审查、风控复核、运营工单、研究协作等任何流程化团队工作。
 
@@ -54,7 +78,7 @@ AgentNexus 的价值在更底层：
 | CLI 命令执行边界依赖约定 | CLI Worker 作为可选 Adapter，命令模板、工作目录、凭据边界可独立设计 |
 | 失败、重试、接管状态分散在对话里 | Playbook Run / StageExecution / retry_count / Owner takeover 状态化 |
 
-简单说：OpenClaw / CLI Agent 更像“执行端和交互端”，AgentNexus 是它们之下的 **身份、消息、授权、项目组、共享状态和交付协议层**。
+简单说：OpenClaw / Codex / Claude Code / CLI Agent 更像“执行端和交互端”，AgentNexus 是它们之下的 **身份、消息、授权、项目组、共享状态、目标循环和交付协议层**。
 
 ---
 
@@ -72,6 +96,7 @@ AgentNexus 的价值在更底层：
 | VaultBackend | Local/Git 后端保存需求、设计、代码差异、测试报告、评审报告等产物 |
 | Playbook 编排 | 按阶段自动推进任务，支持 rejected 回退、retry_count 和状态查询 |
 | Secretary 编排 | 常驻秘书 Agent 接单、选人、建 Enclave、启动 Playbook、回传结果 |
+| Objective Loop（v1.1 主线） | 以目标完成为停止条件，跨本机 / 局域网 / 公网 Relay 自动分派、执行、验收、返工和升级人工决策 |
 | Context Budget | 用 Snapshot、Checkpoint、Artifact Ref 控制阶段交接上下文大小 |
 | Governance & Trust | Web of Trust、声誉、治理认证、RuntimeVerifier 信任评估 |
 | Capability Token | 签名授权信封、约束哈希、委托链收窄、撤销 |
@@ -94,7 +119,9 @@ AgentNexus 的价值在更底层：
 | Secretary Orchestration Phase B | 已完成开发候选 |
 | Web Dashboard / Setup | 设计完成，开发中 |
 
-当前 `v1.0.0` 范围是团队协作开发者预览：Orchestration SDK + Secretary Phase B 基础闭环 + Web Dashboard 基础入口。Secretary Phase B 已完成开发候选，后续重点是 Dashboard/Setup 和发布文档收口。Tauri 桌面壳、系统通知、CLI Launcher 自动拉起、per-agent token、Strict JCS 和 hard-enforce `/deliver` 后移到后续版本。
+当前 `v1.0.x` 范围是团队协作开发者预览：Orchestration SDK + Secretary Phase B 基础闭环 + Web Dashboard 基础入口。Coding Coordination V1 release closure 已完成，SDK facade、CLI demo、runtime-mock、Dashboard detail、Quickstart 和 Delivery Manifest closure 都已可验证。
+
+`v1.1` 主线是 Objective Loop：把 Local Runner、Execution Backend、Loop Engine、Secretary 人工决策点和 Dashboard 详情页串成一条本机自动目标闭环。当前 L0-Ready hardening 和 3 Worker DID 真实本机烟测已完成；LAN / Relay Worker 后移到 v1.2+。设计见 [docs/design/design-objective-loop-v1.1.md](docs/design/design-objective-loop-v1.1.md)。
 
 项目状态以 [docs/project-status.md](docs/project-status.md) 为准。
 
@@ -105,7 +132,8 @@ AgentNexus 的价值在更底层：
 ```text
 OpenClaw / Webhook / SDK / CLI / Social Adapter
   -> Secretary Agent
-  -> Worker Registry + Presence
+  -> Objective Loop Engine
+  -> Worker Registry + Presence + Runtime Adapter
   -> Enclave Project Group
   -> Playbook Run
   -> Worker Agents
@@ -118,9 +146,11 @@ OpenClaw / Webhook / SDK / CLI / Social Adapter
 | 对象 | 作用 |
 |------|------|
 | `session_id` | 外部入口会话 |
+| `coordination_session_id` | 跨 Agent 协作的审计、权限和聚合容器 |
 | `run_id` | 一次 Playbook 执行 |
 | `message_id` | 单条消息去重、防重放和审计 |
 | `enclave_id` | 项目组隔离边界 |
+| `objective` | 目标、验收条件、约束和人工决策策略 |
 | `stage_execution` | 阶段执行状态、Worker、task_id、output_ref、retry_count |
 | `delivery manifest` | 阶段和最终交付包索引 |
 
@@ -135,8 +165,9 @@ OpenClaw / Webhook / SDK / CLI / Social Adapter
                        │ MCP / SDK / Webhook / Adapter
 ┌──────────────────────▼──────────────────────────────────┐
 │              AgentNexus Node Daemon (:8765)              │
-│  DID · Auth · Router · Secretary · Enclave · Vault        │
-│  Playbook · Message Center · Trust · Capability Token     │
+│  DID · Auth · Router · Secretary · Objective Loop          │
+│  CoordinationSession · Enclave · Vault · PlaybookRun       │
+│  Trust · Capability Token · Runtime Adapter                │
 └──────────────────────┬──────────────────────────────────┘
                        │ P2P / Relay / Push
 ┌──────────────────────▼──────────────────────────────────┐
@@ -201,6 +232,15 @@ print(result.run_id, result.enclave_id)
 
 完整教程见 [docs/quickstart.md](docs/quickstart.md)。
 
+Coding Coordination V1 的最短可验证路径：
+
+```bash
+python main.py node coordination demo
+python main.py node coordination runtime-mock <coordination_session_id> <run_id> design --actor <secretary_did>
+```
+
+demo 会输出 Dashboard URL，详情页可查看 timeline、artifact、receipt、closure 和写入 Enclave Vault 的 Delivery Manifest。
+
 ---
 
 ### 团队协作示例
@@ -263,7 +303,7 @@ await admin.secretary.abort(
 )
 ```
 
-旧的 `send / propose_task / notify_state` Action Layer 仍然兼容，适合轻量点对点协作；复杂团队流程建议使用 Secretary + Enclave + Playbook 主链路。
+旧的 `send / propose_task / notify_state` Action Layer 仍然兼容，适合轻量点对点协作；复杂团队流程建议使用 Secretary + CoordinationSession + Enclave + PlaybookRun 主链路。其中 CoordinationSession 负责审计、权限和聚合，PlaybookRun 负责 `current_stage/status` 等运行态。
 
 专题设计见 [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md)、[docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md)、[docs/design/design-coding-coordination-v1.md](docs/design/design-coding-coordination-v1.md)、[docs/design/design-coding-coordination-v1-release.md](docs/design/design-coding-coordination-v1-release.md) 和 [docs/design/design-dashboard-setup-v1.0.md](docs/design/design-dashboard-setup-v1.0.md)。
 
@@ -308,11 +348,29 @@ await admin.secretary.abort(
 
 AgentNexus is agent-native communication and teamwork infrastructure.
 
+### Developer Preview
+
+AgentNexus is ready for technical preview, protocol review and local multi-agent workflow experiments. Start here:
+
+| Goal | Entry |
+|------|------|
+| Understand the product position | [Product Overview](docs/product.md) |
+| Run basic DID / Relay / MCP messaging | [Quick Start](docs/quickstart.md) |
+| Run the 7-stage coding coordination loop | [Coding Coordination Quickstart](docs/quickstart-coding-coordination.md) |
+| Try the v1.1 L0 local Objective Loop | [Objective Loop Quickstart](docs/quickstart-objective-loop.md) |
+| Check current status and risks | [Project Status](docs/project-status.md) |
+| Help with launch, feedback or integrations | [Promotion Checklist](docs/promotion.md) |
+
+Public positioning: **DID identity, authorization, artifact delivery and objective-loop collaboration infrastructure for AI agents**. v1.1 only promises the L0 local Objective Loop; LAN / Relay workers, desktop shell, per-agent tokens, Strict JCS and signed delivery packages are future work.
+The L0 real-worker smoke path now completes with three Worker DIDs: script/pytest, Claude CLI and OpenClaw CLI.
+
 It started as “WhatsApp for AI Agents”: every agent gets a DID address, discovers peers, performs secure handshakes, and exchanges messages across local or federated networks.
 
 The current product direction goes one layer deeper into real workflows:
 
 > DID identity + secure messaging + routing + access control + project vault + playbook orchestration for multi-agent teams.
+
+For v1.1, the product line becomes a **network-native objective loop for heterogeneous agents**: local, LAN, and relay-connected workers collaborate under DID identity, capability-bound delegation, artifact-based handoff, receipt-gated progress, and human decision gates through a Secretary Agent.
 
 ### Why Not Just A Local PM Agent?
 
@@ -338,6 +396,7 @@ Local PM agents and CLI-based teams are useful, and AgentNexus treats them as ad
 | Collaboration protocol | task propose, claim, resource sync, state notify |
 | Enclave | project group with members, roles, permissions and Vault |
 | Playbook | stage-based orchestration with status and retry tracking |
+| CoordinationSession | audit, permission and aggregation container for multi-agent runs |
 | Secretary orchestration | intake, worker selection, Enclave creation, result callback |
 | Context budget | bounded handoff context instead of full chat history |
 | Trust and governance | Web of Trust, reputation, attestations, RuntimeVerifier |

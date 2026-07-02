@@ -1,0 +1,200 @@
+# AgentNexus Local Runner Configuration
+# Copy this file to .agentnexus/local-runner.yaml and customize.
+#
+# Design ref: docs/design/design-objective-loop-v1.1.md Section 6.2
+# L0-Ready: all workers must include worker_did, worker_type, output_contract.
+
+daemon_url: http://127.0.0.1:8765
+secretary_agent: did:agentnexus:z6MkSecretary...
+owner_did: did:agentnexus:z6MkOwner...
+poll_interval_sec: 2
+
+defaults:
+  workdir: .  # Project root
+  timeout_sec: 1800
+  max_retries_per_stage: 2
+  max_total_executions: 30
+  max_wall_clock_sec: 14400
+  require_final_acceptance: false
+  network_access: deny_by_default
+  max_output_bytes: 1048576
+  allowed_commands:
+    - python
+    - python3
+    - pytest
+    - claude
+    - claude.cmd
+    - codex
+    - codex.cmd
+    - openclaw
+    - openclaw.cmd
+
+workers:
+  # ── Claude Code as developer ─────────────────────────────────────────
+  # claude_developer:
+  #   worker_did: did:agentnexus:z6MkClaudeDeveloper...
+  #   agent_name: ClaudeDeveloper
+  #   worker_type: interactive_cli
+  #   adapter: local_cli
+  #   command: claude
+  #   args: ["-p", "{prompt}", "--output-format", "text", "--max-turns", "1"]
+  #   roles: ["developer", "implement"]
+  #   capabilities: ["Code", "Debug", "Implement"]
+  #   output_contract: agentnexus_json_v1
+  #   output_adapter: agentnexus_json_v1
+  #   workdir: /path/to/your/project
+
+  # ── Codex as reviewer ────────────────────────────────────────────────
+  # codex_reviewer:
+  #   worker_did: did:agentnexus:z6MkCodexReviewer...
+  #   agent_name: CodexReviewer
+  #   worker_type: interactive_cli
+  #   adapter: local_cli
+  #   command: codex
+  #   args: ["exec", "{prompt}"]
+  #   roles: ["reviewer", "code_review"]
+  #   capabilities: ["Review", "Code", "QA"]
+  #   output_contract: agentnexus_json_v1
+  #   output_adapter: agentnexus_json_v1
+  #
+  # Windows note: if the Store-installed codex.exe is blocked by WindowsApps
+  # permissions, point command to a usable codex.cmd/npm shim or wrapper script
+  # and add its basename to allowed_commands.
+
+  # ── OpenClaw as general worker ───────────────────────────────────────
+  # OpenClaw --json returns a platform wrapper. output_adapter unwraps
+  # payloads[].text / meta.finalAssistantRawText into an AgentNexus result.
+  # openclaw_worker:
+  #   worker_did: did:agentnexus:z6MkOpenClawWorker...
+  #   agent_name: OpenClawWorker
+  #   worker_type: interactive_cli
+  #   adapter: local_cli
+  #   command: openclaw
+  #   args: ["agent", "--local", "--json", "--session-key", "agent:agentnexus:{stage}", "--message", "{prompt}"]
+  #   roles: ["developer", "reviewer", "tester", "implement", "code_review", "test"]
+  #   capabilities: ["Code", "Review", "Test"]
+  #   output_contract: agentnexus_json_v1
+  #   output_adapter: openclaw_json
+  #   artifact_type: OpenClawArtifact
+
+  # ── Generic JSON wrapper adapter ────────────────────────────────────
+  # Use this for any CLI/agent that returns {"result": {"text": "..."}}
+  # or another wrapper around assistant text.
+  # generic_json_agent:
+  #   worker_did: did:agentnexus:z6MkGenericAgent...
+  #   agent_name: GenericJsonAgent
+  #   worker_type: interactive_cli
+  #   adapter: local_cli
+  #   command: my-agent-cli
+  #   args: ["run", "--json", "--prompt", "{prompt}"]
+  #   allowed_commands: ["my-agent-cli"]
+  #   roles: ["developer"]
+  #   capabilities: ["Code"]
+  #   output_contract: agentnexus_json_v1
+  #   output_adapter: json_text
+  #   output_text_paths: ["result.text", "message.content"]
+  #   artifact_type: GenericAgentArtifact
+
+  # ── Pytest as tester ─────────────────────────────────────────────────
+  # pytest_runner:
+  #   worker_did: did:agentnexus:z6MkLocalTestRunner...
+  #   agent_name: LocalTestRunner
+  #   worker_type: interactive_cli
+  #   adapter: local_cli
+  #   command: python
+  #   args: ["-m", "pytest"]
+  #   roles: ["tester", "test"]
+  #   capabilities: ["Test"]
+  #   output_contract: agentnexus_json_v1
+
+  # ── Fake developer for testing (always available) ────────────────────
+  fake_developer:
+    worker_did: did:agentnexus:z6MkFakeDeveloper
+    agent_name: FakeDeveloper
+    worker_type: interactive_cli
+    adapter: local_cli
+    command: python
+    args:
+      - "-c"
+      - |
+        import json
+        print(json.dumps({
+            "contract": "agentnexus_json_v1",
+            "summary": "Fake implementation completed",
+            "status": "completed",
+            "artifact_type": "ImplementationArtifact",
+            "artifact_body": "# Fake implementation\nprint('hello')",
+            "evidence_refs": []
+        }))
+    roles: ["developer", "implement"]
+    capabilities: ["Code", "Debug"]
+    output_contract: agentnexus_json_v1
+
+  # ── Fake reviewer for testing ────────────────────────────────────────
+  fake_reviewer:
+    worker_did: did:agentnexus:z6MkFakeReviewer
+    agent_name: FakeReviewer
+    worker_type: interactive_cli
+    adapter: local_cli
+    command: python
+    args:
+      - "-c"
+      - |
+        import json
+        print(json.dumps({
+            "contract": "agentnexus_json_v1",
+            "summary": "Code review passed: no P0/P1 issues",
+            "status": "completed",
+            "artifact_type": "CodeReviewArtifact",
+            "artifact_body": "# Code Review\n- Logic: OK\n- Style: OK\nNo blocking issues.",
+            "evidence_refs": []
+        }))
+    roles: ["reviewer", "code_review", "design_review"]
+    capabilities: ["Review", "Code", "QA"]
+    output_contract: agentnexus_json_v1
+
+  # ── Fake tester for testing ──────────────────────────────────────────
+  fake_tester:
+    worker_did: did:agentnexus:z6MkFakeTester
+    agent_name: FakeTester
+    worker_type: interactive_cli
+    adapter: local_cli
+    command: python
+    args:
+      - "-c"
+      - |
+        import json
+        print(json.dumps({
+            "contract": "agentnexus_json_v1",
+            "summary": "All tests passed",
+            "status": "completed",
+            "artifact_type": "TestResultArtifact",
+            "artifact_body": "8 passed, 0 failed",
+            "evidence_refs": []
+        }))
+    roles: ["tester", "test"]
+    capabilities: ["Test"]
+    output_contract: agentnexus_json_v1
+
+  # ── Fake script worker (fallback for any role) ───────────────────────
+  fake_script_worker:
+    worker_did: did:agentnexus:z6MkFakeScriptWorker
+    agent_name: FakeScriptWorker
+    worker_type: interactive_cli
+    adapter: local_cli
+    command: python
+    args:
+      - "-c"
+      - |
+        import json
+        print(json.dumps({
+            "contract": "agentnexus_json_v1",
+            "summary": "Task completed by script worker",
+            "status": "completed",
+            "artifact_type": "Other",
+            "artifact_body": "# Script output\nDone.",
+            "evidence_refs": []
+        }))
+    roles: ["developer", "reviewer", "tester", "clarifier", "designer", "coordinator"]
+    capabilities: ["Code", "Review", "Test", "Script"]
+    output_contract: agentnexus_json_v1

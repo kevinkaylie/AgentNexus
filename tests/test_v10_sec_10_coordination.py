@@ -7,15 +7,18 @@ import uuid
 from agent_net.node._auth import _TOKEN_DID_BINDINGS
 
 @pytest_asyncio.fixture(autouse=True)
-async def setup_db():
-    from agent_net.storage import DB_PATH
-    DB_PATH.parent.mkdir(exist_ok=True)
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-    from agent_net.storage import init_db
-    await init_db()
+async def setup_db(tmp_path):
+    import agent_net.storage as s
+    _db = tmp_path / "agent_net.db"
+    _orig = s.DB_PATH
+    s.DB_PATH = _db
+    _db.parent.mkdir(exist_ok=True)
+    if _db.exists():
+        _db.unlink()
+    await s.init_db()
     _TOKEN_DID_BINDINGS.clear()
     yield
+    s.DB_PATH = _orig
 
 
 def _auth_header():
@@ -28,9 +31,13 @@ async def _owner(name: str = "CoordOwner") -> dict:
     return await register_owner(name)
 
 
-async def _vault_ref(key: str, value: str = "artifact content", author_did: str = "did:agentnexus:test") -> str:
+async def _vault_ref(
+    key: str,
+    value: str = "artifact content",
+    author_did: str = "did:agentnexus:test",
+    enclave_id: str = "enc_coord_tests",
+) -> str:
     from agent_net.storage import vault_put
-    enclave_id = "enc_coord_tests"
     await vault_put(enclave_id, key, value, author_did)
     return f"vault://{enclave_id}/{key}"
 
@@ -52,8 +59,10 @@ async def test_v10_sec_10_create_coordination_session():
         objective="Implement login module",
     )
     assert sess["coordination_session_id"] == cs_id
-    assert sess["status"] == "intake"
-    assert sess["workflow_id"] == "coding.v1"
+    assert sess["status"] == "running"
+    assert sess["playbook_id"] == "coding.v1"
+    assert sess["current_stage"] == "clarify"
+    assert sess["stage_snapshots"]
 
     loaded = await get_coordination_session(cs_id)
     assert loaded is not None
@@ -71,36 +80,45 @@ async def test_v10_sec_10_get_nonexistent_session():
 
 @pytest.mark.asyncio
 async def test_v10_sec_10_list_sessions_by_owner_and_status():
-    """List sessions filtered by owner_did and status."""
-    from agent_net.storage import create_coordination_session, list_coordination_sessions, update_coordination_session
+    """List sessions filters by PlaybookRun-derived status."""
+    from agent_net.storage import (
+        create_coordination_session,
+        create_playbook_run,
+        list_coordination_sessions,
+        update_playbook_run,
+    )
 
     cs_id1 = f"cs_{uuid.uuid4().hex[:16]}"
     cs_id2 = f"cs_{uuid.uuid4().hex[:16]}"
-    await create_coordination_session(cs_id1, "did:agentnexus:ownerA", "did:agentnexus:ctrl", "Task 1")
-    await create_coordination_session(cs_id2, "did:agentnexus:ownerA", "did:agentnexus:ctrl", "Task 2")
-    await update_coordination_session(cs_id2, status="running")
+    run_id1 = f"run_{uuid.uuid4().hex[:16]}"
+    run_id2 = f"run_{uuid.uuid4().hex[:16]}"
+    await create_playbook_run(run_id1, "enc_test", "coding.v1", coordination_session_id=cs_id1)
+    await create_playbook_run(run_id2, "enc_test", "coding.v1", coordination_session_id=cs_id2)
+    await update_playbook_run(run_id1, status="running", current_stage="clarify")
+    await update_playbook_run(run_id2, status="blocked", current_stage="clarify")
+    await create_coordination_session(cs_id1, "did:agentnexus:ownerA", "did:agentnexus:ctrl", "Task 1", playbook_run_id=run_id1)
+    await create_coordination_session(cs_id2, "did:agentnexus:ownerA", "did:agentnexus:ctrl", "Task 2", playbook_run_id=run_id2)
 
     all_sessions = await list_coordination_sessions("did:agentnexus:ownerA")
     assert len(all_sessions) == 2
 
-    intake_only = await list_coordination_sessions("did:agentnexus:ownerA", status="intake")
-    assert len(intake_only) == 1
-    assert intake_only[0]["coordination_session_id"] == cs_id1
+    running_only = await list_coordination_sessions("did:agentnexus:ownerA", status="running")
+    assert len(running_only) == 1
+    assert running_only[0]["coordination_session_id"] == cs_id1
 
 
 @pytest.mark.asyncio
 async def test_v10_sec_10_update_coordination_session():
-    """Update session status and policy."""
+    """Update session metadata without writing runtime status."""
     from agent_net.storage import create_coordination_session, update_coordination_session, get_coordination_session
 
     cs_id = f"cs_{uuid.uuid4().hex[:16]}"
     await create_coordination_session(cs_id, "did:agentnexus:owner1", "did:agentnexus:ctrl1", "Test")
 
-    ok = await update_coordination_session(cs_id, status="running", policy_json={"complexity": "high"})
+    ok = await update_coordination_session(cs_id, policy_json={"complexity": "high"})
     assert ok
 
     sess = await get_coordination_session(cs_id)
-    assert sess["status"] == "running"
     assert sess["policy_json"] == {"complexity": "high"}
 
 
@@ -108,7 +126,7 @@ async def test_v10_sec_10_update_coordination_session():
 async def test_v10_sec_10_update_nonexistent_session():
     """Update nonexistent session returns False."""
     from agent_net.storage import update_coordination_session
-    ok = await update_coordination_session("cs_nonexistent", status="running")
+    ok = await update_coordination_session("cs_nonexistent", policy_json={"complexity": "high"})
     assert not ok
 
 
@@ -247,6 +265,7 @@ async def test_v10_sec_10_create_artifact_with_hash():
     art = await create_artifact(
         artifact_id=art_id,
         coordination_session_id=cs_id,
+        run_id="run_test",
         stage="design",
         artifact_type="DesignArtifact",
         producer_did="did:agentnexus:designer1",
@@ -269,8 +288,8 @@ async def test_v10_sec_10_list_artifacts_by_stage():
     cs_id = f"cs_{uuid.uuid4().hex[:16]}"
     await create_coordination_session(cs_id, "did:agentnexus:owner1", "did:agentnexus:ctrl", "Test")
 
-    await create_artifact(f"art_{uuid.uuid4().hex[:16]}", cs_id, "design", "DesignArtifact", "agent1", "ref1")
-    await create_artifact(f"art_{uuid.uuid4().hex[:16]}", cs_id, "implement", "PatchArtifact", "agent2", "ref2")
+    await create_artifact(f"art_{uuid.uuid4().hex[:16]}", cs_id, "run_test", "design", "DesignArtifact", "agent1", "ref1")
+    await create_artifact(f"art_{uuid.uuid4().hex[:16]}", cs_id, "run_test", "implement", "PatchArtifact", "agent2", "ref2")
 
     all_arts = await list_artifacts(cs_id)
     assert len(all_arts) == 2
@@ -296,6 +315,7 @@ async def test_v10_sec_10_create_receipt():
     rcpt = await create_receipt(
         receipt_id=rcpt_id,
         coordination_session_id=cs_id,
+        run_id="run_test",
         stage="code_review",
         receipt_type="ReviewReceipt",
         issuer_did="did:agentnexus:reviewer1",
@@ -318,8 +338,8 @@ async def test_v10_sec_10_list_receipts_by_stage():
     cs_id = f"cs_{uuid.uuid4().hex[:16]}"
     await create_coordination_session(cs_id, "did:agentnexus:owner1", "did:agentnexus:ctrl", "Test")
 
-    await create_receipt(f"rcpt_{uuid.uuid4().hex[:16]}", cs_id, "design_review", "ReviewReceipt", "agent1", "approved")
-    await create_receipt(f"rcpt_{uuid.uuid4().hex[:16]}", cs_id, "code_review", "ReviewReceipt", "agent2", "approved")
+    await create_receipt(f"rcpt_{uuid.uuid4().hex[:16]}", cs_id, "run_test", "design_review", "ReviewReceipt", "agent1", "approved")
+    await create_receipt(f"rcpt_{uuid.uuid4().hex[:16]}", cs_id, "run_test", "code_review", "ReviewReceipt", "agent2", "approved")
 
     design_rcpts = await list_receipts(cs_id, stage="design_review")
     assert len(design_rcpts) == 1
@@ -492,14 +512,15 @@ async def test_v10_sec_10_api_submit_artifact():
     from fastapi.testclient import TestClient
 
     owner = await _owner("ApiArtifactOwner")
-    ref = await _vault_ref("design.md", "design body", owner["did"])
     client = TestClient(app, headers=_auth_header())
     create_resp = client.post("/coordination/sessions", json={
         "owner_did": owner["did"],
         "controller_did": owner["did"],
         "objective": "Artifact test",
     })
-    cs_id = create_resp.json()["session"]["coordination_session_id"]
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    ref = await _vault_ref("design.md", "design body", owner["did"], session["enclave_id"])
 
     art_resp = client.post("/coordination/artifacts", json={
         "coordination_session_id": cs_id,
@@ -631,30 +652,34 @@ async def test_v10_sec_10_api_coding_intake():
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "intake"
-    assert data["session"]["workflow_id"] == "coding.v1"
+    assert data["session"]["playbook_id"] == "coding.v1"
+    assert data["session"]["current_stage"] == "clarify"
 
 
 @pytest.mark.asyncio
 async def test_v10_sec_10_api_coding_advance_flow():
-    """POST /coordination/coding/{id}/advance flows through stages."""
+    """POST /coordination/coding/{id}/runs/{run_id}/advance flows through stages."""
     from agent_net.node.daemon import app
     from fastapi.testclient import TestClient
 
     owner = await _owner("ApiAdvanceOwner")
-    ref = await _vault_ref("clarify.md", "clarify body", owner["did"])
     client = TestClient(app, headers=_auth_header())
     # Create session first
     create_resp = client.post("/coordination/sessions", json={
         "owner_did": owner["did"],
         "controller_did": owner["did"],
         "objective": "Advance test",
-        "workflow_id": "coding.v1",
+        "playbook_id": "coding.v1",
     })
-    cs_id = create_resp.json()["session"]["coordination_session_id"]
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
+    ref = await _vault_ref("clarify.md", "clarify body", owner["did"], session["enclave_id"])
 
     # Submit artifact for clarify stage
     client.post("/coordination/artifacts", json={
         "coordination_session_id": cs_id,
+        "run_id": run_id,
         "stage": "clarify",
         "artifact_type": "RequirementSpec",
         "producer_did": owner["did"],
@@ -663,13 +688,14 @@ async def test_v10_sec_10_api_coding_advance_flow():
     # Submit receipt for clarify (approved)
     client.post("/coordination/receipts", json={
         "coordination_session_id": cs_id,
+        "run_id": run_id,
         "stage": "clarify",
         "receipt_type": "ReviewReceipt",
         "issuer_did": owner["did"],
         "decision": "approved",
     })
 
-    resp = client.post(f"/coordination/coding/{cs_id}/advance", json={"actor_did": owner["did"]})
+    resp = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
     assert resp.status_code == 200
     data = resp.json()
     # Should advance from clarify to design
@@ -683,34 +709,38 @@ async def test_v10_sec_10_api_reject_blocks_advance():
     from fastapi.testclient import TestClient
 
     owner = await _owner("ApiRejectOwner")
-    ref = await _vault_ref("design.md", "design body", owner["did"])
     client = TestClient(app, headers=_auth_header())
     create_resp = client.post("/coordination/sessions", json={
         "owner_did": owner["did"],
         "controller_did": owner["did"],
         "objective": "Reject test",
-        "workflow_id": "coding.v1",
+        "playbook_id": "coding.v1",
     })
-    cs_id = create_resp.json()["session"]["coordination_session_id"]
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
+    ref = await _vault_ref("clarify.md", "clarify body", owner["did"], session["enclave_id"])
 
-    # Submit artifact for design stage
+    # Submit artifact for current clarify stage
     client.post("/coordination/artifacts", json={
         "coordination_session_id": cs_id,
-        "stage": "design",
-        "artifact_type": "DesignArtifact",
+        "run_id": run_id,
+        "stage": "clarify",
+        "artifact_type": "RequirementSpec",
         "producer_did": owner["did"],
         "content_ref": ref,
     })
-    # Reject the design
+    # Reject the current stage
     client.post("/coordination/receipts", json={
         "coordination_session_id": cs_id,
-        "stage": "design",
+        "run_id": run_id,
+        "stage": "clarify",
         "receipt_type": "ReviewReceipt",
         "issuer_did": owner["did"],
         "decision": "changes_requested",
     })
 
-    resp = client.post(f"/coordination/coding/{cs_id}/advance", json={"actor_did": owner["did"]})
+    resp = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
     assert resp.status_code == 200
     data = resp.json()
     # Design review has on_reject: "design", so should revert
@@ -739,28 +769,31 @@ async def test_v10_sec_10_api_get_session_rejects_other_owner():
 
 @pytest.mark.asyncio
 async def test_v10_sec_10_api_advance_requires_approved_receipt():
-    """Workflow cannot advance on artifact alone."""
+    """Playbook stage cannot advance on artifact alone."""
     from agent_net.node.daemon import app
     from fastapi.testclient import TestClient
 
     owner = await _owner("CoordReceiptGateOwner")
-    ref = await _vault_ref("clarify_gate.md", "clarify body", owner["did"])
     client = TestClient(app, headers=_auth_header())
     create_resp = client.post("/coordination/sessions", json={
         "owner_did": owner["did"],
         "controller_did": owner["did"],
         "objective": "Receipt gate",
     })
-    cs_id = create_resp.json()["session"]["coordination_session_id"]
+    session = create_resp.json()["session"]
+    cs_id = session["coordination_session_id"]
+    run_id = session["playbook_run_id"]
+    ref = await _vault_ref("clarify_gate.md", "clarify body", owner["did"], session["enclave_id"])
     client.post("/coordination/artifacts", json={
         "coordination_session_id": cs_id,
+        "run_id": run_id,
         "stage": "clarify",
         "artifact_type": "RequirementSpec",
         "producer_did": owner["did"],
         "content_ref": ref,
     })
 
-    resp = client.post(f"/coordination/coding/{cs_id}/advance", json={"actor_did": owner["did"]})
+    resp = client.post(f"/coordination/coding/{cs_id}/runs/{run_id}/advance", json={"actor_did": owner["did"]})
     assert resp.status_code == 400
     assert "missing approved receipt" in resp.text
 

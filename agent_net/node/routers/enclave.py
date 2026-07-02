@@ -20,6 +20,7 @@ from agent_net.storage import (
     create_playbook, get_playbook,
     create_playbook_run, get_playbook_run, get_latest_playbook_run, update_playbook_run,
     create_stage_execution, list_stage_executions,
+    list_artifacts, list_objective_executions, list_receipts,
 )
 
 router = APIRouter()
@@ -52,7 +53,34 @@ def _check_vault_permission(member: dict, required: str) -> None:
         raise HTTPException(403, "Admin access required")
 
 
-def _build_stages_status(stage_executions: list, playbook: dict) -> dict:
+def _latest_by_stage(records: list, stage_key: str = "stage") -> dict:
+    latest = {}
+    for record in records or []:
+        stage = record.get(stage_key)
+        if not stage:
+            continue
+        current = latest.get(stage)
+        if current is None or (record.get("created_at") or record.get("updated_at") or 0) >= (
+            current.get("created_at") or current.get("updated_at") or 0
+        ):
+            latest[stage] = record
+    return latest
+
+
+def _build_stages_status(
+    stage_executions: list,
+    playbook: dict,
+    *,
+    objective_executions: list | None = None,
+    artifacts: list | None = None,
+    receipts: list | None = None,
+) -> dict:
+    objective_by_stage = _latest_by_stage(objective_executions or [], "stage")
+    artifact_by_stage = _latest_by_stage(artifacts or [], "stage")
+    receipts_by_stage = {}
+    for receipt in receipts or []:
+        receipts_by_stage.setdefault(receipt.get("stage"), []).append(receipt)
+
     stages_status = {}
     if playbook:
         for stage in playbook["stages"]:
@@ -60,12 +88,44 @@ def _build_stages_status(stage_executions: list, playbook: dict) -> dict:
             exec_record = next(
                 (e for e in stage_executions if e["stage_name"] == stage_name), None
             )
+            objective_execution = objective_by_stage.get(stage_name)
+            artifact = artifact_by_stage.get(stage_name)
+            stage_receipts = receipts_by_stage.get(stage_name, [])
+            approved = any(r.get("decision") in ("approved", "passed") for r in stage_receipts)
+            rejected = any(r.get("decision") in ("changes_requested", "failed") for r in stage_receipts)
+
+            status = "pending"
+            assigned_did = ""
+            task_id = ""
+            output_ref = ""
+            retry_count = 0
+            if exec_record:
+                status = exec_record["status"]
+                assigned_did = exec_record["assigned_did"]
+                task_id = exec_record["task_id"]
+                output_ref = exec_record["output_ref"]
+                retry_count = exec_record["retry_count"]
+            elif objective_execution:
+                status = objective_execution.get("status") or status
+                assigned_did = objective_execution.get("worker_did") or ""
+                task_id = objective_execution.get("execution_id") or ""
+                output_ref = objective_execution.get("artifact_id") or ""
+                retry_count = max((objective_execution.get("attempt") or 1) - 1, 0)
+
+            if artifact and approved:
+                status = "completed"
+                output_ref = artifact.get("content_ref") or artifact.get("artifact_id") or output_ref
+                assigned_did = artifact.get("producer_did") or assigned_did
+            elif rejected and status == "pending":
+                status = "failed"
+
             stages_status[stage_name] = {
-                "status": exec_record["status"] if exec_record else "pending",
-                "assigned_did": exec_record["assigned_did"] if exec_record else "",
-                "task_id": exec_record["task_id"] if exec_record else "",
-                "output_ref": exec_record["output_ref"] if exec_record else "",
-                "retry_count": exec_record["retry_count"] if exec_record else 0,
+                "role": stage.get("role", ""),
+                "status": status,
+                "assigned_did": assigned_did,
+                "task_id": task_id,
+                "output_ref": output_ref,
+                "retry_count": retry_count,
             }
     return stages_status
 
@@ -269,6 +329,16 @@ async def api_create_playbook_run(enclave_id: str, req: CreatePlaybookRunRequest
     )
 
     stages = playbook["stages"]
+    first_stage_name = stages[0]["name"] if stages else None
+    await update_playbook_run(
+        run_id,
+        current_stage=first_stage_name,
+        context={
+            "coordination_mode": "standalone",
+            "stage_snapshots": stages,
+            "playbook_id": playbook["playbook_id"],
+        },
+    )
     assigned_did = None
     if stages:
         first_stage = stages[0]
@@ -281,12 +351,13 @@ async def api_create_playbook_run(enclave_id: str, req: CreatePlaybookRunRequest
             await create_stage_execution(
                 run_id=run_id, stage_name=first_stage["name"], assigned_did=assigned_did,
             )
-            await update_playbook_run(run_id, current_stage=first_stage["name"])
 
     return {
         "status": "ok",
         "run_id": run_id,
-        "current_stage": stages[0]["name"] if stages else None,
+        "coordination_mode": "standalone",
+        "coordination_session_id": None,
+        "current_stage": first_stage_name,
         "assigned_did": assigned_did,
     }
 
@@ -298,6 +369,15 @@ async def api_get_latest_playbook_run(enclave_id: str, actor_did: str, _=Depends
     if not run:
         raise HTTPException(404, "No playbook runs found for this enclave")
     stage_executions = await list_stage_executions(run["run_id"])
+    objective_executions = await list_objective_executions(
+        run.get("coordination_session_id", ""), run_id=run["run_id"]
+    ) if run.get("coordination_session_id") else []
+    artifacts = await list_artifacts(
+        run.get("coordination_session_id", ""), run_id=run["run_id"]
+    ) if run.get("coordination_session_id") else []
+    receipts = await list_receipts(
+        run.get("coordination_session_id", ""), run_id=run["run_id"]
+    ) if run.get("coordination_session_id") else []
     playbook = await get_playbook(run["playbook_id"])
     return {
         "status": "ok",
@@ -305,7 +385,13 @@ async def api_get_latest_playbook_run(enclave_id: str, actor_did: str, _=Depends
         "playbook_name": run["playbook_name"],
         "current_stage": run["current_stage"],
         "run_status": run["status"],
-        "stages": _build_stages_status(stage_executions, playbook),
+        "stages": _build_stages_status(
+            stage_executions,
+            playbook,
+            objective_executions=objective_executions,
+            artifacts=artifacts,
+            receipts=receipts,
+        ),
         "started_at": run["started_at"],
         "completed_at": run.get("completed_at"),
     }
@@ -320,6 +406,15 @@ async def api_get_playbook_run(enclave_id: str, run_id: str, actor_did: str, _=D
     if run["enclave_id"] != enclave_id:
         raise HTTPException(404, "Run not found in this enclave")
     stage_executions = await list_stage_executions(run_id)
+    objective_executions = await list_objective_executions(
+        run.get("coordination_session_id", ""), run_id=run_id
+    ) if run.get("coordination_session_id") else []
+    artifacts = await list_artifacts(
+        run.get("coordination_session_id", ""), run_id=run_id
+    ) if run.get("coordination_session_id") else []
+    receipts = await list_receipts(
+        run.get("coordination_session_id", ""), run_id=run_id
+    ) if run.get("coordination_session_id") else []
     playbook = await get_playbook(run["playbook_id"])
     return {
         "status": "ok",
@@ -327,7 +422,13 @@ async def api_get_playbook_run(enclave_id: str, run_id: str, actor_did: str, _=D
         "playbook_name": run["playbook_name"],
         "current_stage": run["current_stage"],
         "run_status": run["status"],
-        "stages": _build_stages_status(stage_executions, playbook),
+        "stages": _build_stages_status(
+            stage_executions,
+            playbook,
+            objective_executions=objective_executions,
+            artifacts=artifacts,
+            receipts=receipts,
+        ),
         "started_at": run["started_at"],
         "completed_at": run.get("completed_at"),
     }

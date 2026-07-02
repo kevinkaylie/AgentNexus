@@ -12,13 +12,17 @@ from nacl.encoding import HexEncoder
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def setup_db():
-    from agent_net.storage import DB_PATH
-    DB_PATH.parent.mkdir(exist_ok=True)
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-    await init_db()
+async def setup_db(tmp_path):
+    import agent_net.storage as s
+    _db = tmp_path / "agent_net.db"
+    _orig = s.DB_PATH
+    s.DB_PATH = _db
+    _db.parent.mkdir(exist_ok=True)
+    if _db.exists():
+        _db.unlink()
+    await s.init_db()
     yield
+    s.DB_PATH = _orig
 
 
 async def _create_agent(name: str, owner_did: str = None):

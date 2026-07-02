@@ -26,6 +26,12 @@ agent_net/
 │   ├── daemon.py     # FastAPI HTTP服务 :8765
 │   ├── mcp_server.py # MCP stdio服务
 │   ├── gatekeeper.py # 访问控制网关
+│   ├── loop_engine.py       # Objective Loop V1.1 状态机
+│   ├── local_runner.py      # V1.1 本机 Runner（配置+执行）
+│   ├── secretary_gateway.py # V1.1 DecisionGate → decision_request
+│   ├── execution_backends/  # V1.1 执行通道抽象
+│   │   ├── base.py          # ExecutionHandle / ExecutionResult / ExecutionBackend
+│   │   └── local_cli.py    # argv子进程执行（白名单+timeout+JSON解析）
 │   └── routers/      # HTTP 路由模块
 │       ├── coordination.py  # Coding Coordination V1（工作流协作）
 ├── relay/
@@ -195,7 +201,7 @@ result = await nexus.verify("did:agentnexus:...")
 # Coding Coordination V1
 session = await nexus.coordination.coding_intake(
     owner_did="...", actor_did="...", objective="实现登录模块")
-await nexus.coordination.advance(session["coordination_session_id"], actor_did="...")
+await nexus.coordination.advance(session["coordination_session_id"], session["playbook_run_id"], actor_did="...")
 timeline = await nexus.coordination.timeline(session["coordination_session_id"], actor_did="...")
 ```
 

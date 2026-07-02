@@ -59,8 +59,9 @@
 | 项目需求文档 | [docs/requirements.md](docs/requirements.md) | 生效 |
 | 设计文档索引 | [docs/design.md](docs/design.md) | 生效 |
 | 设计 v1.0+（活跃） | [docs/design/design-v1.0.md](docs/design/design-v1.0.md) | 生效 |
-| Coding Coordination V1 专题 | [docs/design/design-coding-coordination-v1.md](docs/design/design-coding-coordination-v1.md) | 设计/草稿实现未接入 |
-| Coding Coordination V1 Release Closure | [docs/design/design-coding-coordination-v1-release.md](docs/design/design-coding-coordination-v1-release.md) | P0 已完成 / SDK+CLI 收口中 |
+| Objective Loop V1.1 专题 | [docs/design/design-objective-loop-v1.1.md](docs/design/design-objective-loop-v1.1.md) | 已评审通过/开发中（P0-1~P0-5 已完成） |
+| Coding Coordination V1 专题 | [docs/design/design-coding-coordination-v1.md](docs/design/design-coding-coordination-v1.md) | 已实现（63 测试通过） |
+| Coding Coordination V1 Release Closure | [docs/design/design-coding-coordination-v1-release.md](docs/design/design-coding-coordination-v1-release.md) | ✅ 已完成 |
 | 设计 v0.x（归档） | [docs/archive/design-v0.x.md](docs/archive/design-v0.x.md) | 归档 |
 | 秘书与 Agent 团队协作编排专题 | [docs/design/design-secretary-orchestration.md](docs/design/design-secretary-orchestration.md) | 活跃 |
 | Orchestration SDK 改造专题 | [docs/design/design-sdk-orchestration.md](docs/design/design-sdk-orchestration.md) | 活跃 |
@@ -94,6 +95,8 @@
 | DID 方法规范 | [docs/did-method-spec.md](docs/did-method-spec.md) | 草稿 |
 | 快速开始 | [docs/quickstart.md](docs/quickstart.md) | 生效 |
 | 产品定位与使用场景 | [docs/product.md](docs/product.md) | 生效 |
+| 推广与发布清单 | [docs/promotion.md](docs/promotion.md) | 生效 |
+| Agent Adapter Contract | [docs/integrations/agent-adapter-contract.md](docs/integrations/agent-adapter-contract.md) | 生效 |
 | MCP 集成 | [docs/integrations/mcp.md](docs/integrations/mcp.md) | 生效 |
 | 产品路线图 | [docs/roadmap.md](docs/roadmap.md) | 生效（仅本地） |
 | WG DID Resolution | [specs/working-group/did-resolution.md](specs/working-group/did-resolution.md) | 生效（v1.0 RATIFIED） |

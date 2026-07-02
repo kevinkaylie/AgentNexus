@@ -14,8 +14,7 @@ from typing import Optional, Any, Dict
 from enum import Enum
 import json
 
-
-PROTOCOL_NEXUS_V1 = "nexus_v1"
+from .constants import PROTOCOL_NEXUS_V1
 
 
 class ActionType(str, Enum):
@@ -39,6 +38,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     BLOCKED = "blocked"
+    EXPIRED = "expired"  # 超时过期状态
 
 
 @dataclass
@@ -204,19 +204,7 @@ class StateNotify:
 
     def is_terminal(self) -> bool:
         """Check if this is a terminal state."""
-        return self.status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
-
-
-# ── Task State Machine ────────────────────────────────────────────
-
-class TaskStatus(str, Enum):
-    """Task status values for state_notify."""
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    BLOCKED = "blocked"
-    EXPIRED = "expired"  # 超时过期状态
+        return self.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.EXPIRED)
 
 
 class TaskStateMachine:

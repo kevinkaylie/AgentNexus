@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentnexus-sdk"
-version = "1.0.0"
-description = "AgentNexus Python SDK - 3 lines to connect your AI Agent to the decentralized network"
+version = "1.0.1"
+description = "Python SDK for AgentNexus messaging, orchestration and coordination"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -34,8 +34,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/anthropics/agentnexus"
-Documentation = "https://github.com/anthropics/agentnexus#readme"
+Homepage = "https://github.com/kevinkaylie/AgentNexus"
+Documentation = "https://github.com/kevinkaylie/AgentNexus#readme"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentnexus"]

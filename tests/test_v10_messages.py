@@ -7,12 +7,12 @@ v1.0-06 消息中心测试套件
   - 聚合全部消息（分页）
   - 各子 Agent 消息统计
 """
-import asyncio
 import importlib
 import sys
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, ".")
@@ -22,8 +22,8 @@ sys.path.insert(0, ".")
 # 测试 Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture()
-def isolated_env(tmp_path, monkeypatch):
+@pytest_asyncio.fixture()
+async def isolated_env(tmp_path, monkeypatch):
     """创建隔离的测试环境"""
     import agent_net.storage as st
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "agent_net.db")
@@ -36,17 +36,19 @@ def isolated_env(tmp_path, monkeypatch):
 
     import agent_net.storage as st_reload
     importlib.reload(st_reload)
-    asyncio.run(st_reload.init_db())
+    await st_reload.init_db()
 
     from agent_net.node.daemon import app
-    yield TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 # ---------------------------------------------------------------------------
 # 测试用例
 # ---------------------------------------------------------------------------
 
-def test_v10_msg_01_owner_inbox(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_msg_01_owner_inbox(isolated_env):
     """聚合主 DID 下所有子 Agent 的未读消息"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -65,9 +67,9 @@ def test_v10_msg_01_owner_inbox(isolated_env):
 
     # 发送消息到子 Agent（使用 store_message 直接写入）
     from agent_net.storage import store_message
-    asyncio.run(store_message("did:external:sender1", agent1, "Hello Agent1"))
-    asyncio.run(store_message("did:external:sender2", agent2, "Hello Agent2"))
-    asyncio.run(store_message("did:external:sender3", agent1, "Another message"))
+    await store_message("did:external:sender1", agent1, "Hello Agent1")
+    await store_message("did:external:sender2", agent2, "Hello Agent2")
+    await store_message("did:external:sender3", agent1, "Another message")
 
     # 查询聚合未读
     resp = client.get(
@@ -87,7 +89,8 @@ def test_v10_msg_01_owner_inbox(isolated_env):
     assert agent1_msgs[0]["to_agent_name"] == "Agent1"
 
 
-def test_v10_msg_02_owner_messages_all(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_msg_02_owner_messages_all(isolated_env):
     """聚合全部消息（分页）"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -101,14 +104,14 @@ def test_v10_msg_02_owner_messages_all(isolated_env):
     # 发送多条消息
     from agent_net.storage import store_message
     for i in range(5):
-        asyncio.run(store_message("did:external:sender", agent, f"Message {i}"))
+        await store_message("did:external:sender", agent, f"Message {i}")
 
     # 部分标记已读
     from agent_net.storage import fetch_inbox
-    asyncio.run(fetch_inbox(agent))  # fetch_inbox 会标记 delivered=1
+    await fetch_inbox(agent)  # fetch_inbox 会标记 delivered=1
 
     # 发送更多未读消息
-    asyncio.run(store_message("did:external:sender", agent, "New unread"))
+    await store_message("did:external:sender", agent, "New unread")
 
     # 查询全部消息
     resp = client.get(
@@ -125,7 +128,8 @@ def test_v10_msg_02_owner_messages_all(isolated_env):
     assert len(delivered_msgs) == 5  # fetch_inbox 处理了前 5 条
 
 
-def test_v10_msg_03_owner_stats(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_msg_03_owner_stats(isolated_env):
     """各子 Agent 消息统计"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -144,9 +148,9 @@ def test_v10_msg_03_owner_stats(isolated_env):
 
     # 发送消息
     from agent_net.storage import store_message
-    asyncio.run(store_message("did:external", agent1, "Msg1"))
-    asyncio.run(store_message("did:external", agent1, "Msg2"))
-    asyncio.run(store_message("did:external", agent2, "Msg3"))
+    await store_message("did:external", agent1, "Msg1")
+    await store_message("did:external", agent1, "Msg2")
+    await store_message("did:external", agent2, "Msg3")
 
     # 查询统计
     resp = client.get(
@@ -167,7 +171,8 @@ def test_v10_msg_03_owner_stats(isolated_env):
     assert agent2_stat["unread_count"] == 1
 
 
-def test_v10_msg_04_owner_not_found(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_msg_04_owner_not_found(isolated_env):
     """非主 DID 查询应返回 404"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -190,7 +195,8 @@ def test_v10_msg_04_owner_not_found(isolated_env):
     assert resp2.status_code == 403
 
 
-def test_v10_msg_05_owner_messages_require_token(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_msg_05_owner_messages_require_token(isolated_env):
     """Owner 消息中心读接口需要 Token"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token

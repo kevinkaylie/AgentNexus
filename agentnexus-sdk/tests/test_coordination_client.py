@@ -31,10 +31,11 @@ class FakeClient:
                 "status": "intake",
                 "session": {
                     "coordination_session_id": "cs_test001",
+                    "playbook_run_id": "run_test001",
                     "owner_did": json["owner_did"],
                     "controller_did": json["actor_did"],
                     "objective": json["objective"],
-                    "workflow_id": "coding.v1",
+                    "playbook_id": "coding.v1",
                     "status": "intake",
                 },
             }
@@ -48,7 +49,7 @@ class FakeClient:
                     "owner_did": "did:agentnexus:owner",
                     "controller_did": "did:agentnexus:secretary",
                     "objective": "Test session",
-                    "workflow_id": "coding.v1",
+                    "playbook_id": "coding.v1",
                     "status": "intake",
                 },
             }
@@ -76,6 +77,7 @@ class FakeClient:
                 "artifact": {
                     "artifact_id": "art_001",
                     "coordination_session_id": json["coordination_session_id"],
+                    "run_id": json.get("run_id", ""),
                     "stage": json["stage"],
                     "artifact_type": json["artifact_type"],
                     "producer_did": json["producer_did"],
@@ -90,6 +92,7 @@ class FakeClient:
                 "receipt": {
                     "receipt_id": "rcpt_001",
                     "coordination_session_id": json["coordination_session_id"],
+                    "run_id": json.get("run_id", ""),
                     "stage": json["stage"],
                     "receipt_type": json["receipt_type"],
                     "issuer_did": json["issuer_did"],
@@ -114,7 +117,7 @@ class FakeClient:
             return {"status": "rejected"}
         # advance
         if "/advance" in path:
-            return {"status": "advanced", "current_stage": "design", "previous_stage": "clarify"}
+            return {"status": "advanced", "run_id": path.split("/runs/")[1].split("/")[0], "current_stage": "design", "previous_stage": "clarify"}
         # timeline
         if "/timeline" in path:
             return {"status": "ok", "coordination_session_id": "cs_test001", "timeline": []}
@@ -255,14 +258,16 @@ async def test_coordination_client_submit_receipt(coord_client, client):
 
 @pytest.mark.asyncio
 async def test_coordination_client_advance(coord_client, client):
-    """advance sends POST /coordination/coding/{id}/advance."""
+    """advance sends POST /coordination/coding/{id}/runs/{run_id}/advance."""
     state = await coord_client.advance(
         coordination_session_id="cs_test001",
+        run_id="run_test001",
         actor_did="did:agentnexus:secretary",
     )
     assert state["current_stage"] == "design"
+    assert state["run_id"] == "run_test001"
     req = client.requests[-1]
-    assert "advance" in req["path"]
+    assert req["path"] == "/coordination/coding/cs_test001/runs/run_test001/advance"
 
 
 @pytest.mark.asyncio
@@ -301,11 +306,13 @@ async def test_coordination_client_delegate_stage(coord_client, client):
         stage="design",
         delegator_did="did:agentnexus:secretary",
         delegatee_did="did:agentnexus:designer",
+        run_id="run_test001",
         role="designer",
     )
     assert result["delegation"]["status"] == "pending"
     body = client.requests[-1]["json"]
     assert body["delegatee_did"] == "did:agentnexus:designer"
+    assert body["run_id"] == "run_test001"
 
 
 @pytest.mark.asyncio

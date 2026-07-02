@@ -8,12 +8,12 @@ v1.0-05 意图路由测试套件
   - 匹配阈值过滤
   - 主 DID 无子 Agent 时不转发
 """
-import asyncio
 import importlib
 import sys
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, ".")
@@ -23,8 +23,8 @@ sys.path.insert(0, ".")
 # 测试 Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture()
-def isolated_env(tmp_path, monkeypatch):
+@pytest_asyncio.fixture()
+async def isolated_env(tmp_path, monkeypatch):
     """创建隔离的测试环境"""
     import agent_net.storage as st
     monkeypatch.setattr(st, "DB_PATH", tmp_path / "agent_net.db")
@@ -37,21 +37,23 @@ def isolated_env(tmp_path, monkeypatch):
 
     import agent_net.storage as st_reload
     importlib.reload(st_reload)
-    asyncio.run(st_reload.init_db())
+    await st_reload.init_db()
 
     # 重置 router 单例的本地 sessions
     from agent_net.router import router
     router._local_sessions.clear()
 
     from agent_net.node.daemon import app
-    yield TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 # ---------------------------------------------------------------------------
 # 测试用例
 # ---------------------------------------------------------------------------
 
-def test_v10_ir_01_intent_route_match(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_ir_01_intent_route_match(isolated_env):
     """意图路由：关键词匹配转发"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -76,18 +78,18 @@ def test_v10_ir_01_intent_route_match(isolated_env):
     router.register_local_session(agent2)
 
     # 发送消息给主 DID（包含 "python code" 关键词）
-    result = asyncio.run(router.route_message(
+    result = await router.route_message(
         from_did="did:agentnexus:external",
         to_did=owner,
         content="帮我写一段 python code 实现登录功能",
-    ))
+    )
 
     # 应转发到 CodeAgent（匹配 Code + Python）
     assert result["status"] == "delivered"
     assert result["method"] == "local"
 
     # 验证消息到达 CodeAgent
-    msg = asyncio.run(router.receive(agent1, timeout=0.5))
+    msg = await router.receive(agent1, timeout=0.5)
     assert msg is not None
     assert "python" in msg["content"].lower()
 
@@ -96,7 +98,8 @@ def test_v10_ir_01_intent_route_match(isolated_env):
     router.unregister_local_session(agent2)
 
 
-def test_v10_ir_02_intent_route_no_match(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_ir_02_intent_route_no_match(isolated_env):
     """意图路由：无匹配留在主 DID 收件箱"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -115,23 +118,24 @@ def test_v10_ir_02_intent_route_no_match(isolated_env):
     client.post("/owner/bind", json={"owner_did": owner, "agent_did": agent}, headers={"Authorization": f"Bearer {token}"})
 
     # 发送消息给主 DID（无关内容）
-    result = asyncio.run(router.route_message(
+    result = await router.route_message(
         from_did="did:agentnexus:external",
         to_did=owner,
         content="今天天气怎么样",
-    ))
+    )
 
     # 无匹配，消息留在主 DID 收件箱（离线存储）
     assert result["status"] == "queued"
     assert result["method"] == "offline"
 
     # 验证消息存入主 DID 的 inbox
-    inbox = asyncio.run(fetch_inbox(owner))
+    inbox = await fetch_inbox(owner)
     assert len(inbox) == 1
     assert "天气" in inbox[0]["content"]
 
 
-def test_v10_ir_03_intent_route_threshold(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_ir_03_intent_route_threshold(isolated_env):
     """意图路由：匹配阈值过滤"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -153,11 +157,11 @@ def test_v10_ir_03_intent_route_threshold(isolated_env):
     router.register_local_session(agent)
 
     # 发送消息（只匹配一个关键词 "chat"，低于阈值 MIN_MATCH_SCORE=2）
-    result = asyncio.run(router.route_message(
+    result = await router.route_message(
         from_did="did:agentnexus:external",
         to_did=owner,
         content="让我们 chat 吧",
-    ))
+    )
 
     # 匹配分数 = 1 < 2，不转发
     assert result["status"] == "queued"
@@ -167,7 +171,8 @@ def test_v10_ir_03_intent_route_threshold(isolated_env):
     router.unregister_local_session(agent)
 
 
-def test_v10_ir_04_intent_route_no_agents(isolated_env):
+@pytest.mark.asyncio
+async def test_v10_ir_04_intent_route_no_agents(isolated_env):
     """意图路由：主 DID 无子 Agent 时不转发"""
     client = isolated_env
     from agent_net.node._auth import init_daemon_token
@@ -180,16 +185,16 @@ def test_v10_ir_04_intent_route_no_agents(isolated_env):
     owner = client.post("/owner/register", json={"name": "Owner"}, headers={"Authorization": f"Bearer {token}"}).json()["did"]
 
     # 发送消息给主 DID
-    result = asyncio.run(router.route_message(
+    result = await router.route_message(
         from_did="did:agentnexus:external",
         to_did=owner,
         content="帮我写代码",
-    ))
+    )
 
     # 无子 Agent，消息留在主 DID 收件箱
     assert result["status"] == "queued"
     assert result["method"] == "offline"
 
     # 验证消息存入主 DID 的 inbox
-    inbox = asyncio.run(fetch_inbox(owner))
+    inbox = await fetch_inbox(owner)
     assert len(inbox) == 1
