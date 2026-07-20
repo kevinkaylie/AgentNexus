@@ -4,7 +4,7 @@
 |---|---|
 | Status | Draft |
 | Category | Foundational |
-| Version | 0.1 |
+| Version | 0.2 |
 | Created | 2026-07-17 |
 | Authors | AgentNexus Contributors |
 | Intended audience | Protocol designers, agent runtime implementers, identity and governance providers |
@@ -20,7 +20,7 @@ ACF addresses how independently operated and potentially unfamiliar agents
 discover one another, establish identity, request metadata, exchange trust
 evidence, negotiate capabilities and authority, establish collaboration
 sessions, coordinate work, exchange artifacts, and create auditable records of
-responsibility.
+attribution and responsibility-related facts.
 
 ACF is not an agent runtime framework and does not prescribe how an agent
 reasons, plans, stores memory, or invokes tools. It is not a transport protocol
@@ -32,6 +32,10 @@ The framework standardizes the information and state transitions required for
 trusted and accountable collaboration. Trust remains contextual and belongs to
 the receiver. The framework carries verifiable claims and evidence from which
 each receiver can make and enforce its own decisions.
+
+The foundational boundary is:
+
+> The framework standardizes evidence exchange, not trust decisions.
 
 ## 1. Status of This Memo
 
@@ -49,7 +53,46 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**,
 [BCP 14](https://www.rfc-editor.org/info/bcp14) when, and only when, they appear
 in all capitals.
 
-## 2. Motivation
+## 2. Foundational Principle
+
+ACF follows three governing boundaries:
+
+> Define expression, not domain truth.
+>
+> Exchange evidence, not trust conclusions.
+>
+> Support collaboration; do not take ownership of transport or domain policy.
+
+The first boundary does not prevent ACF from defining protocol-verifiable
+facts. ACF and its related RFCs MUST define how an implementation determines
+whether:
+
+- an object is structurally valid;
+- a proof or signature is valid;
+- an issuer controls the identifier or key it uses;
+- evidence is bound to the required subject, audience, action, artifact, or
+  session;
+- evidence is current, expired, or revoked;
+- a protocol state transition is valid.
+
+These are protocol facts.
+
+ACF does not define whether a valid medical license is sufficient for a
+hospital, whether a valid audit is sufficient for a bank, whether an agent is
+competent for a task, whether an output is factually correct, or whether an
+event creates legal liability. These are domain facts and receiver decisions.
+
+The distinction can be summarized as:
+
+```text
+Protocol verification:
+  "Was this evidence validly issued, correctly bound, and still current?"
+
+Receiver decision:
+  "Is this evidence sufficient for this action in this context?"
+```
+
+## 3. Motivation
 
 Agent interoperability is often framed as a communication problem: assign
 addresses, deliver messages, and allow one agent to invoke another. Those
@@ -82,53 +125,62 @@ established through explicit intent, receiver-driven requirements, evidence
 presentation, local evaluation, negotiated authority, session agreement, and
 accountable outcomes.
 
-## 3. Scope
+## 4. Framework Responsibilities
 
-ACF defines a common framework for:
+ACF is responsible for:
 
-1. discovering agents and their collaboration endpoints;
-2. binding agent identifiers to cryptographic control;
-3. expressing collaboration intent;
-4. allowing receivers to request metadata and evidence;
-5. presenting claims, provenance, proofs, and third-party attestations;
-6. negotiating capabilities, authority, constraints, and obligations;
-7. establishing and managing collaboration sessions;
-8. coordinating tasks and artifact handoffs;
-9. producing outcome receipts and audit records;
-10. binding all of the above to the relevant actors, context, time, and
-    collaboration instance.
+1. defining collaboration participants, principals, and protocol roles;
+2. defining transport-independent collaboration semantics and core objects;
+3. defining metadata requirements and evidence exchange;
+4. defining capability, permission, authority, delegation, constraint, and
+   obligation semantics;
+5. defining the collaboration lifecycle and session state model;
+6. defining task, event, artifact, outcome, attribution, acceptance-record,
+   audit, revocation, correction, and dispute-signaling semantics;
+7. defining how core semantics are mapped to different transport protocols;
+8. binding security-relevant objects to actors, context, time, action,
+   artifact, and collaboration session.
 
 ACF defines semantic interoperability. Individual RFCs will define the
 required object models, state machines, validation rules, error semantics,
 security properties, and transport bindings.
 
-## 4. Non-Goals
+## 5. Framework Non-Responsibilities
 
 ACF does not:
 
 1. define an agent's internal reasoning, planning, memory, model, or tool-use
    architecture;
 2. define a universal agent runtime or orchestration engine;
-3. replace existing network and application transports;
-4. mandate a specific DID method, public-key infrastructure, credential
-   format, or ledger;
-5. define a universal trust score, reputation score, or trust hierarchy;
-6. require receivers to disclose their complete decision policies;
-7. decide whether a receiver should permit, reject, or constrain an action;
-8. guarantee the truth of a claim merely because the claim is well-formed or
-   signed;
-9. define a single global ontology for every industry or collaboration domain;
-10. require natural language as the collaboration format;
-11. define a product interface, dashboard, marketplace, or commercial
+3. define a unique trust algorithm or prescribe which subjects are trusted;
+4. provide a universal trust score, reputation score, or trust hierarchy;
+5. replace HTTP, WebSocket, gRPC, MQ, MCP, A2A, or other network and
+   application transports;
+6. define healthcare, finance, legal, insurance, arbitration, or other
+   industry policy;
+7. mandate a specific DID method, public-key infrastructure, credential
+   format, blockchain, or identity technology;
+8. require disclosure of model chain-of-thought, hidden reasoning, private
+   memory, model weights, or internal runtime state;
+9. require receivers to disclose their complete decision policies;
+10. decide whether a receiver should permit, reject, or constrain an action;
+11. directly execute or prescribe a concrete business workflow;
+12. adjudicate contractual, legal, organizational, or industry liability;
+13. guarantee the domain truth of a claim merely because the claim is
+    well-formed or signed;
+14. define a single global ontology for every industry or collaboration
+    domain;
+15. require natural language as the collaboration format;
+16. define a product interface, dashboard, marketplace, or commercial
     operating model.
 
 An implementation MAY provide any of these functions locally. Such functions
 are implementation policy and MUST NOT be presented as universal ACF
 semantics.
 
-## 5. Architectural Principles
+## 6. Architectural Principles
 
-### 5.1 Collaboration, Not Agent Runtime
+### 6.1 Collaboration, Not Agent Runtime
 
 ACF standardizes relationships between independent agents. It does not
 standardize the internal construction of an agent.
@@ -138,7 +190,7 @@ workflow engine, human-operated gateway, software organization, or hybrid
 system. Conformance depends on observable protocol behavior, not internal
 architecture.
 
-### 5.2 Transport Agnostic
+### 6.2 Transport Agnostic
 
 Core ACF objects and state transitions MUST be expressible independently of
 HTTP, WebSocket, gRPC, message queues, MCP, A2A, or any other transport.
@@ -158,7 +210,7 @@ Transport security MAY protect delivery, but successful transport
 authentication MUST NOT be treated as sufficient collaboration trust or
 authorization.
 
-### 5.3 Trust Belongs to the Receiver
+### 6.3 Trust Belongs to the Receiver
 
 Trust is a receiver's contextual willingness to accept risk in a proposed
 interaction.
@@ -178,7 +230,7 @@ be carried as evidence, but it MUST identify at least:
 Different receivers MAY reach different decisions from the same evidence.
 This is expected behavior, not a protocol inconsistency.
 
-### 5.4 The Framework Expresses Evidence, Not Trust
+### 6.4 The Framework Expresses Evidence, Not Trust
 
 ACF defines how claims and evidence are requested, presented, bound, and
 verified. Verification establishes properties such as signature validity,
@@ -188,7 +240,7 @@ that a receiver must accept the claim or act on it.
 A signed assertion proves that the signing issuer made the assertion. It does
 not, by itself, prove that the assertion is factually correct.
 
-### 5.5 Decisions Belong to the Receiver
+### 6.5 Decisions Belong to the Receiver
 
 The receiver owns the policy decision.
 
@@ -208,7 +260,7 @@ A receiver SHOULD be able to keep internal thresholds, weighting, fraud rules,
 and other sensitive policy details private. Declaring evidence requirements
 does not require disclosing the complete decision function.
 
-### 5.6 Metadata Requirements Are Receiver-Driven
+### 6.6 Metadata Requirements Are Receiver-Driven
 
 The sender does not unilaterally determine which metadata is sufficient.
 
@@ -230,7 +282,7 @@ include:
 The sender MAY satisfy, partially satisfy, counter, or decline the request. A
 missing or declined item MUST be distinguishable from an invalid item.
 
-### 5.7 Language Is Payload, Not Protocol
+### 6.7 Language Is Payload, Not Protocol
 
 Natural language MAY appear in an intent, payload, explanation, artifact, or
 human-readable reason. Natural language MUST NOT be the sole representation of
@@ -240,7 +292,7 @@ audit-critical outcomes.
 Protocol-critical semantics MUST be represented in structured fields with
 defined validation rules.
 
-### 5.8 Evidence Must Be Context-Bound
+### 6.8 Evidence Must Be Context-Bound
 
 Evidence valid in one context is not automatically valid in another.
 
@@ -261,7 +313,7 @@ Where applicable, evidence and proofs SHOULD be bound to:
 Later RFCs MUST define the exact binding and canonicalization requirements for
 each object type.
 
-### 5.9 Capability and Authority Are Distinct
+### 6.9 Capability, Permission, and Authority Are Distinct
 
 An agent's claimed or demonstrated ability to perform an action is not the
 same as authorization to perform that action.
@@ -270,15 +322,17 @@ ACF MUST distinguish:
 
 - **capability claim**: the agent claims it can perform an action;
 - **capability evidence**: evidence supporting that claim;
-- **authority**: permission granted by a principal or policy to perform the
-  action;
+- **permission**: a grant allowing a subject to perform an action on a
+  resource within a defined scope;
+- **authority**: the source, scope, and grant relationship from which one or
+  more permissions are derived;
 - **delegation**: transfer of limited authority from one subject to another;
 - **constraint**: a bound limit on authority, such as resource, amount, time,
   stage, or purpose.
 
 Delegation MUST NOT expand authority beyond its parent grant.
 
-### 5.10 Accountability Is a First-Class Output
+### 6.10 Outcome Records Are First-Class Outputs
 
 Collaboration produces more than payloads. It produces assertions about what
 was requested, authorized, performed, reviewed, accepted, rejected, or
@@ -286,9 +340,10 @@ aborted.
 
 ACF sessions SHOULD produce verifiable receipts or equivalent signed records
 for audit-relevant events. A receipt is itself an issuer's assertion and MUST
-be evaluated as evidence; it is not automatically objective truth.
+be evaluated as evidence. It is not automatically objective truth, business
+acceptance, contractual performance, or legal liability.
 
-### 5.11 Minimize Disclosure
+### 6.11 Minimize Disclosure
 
 Metadata negotiation can expose identity, organization, capability, financial,
 health, location, and behavioral information.
@@ -297,7 +352,27 @@ Receivers SHOULD request only evidence relevant to the proposed collaboration.
 Senders MUST be able to decline excessive requests. Later RFCs SHOULD support
 selective disclosure, references, or derived proofs where practical.
 
-### 5.12 Specifications Precede Implementations
+### 6.12 Security Is Defined with Each Protocol Domain
+
+Security and privacy requirements MUST be designed within each protocol domain
+and object lifecycle. They MUST NOT be deferred until a final cross-cutting
+security document.
+
+Every ACF RFC MUST define its own:
+
+- threat model;
+- security properties;
+- privacy considerations;
+- replay and freshness requirements;
+- revocation and recovery behavior;
+- failure and degradation semantics;
+- negative conformance tests or test vectors where applicable.
+
+RFC-008 consolidates cross-domain threats, composition risks, and shared
+security properties. It does not replace the security analysis required by
+RFC-001 through RFC-007.
+
+### 6.13 Specifications Precede Implementations
 
 Reference implementations are used to test and improve RFCs. They do not
 silently define protocol behavior.
@@ -306,71 +381,81 @@ Normative protocol behavior MUST be documented in an RFC. An implementation
 extension not covered by a ratified RFC MUST be identified as experimental,
 implementation-specific, or vendor-specific.
 
-## 6. Terminology
+## 7. Core Object Model and Terminology
 
-### 6.1 Agent
+### 7.1 Agent
 
-An independently addressable actor capable of participating in a
-collaboration. An agent may represent itself, a human, an organization, or
-another principal.
+An independently addressable protocol participant and execution endpoint
+capable of taking part in a collaboration. An Agent may be software,
+human-operated, organizational, or hybrid. Being an Agent does not by itself
+make the endpoint the legal or organizational responsibility holder.
 
-### 6.2 Principal
+### 7.2 Principal
 
-The person, organization, service, or other authority on whose behalf an agent
-acts.
+The person, organization, service, or other entity that an Agent represents or
+from which it receives authority. A Principal may bear responsibility under
+external law, contract, or organizational policy. ACF records representation
+and authority relationships; it does not adjudicate liability.
 
-### 6.3 Initiator and Responder
+### 7.3 Initiator and Responder
 
 The **Initiator** proposes a collaboration intent. The **Responder** receives
 the proposal. Either party may later act as sender or receiver for individual
 protocol objects.
 
-### 6.4 Sender and Receiver
+### 7.4 Sender and Receiver
 
 The **Sender** transmits a protocol object. The **Receiver** evaluates that
 object. These terms are relative to a specific exchange.
 
-### 6.5 Subject
+### 7.5 Subject
 
 The entity about which a claim or evidence item makes an assertion.
 
-### 6.6 Issuer
+### 7.6 Issuer
 
 The entity that makes and, where applicable, cryptographically signs a claim,
 credential, attestation, assessment, or receipt.
 
-### 6.7 Verifier
+### 7.7 Verifier
 
 The component that validates proof, binding, freshness, scope, revocation, and
 other objective properties of presented evidence.
 
-### 6.8 Policy Decision Point
+### 7.8 Policy Decision Point
 
 The receiver-local component that evaluates verified evidence and local
 context to produce a decision such as permit, deny, or conditional permit.
 
-### 6.9 Policy Enforcement Point
+### 7.9 Policy Enforcement Point
 
 The component that enforces a local decision and its obligations.
 
-### 6.10 Collaboration Intent
+### 7.10 Collaboration Intent
 
 A structured proposal describing the action, objective, payload or payload
 reference, participants, constraints, and time bounds of a desired
 collaboration.
 
-### 6.11 Metadata Requirement
+### 7.11 Metadata Requirement
 
 A receiver-declared requirement for a claim, evidence type, proof property,
 freshness property, capability, authority, or context needed to evaluate a
-collaboration intent.
+collaboration intent. A Requirement is the disclosed condition for a specific
+exchange; it is not the receiver's complete Policy.
 
-### 6.12 Claim
+### 7.12 Policy
+
+A receiver-local set of rules, risk tolerances, trusted issuers, thresholds,
+obligations, and escalation procedures used to generate Requirements and make
+Decisions. A Policy may remain private.
+
+### 7.13 Claim
 
 An assertion made by a subject or issuer. A claim may be unverified, verified,
 disputed, expired, or revoked.
 
-### 6.13 Evidence
+### 7.14 Evidence
 
 A claim together with sufficient provenance, proof, observation context, or
 supporting material for a verifier and receiver to evaluate it.
@@ -378,7 +463,7 @@ supporting material for a verifier and receiver to evaluate it.
 Evidence may be first-party, third-party, locally observed, derived, or
 historical. Its weight is receiver-specific.
 
-### 6.14 Decision Package
+### 7.15 Decision Package
 
 A structured package assembled for a receiver's decision process. It may
 contain the collaboration intent, payload or payload reference, identity and
@@ -389,17 +474,23 @@ Despite its name, a Decision Package is an input to the receiver's decision.
 It does not make the decision and does not require the receiver to disclose its
 policy.
 
-### 6.15 Capability
+### 7.16 Capability
 
 An ability to perform a class of action. Capability may be claimed,
 demonstrated, certified, or inferred, but capability does not imply authority.
 
-### 6.16 Authority
+### 7.17 Permission
 
-Permission to perform an action on a resource or within a scope. Authority is
-granted by a principal or derived through a valid delegation chain.
+A grant allowing a subject to perform a defined action on a resource within a
+specific scope and set of constraints.
 
-### 6.17 Collaboration Session
+### 7.18 Authority
+
+The source, scope, and grant relationship from which one or more Permissions
+are derived. Authority may be held directly from a Principal or through a
+valid, monotonically narrowing delegation chain.
+
+### 7.19 Collaboration Session
 
 A negotiated, bounded relationship among two or more participants for a
 specific collaboration intent.
@@ -415,22 +506,36 @@ A Collaboration Session is not merely:
 It may reference these objects, but it has its own participants, negotiated
 conditions, authority, evidence snapshot, lifecycle, and audit context.
 
-### 6.18 Artifact
+### 7.20 Artifact
 
 A content-addressed or otherwise identifiable work product, input, output, or
 state object exchanged or referenced during collaboration.
 
-### 6.19 Receipt
+### 7.21 Receipt
 
 A verifiable assertion that an event, review, decision, delivery, acceptance,
-rejection, or other outcome occurred according to the issuer.
+rejection, or other outcome occurred according to the issuer. A Receipt is a
+technical and audit record. It becomes business acceptance only when an
+authorized issuer and an applicable domain policy give it that meaning.
 
-### 6.20 Trust
+### 7.22 Trust
 
 A receiver-local, context-specific decision to accept risk. Trust is not a
 wire-level scalar and is not globally transferable.
 
-## 7. Framework Model
+### 7.23 Required Distinctions
+
+All later ACF RFCs MUST preserve these distinctions:
+
+```text
+Agent       ≠ Principal
+Claim       ≠ Evidence
+Capability  ≠ Permission
+Requirement ≠ Policy
+Receipt     ≠ domain truth, legal liability, or automatic business acceptance
+```
+
+## 8. Framework Model
 
 ACF is organized into seven collaboration domains. These are semantic domains,
 not mandatory network layers.
@@ -443,7 +548,7 @@ not mandatory network layers.
 | D3 Capability and Authority | Negotiate ability, permission, delegation, and constraints | What can and may each party do? |
 | D4 Session | Establish and manage the collaboration relationship | Under what agreed context are we collaborating? |
 | D5 Coordination and Artifacts | Coordinate actions, state, dependencies, and outputs | How is the work performed and handed off? |
-| D6 Accountability | Produce receipts, audit records, revocations, and dispute references | Who is accountable for what happened? |
+| D6 Outcome Records and Audit | Produce outcome attestations, audit records, revocations, corrections, and dispute signals | What attributable record exists about what happened? |
 
 Transport bindings operate below and across these domains. Evidence and proof
 bindings apply across all domains. Receiver-local policy consumes framework
@@ -453,7 +558,7 @@ objects but is not standardized as a universal decision function.
 ┌─────────────────────────────────────────────────────────────┐
 │        Independent Agents, Runtimes, and Organizations      │
 ├─────────────────────────────────────────────────────────────┤
-│ D6  Accountability: receipts, audit, revocation, disputes   │
+│ D6  Outcome records: attestations, audit, disputes          │
 ├─────────────────────────────────────────────────────────────┤
 │ D5  Coordination: tasks, events, artifacts, outcomes        │
 ├─────────────────────────────────────────────────────────────┤
@@ -478,12 +583,12 @@ MAY reuse valid cached evidence, an existing relationship, or a previously
 negotiated session. Skipped exchanges MUST NOT weaken required freshness,
 binding, authorization, or audit properties.
 
-## 8. Conceptual Protocol Objects
+## 9. Conceptual Protocol Objects
 
 This section defines conceptual objects. It does not define their final wire
 encoding.
 
-### 8.1 Collaboration Intent
+### 9.1 Collaboration Intent
 
 A Collaboration Intent SHOULD identify:
 
@@ -499,7 +604,7 @@ A Collaboration Intent SHOULD identify:
 
 An intent is a proposal, not authority to act.
 
-### 8.2 Metadata Requirements
+### 9.2 Metadata Requirements
 
 Metadata Requirements SHOULD identify:
 
@@ -517,7 +622,7 @@ Metadata Requirements SHOULD identify:
 Requirements MUST distinguish protocol requirements from private receiver
 policy. A receiver is not required to publish the latter.
 
-### 8.3 Evidence Item
+### 9.3 Evidence Item
 
 An Evidence Item SHOULD be capable of expressing:
 
@@ -538,7 +643,7 @@ An Evidence Item SHOULD be capable of expressing:
 An Evidence Item MUST NOT be considered valid only because required fields are
 present. Each evidence type requires its own validation procedure.
 
-### 8.4 Decision Package
+### 9.4 Decision Package
 
 A Decision Package SHOULD be able to combine:
 
@@ -559,7 +664,7 @@ A field named `policy` in a Decision Package MUST identify sender-declared
 constraints, an applicable public policy, or a policy reference. It MUST NOT be
 interpreted as the receiver's private decision function.
 
-### 8.5 Session Agreement
+### 9.5 Session Agreement
 
 A Session Agreement SHOULD identify:
 
@@ -578,7 +683,7 @@ A Session Agreement SHOULD identify:
 
 A Session Agreement does not imply unlimited trust outside its scope.
 
-### 8.6 Collaboration Event
+### 9.6 Collaboration Event
 
 A Collaboration Event SHOULD identify:
 
@@ -591,7 +696,7 @@ A Collaboration Event SHOULD identify:
 - applicable authority reference;
 - proof when required.
 
-### 8.7 Artifact Manifest
+### 9.7 Artifact Manifest
 
 An Artifact Manifest SHOULD identify:
 
@@ -607,7 +712,7 @@ An Artifact Manifest SHOULD identify:
 Large artifacts SHOULD be referenced rather than embedded when transport or
 privacy constraints make embedding inappropriate.
 
-### 8.8 Receipt
+### 9.8 Receipt
 
 A Receipt SHOULD identify:
 
@@ -624,7 +729,7 @@ A Receipt SHOULD identify:
 Receipt verification establishes who issued the receipt and whether it was
 altered. Acceptance of the receipt's assertion remains receiver-specific.
 
-## 9. Collaboration Lifecycle
+## 10. Collaboration Lifecycle
 
 The canonical high-level lifecycle is:
 
@@ -657,7 +762,7 @@ a session. Long-running sessions SHOULD support re-evaluation when:
 - session constraints are exceeded;
 - a participant resumes after suspension or loss of liveness.
 
-### 9.1 Session States
+### 10.1 Session States
 
 Later RFCs SHOULD define a state machine compatible with at least:
 
@@ -677,7 +782,7 @@ Not every local policy decision must be disclosed. A receiver MAY return a
 minimal protocol reason such as `policy_rejected` without exposing sensitive
 decision rules.
 
-### 9.2 Multi-Party Collaboration
+### 10.2 Multi-Party Collaboration
 
 Multi-party sessions MUST NOT assume that evidence accepted by one participant
 is accepted by all others.
@@ -693,7 +798,7 @@ Each participant MAY:
 A multi-party Session Agreement MUST make participant-specific grants,
 constraints, and obligations unambiguous.
 
-## 10. Validation and Local Decision Separation
+## 11. Validation and Local Decision Separation
 
 Implementations SHOULD separate four stages:
 
@@ -704,12 +809,12 @@ Parse
   → Enforce
 ```
 
-### 10.1 Parse
+### 11.1 Parse
 
 Parsing determines whether an object is structurally well-formed and supported
 by the implementation.
 
-### 10.2 Verify
+### 11.2 Verify
 
 Verification evaluates objective protocol properties, including:
 
@@ -726,7 +831,7 @@ Verification evaluates objective protocol properties, including:
 Verification SHOULD produce structured results rather than a single trust
 score.
 
-### 10.3 Evaluate
+### 11.3 Evaluate
 
 Evaluation applies receiver-local policy to verified and unverified evidence,
 local observations, risk context, and requested action.
@@ -741,14 +846,14 @@ Evaluation MAY produce:
 - reduced scope;
 - rate, cost, time, or resource constraints.
 
-### 10.4 Enforce
+### 11.4 Enforce
 
 Enforcement applies the local decision at the relevant action boundary.
 
 An implementation MUST NOT treat successful parsing or signature verification
 as equivalent to authorization.
 
-## 11. Failure Semantics
+## 12. Failure Semantics
 
 Later RFCs SHOULD define machine-readable failure classes including:
 
@@ -778,7 +883,7 @@ Failure responses SHOULD reveal enough information for interoperability while
 avoiding disclosure of private policy, sensitive metadata, or exploitable
 security details.
 
-## 12. Transport Bindings
+## 13. Transport Bindings
 
 An ACF transport binding specifies:
 
@@ -800,85 +905,85 @@ artifacts may use content-addressed storage.
 Transport changes MUST NOT silently change session identity, evidence binding,
 authority scope, or audit continuity.
 
-## 13. Security and Privacy Considerations
+## 14. Security and Privacy Considerations
 
 Every ACF RFC MUST include security and privacy considerations appropriate to
 its domain.
 
-### 13.1 Impersonation and Key Substitution
+### 14.1 Impersonation and Key Substitution
 
 Identifier resolution MUST be bound to proof of control. Implementations MUST
 handle key rotation and MUST NOT silently accept an unrelated replacement key.
 
-### 13.2 Replay
+### 14.2 Replay
 
 Time-sensitive objects SHOULD include nonces, timestamps, expiration, unique
 identifiers, and audience or session binding as appropriate. Duplicate
 processing MUST be detectable at action boundaries.
 
-### 13.3 Evidence Transplant
+### 14.3 Evidence Transplant
 
 An attacker may copy valid evidence from one subject, action, audience,
 artifact, or session into another context. Proof inputs MUST bind all
 security-relevant context required to prevent such reuse.
 
-### 13.4 Sybil Identities
+### 14.4 Sybil Identities
 
 Cryptographic control of an identifier does not establish uniqueness,
 reputation, legal identity, or organizational affiliation. Receivers MUST NOT
 infer these properties from a valid self-generated identifier alone.
 
-### 13.5 Confused Deputy and Delegation Expansion
+### 14.5 Confused Deputy and Delegation Expansion
 
 Authority tokens and delegations MUST identify the intended subject, audience,
 action, resource, and constraints. Derived delegation MUST be monotonically
 narrower than its parent authority.
 
-### 13.6 Stale and Revoked Evidence
+### 14.6 Stale and Revoked Evidence
 
 Receivers SHOULD define freshness and revocation requirements according to
 risk. If revocation status cannot be determined, fail-open or fail-closed
 behavior is a local policy choice, but the uncertainty MUST be explicit and
 SHOULD be auditable.
 
-### 13.7 Metadata Fishing
+### 14.7 Metadata Fishing
 
 A malicious responder may request excessive metadata in order to profile or
 de-anonymize an agent or principal. Senders MUST be able to decline, minimize,
 or selectively disclose requested information.
 
-### 13.8 Policy Probing
+### 14.8 Policy Probing
 
 Detailed rejection reasons may allow attackers to infer and game receiver
 policy. Protocol errors SHOULD distinguish interoperability failures from
 local policy rejection without requiring disclosure of the complete policy.
 
-### 13.9 Collusion and Reputation Laundering
+### 14.9 Collusion and Reputation Laundering
 
 Multiple issuers or agents may collude to generate misleading attestations,
 endorsements, or receipts. ACF does not solve this through a universal score.
 Receivers SHOULD evaluate issuer independence, provenance, context, and
 conflicts of interest.
 
-### 13.10 Receipt Forgery and Overclaiming
+### 14.10 Receipt Forgery and Overclaiming
 
 Receipts MUST use defined canonicalization and proof rules before they can be
 treated as verifiable. A valid signature proves issuance, not factual
 correctness or fairness.
 
-### 13.11 Audit Privacy
+### 14.11 Audit Privacy
 
 Audit records can expose sensitive objectives, relationships, resources, and
 behavior. Implementations SHOULD support retention limits, access control,
 redaction, encrypted storage, and reference-based disclosure.
 
-### 13.12 Transport Downgrade
+### 14.12 Transport Downgrade
 
 Negotiation over a weaker transport MUST NOT silently remove required proof,
 confidentiality, freshness, or identity properties. Binding negotiation SHOULD
 be downgrade-resistant.
 
-## 14. Extensibility and Versioning
+## 15. Extensibility and Versioning
 
 ACF requires a small interoperable semantic core and extensible domain
 vocabularies.
@@ -901,7 +1006,7 @@ scientific research, MAY define additional evidence requirements and receipt
 types. Such profiles MUST NOT redefine the core distinction between evidence
 and receiver-local decision.
 
-## 15. Relationship to Existing AgentNexus Work
+## 16. Relationship to Existing AgentNexus Work
 
 Existing AgentNexus work remains useful as implementation experience. This RFC
 reclassifies its role in the future specification process.
@@ -923,26 +1028,26 @@ capability tokens, coordination sessions, artifacts, and receipts MAY be
 adapted as reference implementations. Conformance will be measured against
 ratified RFCs rather than current module behavior.
 
-## 16. RFC Family
+## 17. RFC Family
 
 The initial ACF RFC family is:
 
 | RFC | Working title | Scope |
 |---|---|---|
 | RFC-000 | Agent Collaboration Framework Architecture | Principles, roles, domains, lifecycle, and governance |
-| RFC-001 | Agent Discovery and Identity | Discovery documents, identifiers, endpoint description, proof of control |
-| RFC-002 | Metadata Requirements and Trust Evidence Negotiation | Collaboration Intent, Metadata Requirements, Evidence Items, Decision Package |
+| [RFC-001](001-agent-discovery-and-identity.md) | Agent Discovery and Identity Establishment | Discovery records, identifiers, endpoint descriptions, resolution, proof of control |
+| [RFC-002](002-metadata-requirements-and-evidence-exchange.md) | Metadata Requirements and Evidence Exchange | Collaboration Intent, Metadata Requirements, Evidence Items, Decision Package |
 | RFC-003 | Capability Negotiation and Delegation | Capability claims, authority, delegation, constraints, obligations |
 | RFC-004 | Collaboration Session Lifecycle | Session proposal, agreement, activation, renewal, suspension, termination |
 | RFC-005 | Task Coordination and Artifact Handoff | Tasks, events, dependencies, artifact manifests, handoff semantics |
-| RFC-006 | Outcome Receipts and Accountability | Signed receipts, audit records, correction, revocation, dispute references |
+| RFC-006 | Outcome Attestations, Audit Records, and Dispute Signaling | Receipts, audit records, correction, revocation, and dispute notices without liability adjudication |
 | RFC-007 | Transport Bindings and Interoperability | HTTP, WebSocket, MCP, A2A, queues, and cross-transport continuity |
-| RFC-008 | Security, Privacy, and Threat Model | Cross-cutting threats, privacy properties, and required mitigations |
+| RFC-008 | Security, Privacy, and Threat Model | Cross-domain threats, composition risks, shared security properties, and consolidated mitigations |
 
 RFC numbers and titles after RFC-000 remain provisional until their first
 Draft is accepted.
 
-## 17. Conformance
+## 18. Conformance
 
 RFC-000 defines architectural conformance, not full wire conformance.
 
@@ -957,14 +1062,14 @@ An implementation or specification claiming alignment with RFC-000:
 6. MUST bind security-relevant evidence to the required subject, audience,
    action, context, time, and session;
 7. MUST represent collaboration session scope and lifecycle explicitly;
-8. MUST support accountable outcome records for audit-relevant collaboration;
+8. MUST support auditable outcome records for audit-relevant collaboration;
 9. MUST document security, privacy, revocation, and failure behavior;
 10. MUST identify which specific ACF RFC versions it implements.
 
 No implementation may claim complete ACF conformance until the relevant
 wire-level RFCs and conformance tests exist.
 
-## 18. Specification Governance
+## 19. Specification Governance
 
 ACF documents use the following lifecycle:
 
@@ -996,7 +1101,7 @@ Reference implementation behavior that differs from a Ratified RFC MUST be
 treated as an implementation defect or documented extension, not as an
 implicit amendment to the RFC.
 
-## 19. Future Agent Society Work
+## 20. Future Agent Society Work
 
 ACF defines primitives for establishing bounded collaboration relationships.
 An eventual Agent Society Framework may build on these primitives to study:
@@ -1015,7 +1120,7 @@ Agent society MUST NOT require a single global trust authority or a universal
 reputation score. Society-level systems should preserve receiver sovereignty,
 evidence provenance, contextual decisions, and accountable outcomes.
 
-## 20. Open Questions
+## 21. Open Questions
 
 The following questions are intentionally deferred:
 
@@ -1036,14 +1141,14 @@ The following questions are intentionally deferred:
 These questions are expected to be resolved by subsequent RFCs and do not
 change the architectural separation established here.
 
-## 21. References
+## 22. References
 
-### 21.1 Normative References
+### 22.1 Normative References
 
 - [RFC 2119: Key words for use in RFCs to Indicate Requirement Levels](https://www.rfc-editor.org/rfc/rfc2119)
 - [RFC 8174: Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words](https://www.rfc-editor.org/rfc/rfc8174)
 
-### 21.2 Informative References
+### 22.2 Informative References
 
 - [AgentNexus Architecture](../../docs/architecture.md)
 - [AgentNexus Security Policy](../../SECURITY.md)
@@ -1062,8 +1167,8 @@ change the architectural separation established here.
 The framework can be summarized as:
 
 > Agent collaboration begins when independently operated agents can negotiate
-> the evidence, authority, constraints, and accountability required to pursue
-> a shared intent.
+> the evidence, authority, constraints, and accountable records required to
+> pursue a shared intent.
 
 And its trust boundary as:
 

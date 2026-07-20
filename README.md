@@ -3,9 +3,9 @@
 
   # AgentNexus
 
-  **Agent-native communication and teamwork infrastructure.**
+  **A framework for trustworthy collaboration among independent agents.**
 
-  **为 AI Agent 提供身份、通信、发现、授权、共享产物与团队协作编排。**
+  **面向独立 Agent 的可信协作框架。**
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
@@ -19,41 +19,81 @@
 
 ## 中文
 
+### 项目定位
+
+AgentNexus 的研究重点正在从 **Agent Communication** 转向
+**Agent Collaboration**，长期探索 **Agent Society**。目标不是再发明一种
+Agent 通信协议，而是定义陌生、独立运营的 Agent 如何发现彼此、建立身份、
+请求元数据、交换证据、协商能力与权限、建立 Session、协同完成任务并留下
+可审计记录。
+
+框架遵循三条边界：
+
+> 定义表达，不定义真理。
+>
+> 交换证据，不替代决策。
+>
+> 支持协作，不接管传输和行业规则。
+
+其中最重要的一条是：
+
+> **框架标准化的是证据交换，而不是信任结论。**
+
+规范层由 RFC 定义，现有 DID、Relay、Gatekeeper、Enclave、Playbook 和
+Objective Loop 代码是参考实现与实验场，不是协议真理：
+
+| RFC | 内容 | 状态 |
+|-----|------|------|
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | Agent Collaboration Framework 的边界、对象模型与 RFC 家族 | Draft |
+| [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | 相互独立的 Agent Discovery 与 Identity Establishment 语义 | Draft |
+| [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Receiver 驱动的元数据要求与证据交换 | Draft |
+
 ### Developer Preview
 
-AgentNexus 当前适合技术预览、协议评审和本机多 Agent 工作流试用。推荐从两条路径开始：
+AgentNexus 当前适合技术预览、协议评审和本机多 Agent 工作流试用。推荐从以下入口开始：
 
 | 目标 | 入口 |
 |------|------|
-| 先理解 AgentNexus 解决什么问题 | [产品概览](docs/product.md) |
+| 先理解框架边界与核心原则 | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) |
+| 了解现有产品和参考实现 | [产品概览](docs/product.md) |
 | 跑通基础 DID / Relay / MCP 通信 | [快速开始](docs/quickstart.md) |
 | 跑通 7-stage coding coordination 闭环 | [Coding Coordination Quickstart](docs/quickstart-coding-coordination.md) |
 | 试用 v1.1 L0 本机 Objective Loop | [Objective Loop Quickstart](docs/quickstart-objective-loop.md) |
 | 查看当前完成度和风险 | [项目现状速览](docs/project-status.md) |
 | 参与推广、反馈或集成讨论 | [推广与发布清单](docs/promotion.md) |
 
-当前公开定位：**给 AI Agent 提供 DID 身份、授权、产物交付和目标循环的协作底座**。v1.1 只承诺 L0 本机 Objective Loop；LAN / Relay 远程 Worker、桌面壳、per-agent token、Strict JCS 和签名交付包属于后续版本。L0 真实 Worker 烟测已跑通：script/pytest、Claude CLI、OpenClaw CLI 以 3 个 Worker DID 完成同一条 Objective Loop。
+当前规范定位：**为独立 Agent 建立可信协作关系定义通用语义与生命周期**。
+当前代码定位：上述框架的参考实现与开发者预览。v1.1 只承诺 L0 本机
+Objective Loop；LAN / Relay 远程 Worker、桌面壳、per-agent token、Strict
+JCS 和签名交付包属于后续版本。L0 真实 Worker 烟测已跑通：
+script/pytest、Claude CLI、OpenClaw CLI 以 3 个 Worker DID 完成同一条
+Objective Loop。
 
 ![Objective Loop Dashboard](docs/assets/objective-loop-dashboard-stages.png)
 ![L0-ready real worker evidence](docs/assets/l0-ready-real-workers-evidence.png)
 
 ### AgentNexus 是什么
 
-AgentNexus 最初的目标是做 **AI Agent 的微信 / WhatsApp**：每个 Agent 都有自己的 DID 地址，可以互相发现、握手、安全通信和跨网络投递消息。
+AgentNexus 最初的目标是做 **AI Agent 的微信 / WhatsApp**：每个 Agent
+都有自己的 DID 地址，可以互相发现、握手、安全通信和跨网络投递消息。
 
-随着 Agent 的真实使用场景演进，单纯“让 Agent 互相发消息”还不够。企业和个人更需要的是：
+随着 Agent 的真实使用场景演进，项目认识到通信只是传输基础，真正缺失的是
+多个独立 Agent 建立可信协作关系的共同语义：
 
 - 谁在发起任务，代表谁发起任务。
+- 接收方需要哪些元数据和证据，发送方愿意披露什么。
 - 哪些 Agent 能参与这个项目组。
 - 中间产物放在哪里，谁能读写。
 - 流程走到哪一步，失败时谁接管。
-- 如何避免 PM Agent 把完整聊天历史塞进上下文，导致 token 爆炸。
+- 结果由谁产生、基于什么授权，以及如何审计、撤销或争议。
 
-因此，AgentNexus 当前的产品定位收敛为：
+因此，AgentNexus 当前的顶层定位是：
 
-> 基于 DID、Relay、加密消息、访问控制、Vault 和 Playbook 的 Agent 团队协作与流程编排底座。
+> Agent Collaboration Framework：定义协作参与者、协作语义、证据交换、
+> 能力与权限、Session 生命周期、结果和审计记录，以及到不同传输的映射。
 
-面向 v1.1，AgentNexus 的产品主线进一步明确为 **面向异构 Agent 的网络原生目标循环（Objective Loop）**：
+面向 v1.1，**异构 Agent 的网络原生目标循环（Objective Loop）** 是这一
+框架的首个重点参考实现：
 
 > 让本机、局域网和公网 Relay 上的 Worker，在 DID 身份、授权委托、产物交接、验收收据和秘书人机交互下，自动协作完成目标。
 
@@ -98,7 +138,7 @@ AgentNexus 的价值在更底层：
 | Secretary 编排 | 常驻秘书 Agent 接单、选人、建 Enclave、启动 Playbook、回传结果 |
 | Objective Loop（v1.1 主线） | 以目标完成为停止条件，跨本机 / 局域网 / 公网 Relay 自动分派、执行、验收、返工和升级人工决策 |
 | Context Budget | 用 Snapshot、Checkpoint、Artifact Ref 控制阶段交接上下文大小 |
-| Governance & Trust | Web of Trust、声誉、治理认证、RuntimeVerifier 信任评估 |
+| Trust Evidence 与本地策略 | Web of Trust、声誉和治理认证作为证据输入，由 Receiver 的 RuntimeVerifier 本地评估 |
 | Capability Token | 签名授权信封、约束哈希、委托链收窄、撤销 |
 
 ---
@@ -313,6 +353,9 @@ await admin.secretary.abort(
 
 | 文档 | 内容 |
 |------|------|
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | Agent Collaboration Framework 架构、原则与边界 |
+| [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Agent Discovery 与 Identity Establishment |
+| [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | 元数据要求与证据交换 |
 | [docs/project-status.md](docs/project-status.md) | 当前版本、模块状态、测试数量，项目唯一状态源 |
 | [docs/quickstart.md](docs/quickstart.md) | 注册、发现、通信、MCP 使用 |
 | [docs/architecture.md](docs/architecture.md) | DID、Relay、路由、Gatekeeper、信任架构 |
@@ -346,7 +389,36 @@ await admin.secretary.abort(
 
 ## English
 
-AgentNexus is agent-native communication and teamwork infrastructure.
+AgentNexus is a framework for trustworthy collaboration among independently
+operated agents.
+
+Its focus is evolving from **Agent Communication** to **Agent Collaboration**,
+with **Agent Society** as a longer-term research direction. The framework does
+not replace transports such as HTTP, MCP, A2A, WebSocket, gRPC, or message
+queues. It defines how unfamiliar agents discover one another, establish
+identity, request metadata, exchange evidence, negotiate capabilities and
+permissions, establish sessions, coordinate work, and produce auditable
+records.
+
+> Define expression, not domain truth.
+>
+> Exchange evidence, not trust conclusions.
+>
+> Support collaboration; do not take ownership of transport or domain policy.
+
+Most importantly:
+
+> **The framework standardizes evidence exchange, not trust decisions.**
+
+The RFCs define the specification layer. The existing DID, Relay, Gatekeeper,
+Enclave, Playbook, and Objective Loop modules are reference implementations
+and experimentation surfaces:
+
+| RFC | Scope | Status |
+|-----|-------|--------|
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | ACF boundaries, core object model, lifecycle, and RFC family | Draft |
+| [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Independently conformable discovery and identity-establishment semantics | Draft |
+| [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Receiver-driven metadata requirements and evidence exchange | Draft |
 
 ### Developer Preview
 
@@ -354,23 +426,34 @@ AgentNexus is ready for technical preview, protocol review and local multi-agent
 
 | Goal | Entry |
 |------|------|
-| Understand the product position | [Product Overview](docs/product.md) |
+| Understand the framework boundaries | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) |
+| Review the current product and reference implementation | [Product Overview](docs/product.md) |
 | Run basic DID / Relay / MCP messaging | [Quick Start](docs/quickstart.md) |
 | Run the 7-stage coding coordination loop | [Coding Coordination Quickstart](docs/quickstart-coding-coordination.md) |
 | Try the v1.1 L0 local Objective Loop | [Objective Loop Quickstart](docs/quickstart-objective-loop.md) |
 | Check current status and risks | [Project Status](docs/project-status.md) |
 | Help with launch, feedback or integrations | [Promotion Checklist](docs/promotion.md) |
 
-Public positioning: **DID identity, authorization, artifact delivery and objective-loop collaboration infrastructure for AI agents**. v1.1 only promises the L0 local Objective Loop; LAN / Relay workers, desktop shell, per-agent tokens, Strict JCS and signed delivery packages are future work.
+Specification position: **common semantics and lifecycle for independently
+operated agents to establish trustworthy collaboration**. The current code is
+a reference implementation and developer preview. v1.1 only promises the L0
+local Objective Loop; LAN / Relay workers, desktop shell, per-agent tokens,
+Strict JCS and signed delivery packages are future work.
 The L0 real-worker smoke path now completes with three Worker DIDs: script/pytest, Claude CLI and OpenClaw CLI.
 
 It started as “WhatsApp for AI Agents”: every agent gets a DID address, discovers peers, performs secure handshakes, and exchanges messages across local or federated networks.
 
-The current product direction goes one layer deeper into real workflows:
+The framework direction goes one layer deeper than communication:
 
-> DID identity + secure messaging + routing + access control + project vault + playbook orchestration for multi-agent teams.
+> Standardize participants, collaboration semantics, evidence exchange,
+> capability and permission, session lifecycle, outcome and audit records, and
+> mappings to existing transports.
 
-For v1.1, the product line becomes a **network-native objective loop for heterogeneous agents**: local, LAN, and relay-connected workers collaborate under DID identity, capability-bound delegation, artifact-based handoff, receipt-gated progress, and human decision gates through a Secretary Agent.
+For v1.1, the **network-native objective loop for heterogeneous agents** is a
+primary reference implementation: local, LAN, and relay-connected workers
+collaborate under DID identity, capability-bound delegation, artifact-based
+handoff, receipt-gated progress, and human decision gates through a Secretary
+Agent.
 
 ### Why Not Just A Local PM Agent?
 
@@ -399,7 +482,7 @@ Local PM agents and CLI-based teams are useful, and AgentNexus treats them as ad
 | CoordinationSession | audit, permission and aggregation container for multi-agent runs |
 | Secretary orchestration | intake, worker selection, Enclave creation, result callback |
 | Context budget | bounded handoff context instead of full chat history |
-| Trust and governance | Web of Trust, reputation, attestations, RuntimeVerifier |
+| Trust evidence and local policy | Web of Trust, reputation, and governance attestations as evidence inputs to receiver-local RuntimeVerifier decisions |
 | Capability token | signed authorization envelope with delegation constraints |
 
 ### Quick Start
@@ -446,6 +529,9 @@ result = await admin.secretary.dispatch(
 
 | Doc | Content |
 |-----|---------|
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | ACF architecture, principles, and boundaries |
+| [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Agent discovery and identity establishment |
+| [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Metadata requirements and evidence exchange |
 | [Project Status](docs/project-status.md) | Current status and test count |
 | [Quick Start](docs/quickstart.md) | Register, discover, chat, MCP |
 | [Architecture](docs/architecture.md) | DID, Relay, routing, trust |
