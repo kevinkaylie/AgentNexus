@@ -815,7 +815,10 @@ roles and which proof profiles it implements.
 ## 24. Relationship to Other ACF RFCs
 
 - [RFC-000](./000-agent-collaboration-framework.md) defines the boundary
-  between Evidence and receiver-local trust decisions.
+  between Evidence and receiver-local trust decisions. Its
+  [canonical object relationship map](./000-agent-collaboration-framework.md#724-canonical-object-relationship-map)
+  governs how this RFC relates Policy, Metadata Requirement, Decision Package,
+  Evidence, Claim, Authority, Permission, and Collaboration Session.
 - [RFC-001](./001-agent-discovery-and-identity.md) establishes Agent identity
   control and issuer resolution.
 - RFC-003 defines capability, Permission, authority, delegation, and

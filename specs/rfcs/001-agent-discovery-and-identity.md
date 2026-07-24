@@ -858,7 +858,9 @@ roles it implements.
 ## 26. Relationship to Other ACF RFCs
 
 - [RFC-000](./000-agent-collaboration-framework.md) defines the framework
-  boundary and core object distinctions.
+  boundary and core object distinctions. Its
+  [canonical object relationship map](./000-agent-collaboration-framework.md#724-canonical-object-relationship-map)
+  governs how this RFC refines Agent, Principal, Claim, and Evidence.
 - RFC-002 requests and exchanges Representation, organization, capability,
   behavior, and other Evidence.
 - RFC-003 defines Permission, authority, and delegation.

@@ -39,12 +39,20 @@ Agent 通信协议，而是定义陌生、独立运营的 Agent 如何发现彼�
 
 > **框架标准化的是证据交换，而不是信任结论。**
 
+[RFC-000 v0.3](specs/rfcs/000-agent-collaboration-framework.md) 是整个 RFC
+系列的“宪法”：集中定义
+[Design Philosophy](specs/rfcs/000-agent-collaboration-framework.md#2-design-philosophy)、
+[Framework Non-Goals](specs/rfcs/000-agent-collaboration-framework.md#5-framework-non-goals)
+和供后续 RFC 共同引用的
+[Canonical Object Relationship Map](specs/rfcs/000-agent-collaboration-framework.md#724-canonical-object-relationship-map)。
+具体机制由后续 RFC 定义。
+
 规范层由 RFC 定义，现有 DID、Relay、Gatekeeper、Enclave、Playbook 和
 Objective Loop 代码是参考实现与实验场，不是协议真理：
 
 | RFC | 内容 | 状态 |
 |-----|------|------|
-| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | Agent Collaboration Framework 的边界、对象模型与 RFC 家族 | Draft |
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC 系列宪法：设计哲学、Non-Goals、核心对象关系与治理边界 | Draft v0.3 |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | 相互独立的 Agent Discovery 与 Identity Establishment 语义 | Draft |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Receiver 驱动的元数据要求与证据交换 | Draft |
 
@@ -54,7 +62,7 @@ AgentNexus 当前适合技术预览、协议评审和本机多 Agent 工作流�
 
 | 目标 | 入口 |
 |------|------|
-| 先理解框架边界与核心原则 | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) |
+| 先理解框架宪法与核心原则 | [RFC-000 Design Philosophy](specs/rfcs/000-agent-collaboration-framework.md#2-design-philosophy) |
 | 了解现有产品和参考实现 | [产品概览](docs/product.md) |
 | 跑通基础 DID / Relay / MCP 通信 | [快速开始](docs/quickstart.md) |
 | 跑通 7-stage coding coordination 闭环 | [Coding Coordination Quickstart](docs/quickstart-coding-coordination.md) |
@@ -353,7 +361,7 @@ await admin.secretary.abort(
 
 | 文档 | 内容 |
 |------|------|
-| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | Agent Collaboration Framework 架构、原则与边界 |
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC 系列宪法：Design Philosophy、Non-Goals 与规范对象关系图 |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Agent Discovery 与 Identity Establishment |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | 元数据要求与证据交换 |
 | [docs/project-status.md](docs/project-status.md) | 当前版本、模块状态、测试数量，项目唯一状态源 |
@@ -410,13 +418,21 @@ Most importantly:
 
 > **The framework standardizes evidence exchange, not trust decisions.**
 
+[RFC-000 v0.3](specs/rfcs/000-agent-collaboration-framework.md) is the
+constitution of the RFC family. It centralizes the
+[Design Philosophy](specs/rfcs/000-agent-collaboration-framework.md#2-design-philosophy),
+[Framework Non-Goals](specs/rfcs/000-agent-collaboration-framework.md#5-framework-non-goals),
+and the
+[Canonical Object Relationship Map](specs/rfcs/000-agent-collaboration-framework.md#724-canonical-object-relationship-map)
+that later RFCs must preserve. Concrete mechanisms belong in those later RFCs.
+
 The RFCs define the specification layer. The existing DID, Relay, Gatekeeper,
 Enclave, Playbook, and Objective Loop modules are reference implementations
 and experimentation surfaces:
 
 | RFC | Scope | Status |
 |-----|-------|--------|
-| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | ACF boundaries, core object model, lifecycle, and RFC family | Draft |
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC-family constitution: design philosophy, non-goals, canonical object relationships, and governance boundaries | Draft v0.3 |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Independently conformable discovery and identity-establishment semantics | Draft |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Receiver-driven metadata requirements and evidence exchange | Draft |
 
@@ -426,7 +442,7 @@ AgentNexus is ready for technical preview, protocol review and local multi-agent
 
 | Goal | Entry |
 |------|------|
-| Understand the framework boundaries | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) |
+| Understand the framework constitution | [RFC-000 Design Philosophy](specs/rfcs/000-agent-collaboration-framework.md#2-design-philosophy) |
 | Review the current product and reference implementation | [Product Overview](docs/product.md) |
 | Run basic DID / Relay / MCP messaging | [Quick Start](docs/quickstart.md) |
 | Run the 7-stage coding coordination loop | [Coding Coordination Quickstart](docs/quickstart-coding-coordination.md) |
@@ -529,7 +545,7 @@ result = await admin.secretary.dispatch(
 
 | Doc | Content |
 |-----|---------|
-| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | ACF architecture, principles, and boundaries |
+| [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC-family constitution: Design Philosophy, Non-Goals, and canonical object map |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Agent discovery and identity establishment |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Metadata requirements and evidence exchange |
 | [Project Status](docs/project-status.md) | Current status and test count |

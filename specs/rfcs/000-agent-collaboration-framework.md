@@ -4,8 +4,9 @@
 |---|---|
 | Status | Draft |
 | Category | Foundational |
-| Version | 0.2 |
+| Version | 0.3 |
 | Created | 2026-07-17 |
+| Updated | 2026-07-24 |
 | Authors | AgentNexus Contributors |
 | Intended audience | Protocol designers, agent runtime implementers, identity and governance providers |
 | Updates | None |
@@ -17,9 +18,9 @@ This document defines the architecture and governing principles of the
 Agent Collaboration Framework (ACF).
 
 ACF addresses how independently operated and potentially unfamiliar agents
-discover one another, establish identity, request metadata, exchange trust
-evidence, negotiate capabilities and authority, establish collaboration
-sessions, coordinate work, exchange artifacts, and create auditable records of
+discover one another, establish identity, request metadata, exchange evidence,
+negotiate capabilities and authority, establish collaboration sessions,
+coordinate work, exchange artifacts, and create auditable records of
 attribution and responsibility-related facts.
 
 ACF is not an agent runtime framework and does not prescribe how an agent
@@ -53,17 +54,34 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**,
 [BCP 14](https://www.rfc-editor.org/info/bcp14) when, and only when, they appear
 in all capitals.
 
-## 2. Foundational Principle
+## 2. Design Philosophy
 
-ACF follows three governing boundaries:
+This section is the constitutional summary of ACF. Later RFCs define concrete
+objects, state machines, encodings, validation rules, and bindings, but they
+MUST preserve these boundaries.
 
-> Define expression, not domain truth.
->
-> Exchange evidence, not trust conclusions.
->
-> Support collaboration; do not take ownership of transport or domain policy.
+| Principle | Boundary for later RFCs |
+|---|---|
+| **Define expression, not domain truth.** | Standardize how claims, evidence, context, and outcomes are expressed and verified; do not declare domain facts merely because an object is valid or signed. |
+| **Exchange evidence, not trust conclusions.** | Carry attributable, context-bound evidence; do not define a universal Trust Score or portable trust verdict. |
+| **Preserve receiver sovereignty.** | The receiver declares its requirements, applies its own Policy, and decides which risks to accept. |
+| **Support collaboration, not transport.** | Define transport-independent collaboration semantics and map them onto HTTP, WebSocket, MCP, A2A, MQ, Relay, or other delivery mechanisms. |
+| **Standardize relationships, not runtimes.** | Define observable relationships among participants; do not prescribe models, memory, planning, tools, or orchestration internals. |
+| **Language is payload, not protocol.** | Natural language may carry content, but identity, authority, requirements, state, and audit-critical outcomes require structured semantics. |
+| **Make authority explicit and bounded.** | Keep identity, capability, permission, authority, and delegation distinct; never infer permission from capability alone. |
+| **Bind meaning to context.** | Security-relevant objects must identify the applicable subject, audience, action, purpose, resource, time, and Session where required. |
+| **Minimize disclosure.** | Request and reveal only information necessary for the proposed collaboration, with decline and selective-disclosure paths. |
+| **Build security and privacy into every domain.** | Each RFC defines its own threats, bindings, freshness, revocation, recovery, privacy, failure behavior, and negative tests. |
+| **Record attributable outcomes, not liability judgments.** | Preserve who asserted what about an event or result; do not adjudicate contractual, legal, or industry responsibility. |
+| **Specify before implementing.** | RFCs define normative semantics; implementations test them and may expose clearly labeled extensions. |
 
-The first boundary does not prevent ACF from defining protocol-verifiable
+The shortest statement of the framework's trust boundary is:
+
+> The framework standardizes evidence exchange, not trust decisions.
+
+### 2.1 Protocol Facts and Domain Decisions
+
+The Design Philosophy does not prevent ACF from defining protocol-verifiable
 facts. ACF and its related RFCs MUST define how an implementation determines
 whether:
 
@@ -145,7 +163,13 @@ ACF defines semantic interoperability. Individual RFCs will define the
 required object models, state machines, validation rules, error semantics,
 security properties, and transport bindings.
 
-## 5. Framework Non-Responsibilities
+## 5. Framework Non-Goals
+
+The following are constitutional Non-Goals. A later ACF RFC MUST NOT make one
+of them a framework responsibility without explicitly updating RFC-000.
+Domain profiles and implementations MAY provide such functions, but they MUST
+identify them as local policy, profile behavior, or implementation behavior
+rather than universal ACF semantics.
 
 ACF does not:
 
@@ -172,13 +196,19 @@ ACF does not:
     domain;
 15. require natural language as the collaboration format;
 16. define a product interface, dashboard, marketplace, or commercial
-    operating model.
+    operating model;
+17. require a single global Relay, Directory, registry, marketplace, identity
+    authority, Trust Anchor, or other irreplaceable coordination center.
 
 An implementation MAY provide any of these functions locally. Such functions
 are implementation policy and MUST NOT be presented as universal ACF
 semantics.
 
-## 6. Architectural Principles
+## 6. Architectural Elaboration
+
+Section 2 is the canonical summary of the Design Philosophy. This section
+elaborates its architectural consequences; it does not introduce a separate
+or competing set of principles.
 
 ### 6.1 Collaboration, Not Agent Runtime
 
@@ -534,6 +564,71 @@ Capability  ≠ Permission
 Requirement ≠ Policy
 Receipt     ≠ domain truth, legal liability, or automatic business acceptance
 ```
+
+### 7.24 Canonical Object Relationship Map
+
+The following diagram is the canonical conceptual relationship map for the
+ACF RFC family. Later RFCs MAY refine cardinality and wire representation, but
+they MUST preserve the semantic separations shown here. If a diagram label and
+the normative prose differ, the normative prose takes precedence.
+
+```mermaid
+classDiagram
+    direction LR
+
+    class Principal
+    class Agent
+    class CollaborationIntent
+    class MetadataRequirement
+    class Claim
+    class Evidence
+    class DecisionPackage
+    class Policy
+    class Authority
+    class Permission
+    class CollaborationSession
+    class CollaborationEvent
+    class Artifact
+    class Receipt
+
+    Agent --> Principal : represents in context
+    Principal --> Authority : grants or originates
+    Authority --> Permission : derives
+    Agent --> Authority : holds under grant
+
+    Agent --> CollaborationIntent : proposes or receives
+    CollaborationIntent --> MetadataRequirement : evaluated through
+    Policy --> MetadataRequirement : projects requirements
+    MetadataRequirement --> DecisionPackage : answered by
+    DecisionPackage --> CollaborationIntent : responds within
+    DecisionPackage o-- Evidence : presents
+    Evidence --> Claim : supports
+    Policy ..> Evidence : evaluates locally
+    Policy ..> DecisionPackage : evaluates locally
+
+    CollaborationIntent --> CollaborationSession : scopes
+    Permission --> CollaborationSession : bounds
+    CollaborationSession o-- CollaborationEvent : records
+    CollaborationSession o-- Artifact : exchanges
+    Receipt --> CollaborationEvent : attests
+    Receipt --> Artifact : may attest
+    Receipt ..> Evidence : may be presented as
+```
+
+The map expresses relationships, not a lifecycle:
+
+- an Agent may represent a Principal only in an identified context;
+- Authority is the source from which bounded Permissions are derived;
+- Metadata Requirements are a disclosed projection of receiver-local Policy;
+- Evidence supports Claims but does not itself determine the receiver's
+  decision;
+- a Decision Package answers Requirements and is input to local evaluation;
+- a Collaboration Session is scoped by Intent and bounded by Permission;
+- Events and Artifacts belong to a Session, while Receipts attest
+  issuer-specific assertions about them.
+
+Transport bindings are intentionally omitted from the diagram. They carry ACF
+objects without owning or changing these semantic relationships.
 
 ## 8. Framework Model
 
