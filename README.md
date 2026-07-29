@@ -55,6 +55,7 @@ Objective Loop 代码是参考实现与实验场，不是协议真理：
 | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC 系列宪法：设计哲学、Non-Goals、核心对象关系与治理边界 | Draft v0.3 |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | 相互独立的 Agent Discovery 与 Identity Establishment 语义 | Draft |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Receiver 驱动的元数据要求与证据交换 | Draft |
+| [RFC-003](specs/rfcs/003-capability-negotiation-and-delegation.md) | 能力协商、Authority Grant、授权接受与单调收窄委托 | Draft v0.3 |
 
 ### Developer Preview
 
@@ -364,6 +365,7 @@ await admin.secretary.abort(
 | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC 系列宪法：Design Philosophy、Non-Goals 与规范对象关系图 |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Agent Discovery 与 Identity Establishment |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | 元数据要求与证据交换 |
+| [RFC-003](specs/rfcs/003-capability-negotiation-and-delegation.md) | Capability Negotiation、Authority Grants 与 Delegation |
 | [docs/project-status.md](docs/project-status.md) | 当前版本、模块状态、测试数量，项目唯一状态源 |
 | [docs/quickstart.md](docs/quickstart.md) | 注册、发现、通信、MCP 使用 |
 | [docs/architecture.md](docs/architecture.md) | DID、Relay、路由、Gatekeeper、信任架构 |
@@ -435,6 +437,7 @@ and experimentation surfaces:
 | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC-family constitution: design philosophy, non-goals, canonical object relationships, and governance boundaries | Draft v0.3 |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Independently conformable discovery and identity-establishment semantics | Draft |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Receiver-driven metadata requirements and evidence exchange | Draft |
+| [RFC-003](specs/rfcs/003-capability-negotiation-and-delegation.md) | Capability negotiation, authority grants, acceptance, consumable authority, and monotonic delegation | Draft v0.3 |
 
 ### Developer Preview
 
@@ -548,6 +551,7 @@ result = await admin.secretary.dispatch(
 | [RFC-000](specs/rfcs/000-agent-collaboration-framework.md) | RFC-family constitution: Design Philosophy, Non-Goals, and canonical object map |
 | [RFC-001](specs/rfcs/001-agent-discovery-and-identity.md) | Agent discovery and identity establishment |
 | [RFC-002](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) | Metadata requirements and evidence exchange |
+| [RFC-003](specs/rfcs/003-capability-negotiation-and-delegation.md) | Capability negotiation, authority grants, acceptance, and delegation |
 | [Project Status](docs/project-status.md) | Current status and test count |
 | [Quick Start](docs/quickstart.md) | Register, discover, chat, MCP |
 | [Architecture](docs/architecture.md) | DID, Relay, routing, trust |

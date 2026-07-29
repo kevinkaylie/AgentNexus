@@ -23,6 +23,15 @@
 |------|------|------|
 | 角色职责与评审流程 | [docs/agent-workflow.md](docs/agent-workflow.md) | 生效 |
 
+### Agent Collaboration Framework RFC
+
+| 编号 | 标题 | 状态 | 路径 |
+|------|------|------|------|
+| RFC-000 | Agent Collaboration Framework Architecture | Draft v0.3 | [specs/rfcs/000-agent-collaboration-framework.md](specs/rfcs/000-agent-collaboration-framework.md) |
+| RFC-001 | Agent Discovery and Identity Establishment | Draft | [specs/rfcs/001-agent-discovery-and-identity.md](specs/rfcs/001-agent-discovery-and-identity.md) |
+| RFC-002 | Metadata Requirements and Evidence Exchange | Draft | [specs/rfcs/002-metadata-requirements-and-evidence-exchange.md](specs/rfcs/002-metadata-requirements-and-evidence-exchange.md) |
+| RFC-003 | Capability Negotiation, Authority Grants, and Delegation | Draft v0.3 | [specs/rfcs/003-capability-negotiation-and-delegation.md](specs/rfcs/003-capability-negotiation-and-delegation.md) |
+
 ### 架构决策记录（ADR）
 
 | 编号 | 标题 | 状态 | 路径 |
