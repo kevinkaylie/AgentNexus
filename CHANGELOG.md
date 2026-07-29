@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### ACF RFC-003 Capability Negotiation, Authority Grants, and Delegation（2026-07-29）
+
+- 新增并迭代 RFC-003 Draft v0.3，明确 Capability、Permission、Authority、Authority Grant 与 Delegation 的边界。
+- 定义 receiver-driven Capability Requirements、Authority Request/Grant、Grant Acceptance、Constraint、Condition、Obligation、Proof of Possession 与结构化 Verification Result。
+- 规定派生授权的 action、resource、audience、purpose、validity、allocation 与 delegation depth 必须单调收窄，约束和各类保护语义只能保持或增强。
+- 修正委托主体模型：Authority Scope 使用子集规则，Grantee / Executor 使用独立的 Subject Transition 验证；普通委托保持 Represented Principal 不变。
+- 对金额、次数、库存和配额等可消耗 Authority 增加 partitioned/shared-counter/exclusive-transfer/single-use 分配与全授权树会计不变量。
+- 明确 immutable Grant Body 是授权事实来源，Delegation Record 只承担审计和关联；补充摘要覆盖、Critical Extensions、多 Grant 组合与 Purpose Assurance。
+- 闭合 Grant Acceptance 生命周期：增加 acceptance_pending、countered、accepted_pending_activation；conditional acceptance 必须产生 replacement Grant，不能直接激活。
+- Obligation 增加唯一 ID，状态改为技术中立的 status mechanism descriptor，并允许严格匹配条款的 request-time pre-acceptance。
+- 将 Purpose Assurance、授权相关 Critical Extensions 与状态机制兼容性纳入委托保护不变量；关键扩展剥离和 Purpose Assurance 降级必须失败。
+- 定义 Accounting Domain Continuity，禁止子 Grant 通过切换到独立账本绕过父级可消耗预算。
+- 区分 Obligation retention 与 propagation，增加安全的 Delegate Policy 默认值，并澄清联合/Threshold Grant Composition 与离线撤销传播边界。
+- 规定子 Grant 携带的 Delegate Policy 必须单调收窄父级 redelegation ceiling，并区分当前受让者资格与下游再委托上限。
+- Condition 替换必须通过确定性的逻辑蕴含检查；Grant Composition 必须显式保留 Purpose Assurance、Critical Extensions 与状态要求。
+- 增加 `status_mechanism_incompatible` 等结构化失败语义，并将 Delegate Policy JSON、selector、完整测试向量、Condition implication、canonicalization、proof suite 与 JSON Schema 列为 Baseline Profile 交付项。
+- 明确 Grant Composition 默认不产生委托权或 Grant Issuance Authority；显式 composed Delegate Policy 必须落在所有适用 redelegation ceilings 的交集内。
+- 明确 Condition 数组默认使用 AND 语义，并更新父 Grant Delegate Policy 与 Verification Result 示例。
+- 使用 `session_proposal_id` 解除 Authority Grant 与未来 Session Agreement 的循环依赖。
+- 增加 RFC 9396、RFC 9635、RFC 8693、RFC 9767、RFC 9449 和 W3C VC 2.0 的正式语义映射表。
+- 增加 Capability Requirement / Statement / Result 示例与最小负向测试向量。
+- 将现有 `CapabilityToken` 重新定位为实验性的 Authority Grant Token profile；协议验证不替代 Receiver 的本地授权决策。
+- 同步 RFC-000、README 与 AGENTS 文档索引。
+
 ### L0-Ready Real Worker Smoke（2026-06-29）
 
 - 新增 `scripts/l0_ready_real_workers_demo.py`，可复现注册 Owner DID 和 3 个真实本机 Worker DID，并以 script/pytest、Claude CLI、OpenClaw CLI 跑完整 Objective Loop。

@@ -6,7 +6,7 @@
 | Category | Foundational |
 | Version | 0.3 |
 | Created | 2026-07-17 |
-| Updated | 2026-07-24 |
+| Updated | 2026-07-29 |
 | Authors | AgentNexus Contributors |
 | Intended audience | Protocol designers, agent runtime implementers, identity and governance providers |
 | Updates | None |
@@ -352,15 +352,23 @@ ACF MUST distinguish:
 
 - **capability claim**: the agent claims it can perform an action;
 - **capability evidence**: evidence supporting that claim;
-- **permission**: a grant allowing a subject to perform an action on a
-  resource within a defined scope;
+- **permission**: a structured authorization scope and subject binding carried
+  by an authority grant;
 - **authority**: the source, scope, and grant relationship from which one or
   more permissions are derived;
-- **delegation**: transfer of limited authority from one subject to another;
+- **delegation**: controlled transfer of limited authority to a new Grantee or
+  executor;
 - **constraint**: a bound limit on authority, such as resource, amount, time,
   stage, or purpose.
 
-Delegation MUST NOT expand authority beyond its parent grant.
+Delegation MUST NOT expand Authority Scope beyond its parent grant. Grantee or
+executor changes are validated as controlled subject transitions, not as
+set-subset relationships. Delegation also MUST NOT weaken required assurance,
+strip authorization-affecting critical semantics, or detach consumable
+authority from its parent accounting domain. Any authority to re-delegate
+MUST itself narrow monotonically; a child cannot receive a broader downstream
+delegation envelope than its parent. Combining grants MUST NOT imply
+delegation or Grant Issuance Authority.
 
 ### 6.10 Outcome Records Are First-Class Outputs
 
@@ -511,8 +519,10 @@ demonstrated, certified, or inferred, but capability does not imply authority.
 
 ### 7.17 Permission
 
-A grant allowing a subject to perform a defined action on a resource within a
-specific scope and set of constraints.
+A structured description of an allowed action, resource, audience, purpose,
+validity, and applicable limits for an identified Principal and execution
+subject. Permission is conveyed by Authority; it is not itself the grant
+object, credential, proof, or receiver decision.
 
 ### 7.18 Authority
 
@@ -1031,8 +1041,11 @@ infer these properties from a valid self-generated identifier alone.
 ### 14.5 Confused Deputy and Delegation Expansion
 
 Authority tokens and delegations MUST identify the intended subject, audience,
-action, resource, and constraints. Derived delegation MUST be monotonically
-narrower than its parent authority.
+action, resource, and constraints. A derived grant's Authority Scope MUST be
+monotonically narrower than its parent, while Grantee and executor transitions
+MUST be independently authorized. Required assurance and critical protections
+MUST not be weakened, and consumable authority MUST remain attached to a
+continuous accounting domain.
 
 ### 14.6 Stale and Revoked Evidence
 
@@ -1132,7 +1145,7 @@ The initial ACF RFC family is:
 | RFC-000 | Agent Collaboration Framework Architecture | Principles, roles, domains, lifecycle, and governance |
 | [RFC-001](001-agent-discovery-and-identity.md) | Agent Discovery and Identity Establishment | Discovery records, identifiers, endpoint descriptions, resolution, proof of control |
 | [RFC-002](002-metadata-requirements-and-evidence-exchange.md) | Metadata Requirements and Evidence Exchange | Collaboration Intent, Metadata Requirements, Evidence Items, Decision Package |
-| RFC-003 | Capability Negotiation and Delegation | Capability claims, authority, delegation, constraints, obligations |
+| [RFC-003](003-capability-negotiation-and-delegation.md) | Capability Negotiation, Authority Grants, and Delegation | Capability claims, authority grants, delegation, constraints, obligations |
 | RFC-004 | Collaboration Session Lifecycle | Session proposal, agreement, activation, renewal, suspension, termination |
 | RFC-005 | Task Coordination and Artifact Handoff | Tasks, events, dependencies, artifact manifests, handoff semantics |
 | RFC-006 | Outcome Attestations, Audit Records, and Dispute Signaling | Receipts, audit records, correction, revocation, and dispute notices without liability adjudication |
