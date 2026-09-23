@@ -13,6 +13,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### 全量门禁加固：报告编码与跳过明细（2026-09-23）
+
+`scripts/check_full_suite.py` 有两处会让门禁**误判或崩溃**的缺陷，均为本轮自查实测触发：
+
+- **报告编码**：中文 Windows 上 pytest 重定向输出用的是 locale 编码（GBK），门禁原先只按 UTF-8 读，跳过的**原因**全变成 U+FFFD，环境跳过逐字匹配 0/48 命中，被误报成"出现无理由跳过"。新增 `decode_report()`：按 `utf-8` → `utf-16` → `cp936` 逐个**严格**解码，`--run` 分支同样走它。
+- **类型错用**：`check()` 把 `classify_skips()` 返回的**列表**当字典用（`other_skips.items()`），一旦真有无法解释的跳过就抛 `AttributeError`——门禁最需要给出逐条明细时恰好崩掉。已改为按明细逐条打印，并把变量名与返回类型对齐（`unexplained`）。
+- **信息已丢失时不猜原因**：报告若已含 U+FFFD（中文不可还原），新增退出码 `3` 明确拒绝判定，并提示以 `$env:PYTHONIOENCODING='utf-8'` 重跑；同时 `sys.stdout.reconfigure(errors="replace")`，避免中文控制台打印受损文本时二次崩溃。
+- 硬规则命令同步补上编码前置条件（`CLAUDE.md`、`tests/CLAUDE.md`），退出码说明补 `3`。
+
 ### L0 三项残余问题跟进（2026-09-23）
 
 - HCZJ H/messages 缺/错幂等头映射按 RC2 §4 修复，Delivery `reviewer_id` 与分配 worker 绑定；HCZJ 单元 4243 passed / 2 skipped。代码修复待独立评审。

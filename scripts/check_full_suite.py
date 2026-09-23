@@ -29,6 +29,20 @@
 - ``0`` 通过：无未登记失败，基线以内。
 - ``1`` **回归**：出现未登记失败，或通过数低于基线（测试被删/改名）。
 - ``2`` **基线需要维护**：基线项已不再失败、或存在未分类（UNCLASSIFIED）条目。
+- ``3`` **报告不可用**：报告文件编码受损（含 U+FFFD），跳过原因无法逐字校验。
+
+编码注意
+--------
+跳过的**原因**要逐字匹配，所以报告必须以 UTF-8 落盘。中文 Windows 上
+`python ... > report.txt` 走的是解释器的 locale 编码（GBK），控制台/管道若按 UTF-8
+解读会把中文变成 U+FFFD，导致匹配全部失败。跑全量前先设置：
+
+    $env:PYTHONIOENCODING='utf-8'
+    python -m pytest tests/ -q -p no:cacheprovider --tb=no -rs > .pytest_full_report.txt 2>&1
+    python scripts/check_full_suite.py --input .pytest_full_report.txt
+
+本脚本对 GBK 报告也能解码（见 ``decode_report``），但**已经丢失**的中文无法还原，
+此时按退出码 ``3`` 提示重跑，而不是猜测跳过原因。
 
 基线纪律
 --------
@@ -70,6 +84,27 @@ ENVIRONMENT_DEPENDENT_FILES: Dict[str, str] = {
 KNOWN_ENVIRONMENTAL: Dict[str, str] = dict(ENVIRONMENT_DEPENDENT_FILES)
 
 UNCLASSIFIED = "UNCLASSIFIED：必须人工确认并补写归因后方可登记"
+
+
+def decode_report(raw: bytes) -> str:
+    """把 pytest 输出**字节**解码成文本。
+
+    为什么不能只按 UTF-8 解码：pytest 的 stdout 在被重定向到文件时使用解释器的
+    locale 编码（中文 Windows 上是 GBK/cp936）。若只按 UTF-8 读，跳过的**原因**
+    会变成 U+FFFD，导致环境跳过逐字匹配全部失败、门禁误报"无理由跳过"。
+    因此这里显式按候选编码逐个**严格**解码，取第一个能成功的。
+    """
+    for encoding in ("utf-8", "utf-16"):
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    for encoding in ("cp936", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 
 def parse_report(text: str) -> Tuple[List[str], Dict[str, int]]:
@@ -185,7 +220,7 @@ def check(bad: List[str], counts: Dict[str, int], skip_records: List[dict] | Non
     unclassified = baseline.get("unclassified_pending_human") or []
     baseline_passed = int(baseline.get("counts", {}).get("passed", 0))
     baseline_skipped = int(baseline.get("counts", {}).get("skipped", 0))
-    excused, other_skips = classify_skips(skip_records or [])
+    excused, unexplained = classify_skips(skip_records or [])
     unexplained_skips = max(0, counts["skipped"] - baseline_skipped - excused)
 
     print(f"全量结果：{counts['passed']} passed, {counts['skipped']} skipped, "
@@ -206,8 +241,8 @@ def check(bad: List[str], counts: Dict[str, int], skip_records: List[dict] | Non
 
     if unexplained_skips:
         print(f"\n[FAIL] 跳过数超出基线（{counts['skipped']} > 基线 {baseline_skipped} + 环境跳过 {excused}）：")
-        for path, count in sorted(other_skips.items()):
-            print(f"   - {path} ×{count}")
+        for detail in sorted(unexplained):
+            print(f"   - {detail}")
         print("       环境依赖跳过必须由 tests/conftest.py 的能力探针触发并在")
         print("       ENVIRONMENT_DEPENDENT_FILES 登记原因；无理由的跳过按回归处理。")
         failed = 1
@@ -243,6 +278,12 @@ def check(bad: List[str], counts: Dict[str, int], skip_records: List[dict] | Non
 
 
 def main() -> int:
+    # 中文 Windows 控制台是 GBK：打印受损报告内容时不应因编码而崩溃成 traceback。
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - 取决于运行环境
+        pass
+
     parser = argparse.ArgumentParser(description="全量回归门禁（基线比对）")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--input", help="pytest 输出文件路径")
@@ -258,11 +299,8 @@ def main() -> int:
             [sys.executable, "-m", "pytest", "tests/", "-q", "-p", "no:cacheprovider", "--tb=no", "-rs"],
             cwd=ROOT,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
         )
-        text = proc.stdout + proc.stderr
+        text = decode_report(proc.stdout + proc.stderr)
     else:
         report = Path(args.input)
         if not report.is_absolute():
@@ -270,13 +308,23 @@ def main() -> int:
         if not report.exists():
             print(f"[FAIL] 找不到报告文件：{report}")
             return 2
-        text = report.read_text(encoding="utf-8", errors="replace")
+        text = decode_report(report.read_bytes())
 
     bad, counts = parse_report(text)
     if counts["passed"] == 0 and not bad:
         print("[FAIL] 报告中没有解析到测试结果（命令或输出格式不符？）")
         print(f"       期望命令：{FULL_SUITE_COMMAND}")
         return 2
+
+    # 报告若已把中文写成替换字符，跳过原因就不可能逐字匹配——必须 fail-closed，
+    # 但要说清是"报告编码坏了"，而不是误报成"出现无理由跳过"。
+    if "\ufffd" in text:
+        print("[FAIL] 报告不可用：文件含 U+FFFD 替换字符，跳过原因已不可还原。")
+        print("       多半是写报告时用了控制台 locale 编码（中文 Windows 为 GBK）。")
+        print("       请以 UTF-8 重跑全量后再次执行本门禁：")
+        print("         $env:PYTHONIOENCODING='utf-8'")
+        print(f"         {FULL_SUITE_COMMAND} > .pytest_full_report.txt 2>&1")
+        return 3
 
     skips, _ = parse_skips(text)
     if args.update_baseline:

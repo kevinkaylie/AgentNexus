@@ -188,11 +188,12 @@ python scripts/cross_verify_demo.py            # Cross-verify 演示
 
 - **改动后必须跑全量测试（硬规则）**：只要改动了 `agent_net/` 或 `tests/`，就必须跑**全量**，而不是"改动相关的测试"。跨模块覆盖型回归只跑局部测试必然漏掉——例如新增模块与既有函数在 `agent_net.storage` 星号导入链上同名互相覆盖（2026-09-20 的 `store_message` 冲突导致 22 个既有测试失败，而新增测试当时全绿）。
   ```bash
+  $env:PYTHONIOENCODING='utf-8'   # 必须：否则中文跳过原因按 GBK 落盘，验收无法逐字匹配（中文 Windows）
   python -m pytest tests/ -q -p no:cacheprovider --tb=no -rs > .pytest_full_report.txt 2>&1
-  python scripts/check_full_suite.py --input .pytest_full_report.txt   # 0=通过 1=回归 2=基线需维护
+  python scripts/check_full_suite.py --input .pytest_full_report.txt   # 0=通过 1=回归 2=基线需维护 3=报告编码受损
   ```
   - 失败集合必须与 `tests/full_suite_baseline.json` 一致；**出现未登记失败即视为回归，必须先修复**，不得直接刷新基线。
-  - 基线只允许登记**可归因于运行环境**的失败并写明原因；**当前环境性失败为空**——环境依赖用例改由 `tests/conftest.py` 的能力探针**显式跳过**（原因写在 skip reason 里），门禁按原因逐字匹配区分"环境跳过"与"无理由跳过"。
+  - 基线只允许登记**可归因于运行环境**的失败并写明原因；**当前环境性失败为空**——环境依赖用例改由 `tests/conftest.py` 的能力探针**显式跳过**（原因写在 skip reason 里），门禁按原因逐字匹配区分"环境跳过"与"无理由跳过"；因此报告必须是 UTF-8，编码受损时门禁以退出码 `3` 拒绝判定（不猜测跳过原因）。
   - 提交与评审请求必须附上该命令的汇总行（`N passed, M failed …`）。
 - **Git push 顺序**：本地测试通过 → 线上测试通过 → 再 commit + push
 - 不能只跑单元测试就 push，需要手动线上联调验证后再提交

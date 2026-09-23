@@ -5,9 +5,10 @@
 **任何**对 `agent_net/` 或 `tests/` 的改动，都必须跑**全量**测试并通过基线门禁；只跑"改动相关的测试"会漏掉跨模块覆盖型回归——例如新增模块中的函数与既有函数在 `agent_net.storage` 星号导入链上**同名互相覆盖**时，新增测试全绿而既有测试成批失败（2026-09-20 的 `store_message` 冲突造成 22 个既有测试 `TypeError`）。
 
 ```bash
+$env:PYTHONIOENCODING='utf-8'   # 必须：否则中文跳过原因按 GBK 落盘，门禁无法逐字匹配（中文 Windows）
 python -m pytest tests/ -q -p no:cacheprovider --tb=no -rs > .pytest_full_report.txt 2>&1
 python scripts/check_full_suite.py --input .pytest_full_report.txt
-# 退出码：0=通过（无未登记失败/跳过）1=回归 2=基线需维护
+# 退出码：0=通过（无未登记失败/跳过）1=回归 2=基线需维护 3=报告编码受损（须以 UTF-8 重跑）
 ```
 
 纪律：
