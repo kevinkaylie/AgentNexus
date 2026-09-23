@@ -1,5 +1,7 @@
 # 项目现状速览
 
+> 2026-09-23 路线图第 2–4 步：CP-01～26 已执行并留档（[运行记录](../specs/profiles/code-review/v1/fixtures/binding/cp-execution-record-2026-09-23.md)）：**15 个 AgentNexus 侧通过、6 个部分、5 个本仓无证据、0 个失败**——5 个 blocked 是 CP-06/12/13/15/21（目标 revision 权威、发布 outbox、预算/网络强制点），均由 [T 项 intake 与冻结预检](reviews/2026-09-23-l0-t-intake-and-freeze-preflight.md) 指明 owner。**T1–T6 仍 6/6 开放**、25 条 blocking 证据要求全部待外部提供（生产部署样例、GitLab 写入、三方签字不在本工作区）；`compatibility.json` 允许列表仍全空、`adapter` 段修正为 `implemented_pending_wire_validation`。规范包 `1.0-draft.2+semantic.16`；未声明符合性与 wire conformance，BINDING-GATE-1 继续关闭。
+
 > 2026-09-23 [三项残余问题修复确认](reviews/2026-09-23-three-residual-fix-confirmation.md)：HCZJ H/messages 错误码与原 S1 reviewer 归属的当前 `worker_confirmed` 路径已修复并通过单元测试，待独立代码评审；S5 台账已分离公开规则与本地历史记录。C-1 `network_access` 仍是 `declared_only`，没有网络沙箱，不构成 CP-25 强制执行证据。以下历史“未修”条目以本条为准；T1–T6 全开放、BINDING-GATE-1 继续关闭。
 
 > 2026-09-23 [第六轮复审](reviews/2026-09-23-l0-r6-review.md)：空 Coordinator 绑定在写入、旧记录上传和提交事务三个入口均被拒绝；R5-1 **代码缺陷已关闭**，本次修复通过评审。以下第五轮结论为历史状态。T1–T6 全开放、BINDING-GATE-1 继续关闭。

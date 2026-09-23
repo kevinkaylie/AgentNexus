@@ -1,0 +1,264 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "document": "AgentNexus 侧 CP-01～26 覆盖映射（binding 级）",
+  "scope": "只描述 AgentNexus 适配层能为每个一致性用例提供什么证据。Profile 的 CP 定义在 fixtures/cp-matrix.json（中立方），本文件不复述、不修改其语义。",
+  "claim": "本映射**不**声明符合性、不声明 wire conformance。verified 只表示『AgentNexus 侧声明的证据在本机执行通过』；partial 表示只覆盖了裁定权在本仓的那一半；blocked 表示本仓不持有该权威或缺少强制点，必须由标注的 owner 提供证据。",
+  "statuses": {
+    "verified": "AgentNexus 侧证据已执行且通过（不排除他人仍需提供证据）",
+    "partial": "只验证了裁定权在 AgentNexus 的部分；其余部分属其他 owner，见 limitation",
+    "blocked": "本仓没有可执行证据，必须由 owner 提供；不得据此声称该 CP 通过"
+  },
+  "owners": [
+    "AgentNexus",
+    "Nexus_Agent",
+    "Hczj_Assistant_Agent",
+    "three-party"
+  ],
+  "rules": [
+    "每个 CP 恰好一条；CP 集合必须与 fixtures/cp-matrix.json 完全一致（多一条/少一条都失败）。",
+    "tests 里的 node id 必须真实存在于本仓测试文件中，否则映射视为腐烂（机械校验）。",
+    "status=blocked 必须给出 owner 与非空 limitation；status=partial 必须给出非空 limitation。",
+    "runner 只报告『声明的证据实际执行结果』，不得把 blocked/partial 渲染成通过。"
+  ],
+  "cases": [
+    {
+      "id": "CP-01",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_api.py::test_cr_api_receipt_processed_atomically_and_view_returns_envelopes",
+        "tests/test_code_review_http_contract.py::test_http_contract_matrix",
+        "tests/test_code_review_store.py::test_cr_message_state_and_error_roundtrip"
+      ],
+      "note": "A/messages 先落库再返回 202；矩阵行覆盖 wire 层状态码与 DTO。"
+    },
+    {
+      "id": "CP-02",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_http_contract.py::test_idempotency_rule_4_same_key_different_projection_conflicts_without_side_effect",
+        "tests/test_code_review_api.py::test_r23_conflicting_message_has_no_receipt_side_effect",
+        "tests/test_code_review_http_contract.py::test_r34_message_business_change_is_a_conflict"
+      ],
+      "note": "同幂等键不同业务投影 → 409 且无副作用；仅追踪字段变化按重放。"
+    },
+    {
+      "id": "CP-03",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_provider_adapter.py::test_unknown_provider_and_schema_return_unsupported_contract",
+        "tests/test_code_review_provider_adapter.py::test_unlisted_coverage_schema_is_unsupported_contract"
+      ],
+      "limitation": "只验证了『拒绝未登记 contract/schema』这一半；可接受集合（compatibility.json 的 Nexus contract_revision 清单）仍为空，接受路径要等三方冻结后才能验证（T6）。",
+      "note": "不悄悄包装文本成功：未登记 schema 一律 unsupported_contract。"
+    },
+    {
+      "id": "CP-04",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_delivery.py::test_cr_delivery_cas_rejects_stale_lease_deadline_and_state",
+        "tests/test_code_review_profile.py::test_cr_report_rejects_frozen_invalid_reports_with_expected_rule"
+      ],
+      "note": "输入清单不一致 → input_mismatch；报告非法 → 不签发 accepted。"
+    },
+    {
+      "id": "CP-05",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_store.py::test_cr_assignment_epoch_is_monotonic",
+        "tests/test_code_review_http_contract.py::test_r32_epoch_change_after_binding_read_is_caught",
+        "tests/test_code_review_api.py::test_r22_unassigned_attempt_and_wrong_epoch_are_rejected"
+      ],
+      "note": "旧 epoch 提交一律 stale_assignment；epoch 单调且必须严格正整数。"
+    },
+    {
+      "id": "CP-06",
+      "status": "blocked",
+      "owner": "Hczj_Assistant_Agent",
+      "limitation": "『自动路径不得覆盖更高人工 revision』的仲裁点是目标 revision 权威，按 ADR-015 属 HCZJ，本仓只镜像不裁决。",
+      "tests": []
+    },
+    {
+      "id": "CP-07",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_http_contract.py::test_r32_expired_lease_is_rejected",
+        "tests/test_code_review_http_contract.py::test_r32_attempt_rebinding_after_binding_read_is_caught",
+        "tests/test_code_review_delivery.py::test_cr_delivery_rejects_unbound_execution"
+      ],
+      "note": "旧 epoch/过期租约/换绑 Attempt 均无提交权；completed 只能经交付重新核验。"
+    },
+    {
+      "id": "CP-08",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_q3_harness.py::test_cr_q3_empty_partial_conversion_and_presentation",
+        "tests/test_code_review_q3_harness.py::test_cr_q3_reject_a_findings_with_inconclusive",
+        "tests/test_code_review_q3_harness.py::test_cr_q3_never_upgrades_coverage_to_complete"
+      ],
+      "note": "结构面由冻结 fixture/schema 判定，行为面由 q3 harness 判定（含 A 组拒绝）。"
+    },
+    {
+      "id": "CP-09",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_q3_harness.py::test_cr_q3_found_partial_presentation_requires_both_dimensions",
+        "tests/test_code_review_delivery.py::test_cr_adapter_translates_changes_requested_to_completed",
+        "tests/test_code_review_profile.py::test_cr_translate_changes_requested_becomes_completed_issues_found"
+      ],
+      "note": "有发现的判定不得成为执行失败重试信号；展示必须同时给出 outcome 与 coverage。"
+    },
+    {
+      "id": "CP-10",
+      "status": "partial",
+      "limitation": "本仓验证的是协议侧分类（缺失 404 / 过期 410 / 错误信封字段冻结）；真实证据源的权限、缺失与暂时不可达分类需要与 Nexus 证据端点联调（T1/T2）。",
+      "tests": [
+        "tests/test_code_review_api.py::test_cr_api_raw_missing_artifact_is_404",
+        "tests/test_code_review_api.py::test_cr_api_expired_artifact_returns_410",
+        "tests/test_code_review_profile.py::test_cr_error_envelope_has_frozen_fields"
+      ]
+    },
+    {
+      "id": "CP-11",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_store.py::test_cr_delivery_conflicts_on_digest_and_binding",
+        "tests/test_code_review_store.py::test_cr_delivery_correction_rules_and_status",
+        "tests/test_code_review_http_contract.py::test_r34_upload_dto_reformatting_is_a_replay"
+      ],
+      "note": "同 delivery_id 不同摘要 → delivery_conflict；格式纠正必须带 replaces_delivery_id。"
+    },
+    {
+      "id": "CP-12",
+      "status": "blocked",
+      "owner": "Hczj_Assistant_Agent",
+      "limitation": "发布 outbox 的 unknown→查证原操作逻辑在 HCZJ 侧；本仓只有发布角色授权，没有发布操作查询能力（q3 harness 对应用例显式 skip）。",
+      "tests": []
+    },
+    {
+      "id": "CP-13",
+      "status": "blocked",
+      "owner": "Hczj_Assistant_Agent",
+      "limitation": "『阻止当前发布或标记已发评论过期』属 HCZJ 发布状态机；本仓不持有 GitLab 写入权威。",
+      "tests": []
+    },
+    {
+      "id": "CP-14",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_http_contract.py::test_r32_cancel_after_binding_read_is_caught_in_commit_transaction",
+        "tests/test_code_review_api.py::test_r22_cancelled_assignment_is_rejected"
+      ],
+      "note": "取消在提交事务内生效（旧分配即刻无提交权）；停止事实由 cancel_acknowledgement 结构单独记录（结构面）。"
+    },
+    {
+      "id": "CP-15",
+      "status": "blocked",
+      "owner": "AgentNexus",
+      "limitation": "本仓没有 token/成本计量点，也没有网络/预算强制器：Assignment 的预算只被透传，`network_access` 仍是 declared_only。缺强制点不得声称 CP-15 通过（§15.5，评审 C-1）。",
+      "tests": []
+    },
+    {
+      "id": "CP-16",
+      "status": "partial",
+      "limitation": "接单 fail-closed（enforcement_unavailable / data_policy_denied）已实现并验证；声明为 enforced 的**实际强制**依赖真实隔离执行环境，属 T1–T6 之外的部署条件。",
+      "tests": [
+        "tests/test_code_review_store.py::test_cr_enforcement_registry_fail_closed",
+        "tests/test_code_review_api.py::test_cr_api_assignment_fails_closed_when_capability_not_registered",
+        "tests/test_code_review_profile.py::test_cr_data_policy_denied_scopes_are_distinguishable"
+      ]
+    },
+    {
+      "id": "CP-17",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_delivery.py::test_cr_adapter_rejects_plain_text_completed",
+        "tests/test_code_review_delivery.py::test_cr_delivery_endpoint_profile_path_and_error_envelope",
+        "tests/test_code_review_profile.py::test_cr_translate_rejects_structurally_invalid_report"
+      ],
+      "note": "缺少/非法 ReviewReport 校验时 Run 不得完成；翻译层在状态语义生效前生效。"
+    },
+    {
+      "id": "CP-18",
+      "status": "partial",
+      "limitation": "崩溃窗口的持久化恢复已验证；『不回退 revision/activation』的裁决权在 HCZJ 目标权威。",
+      "tests": [
+        "tests/test_code_review_api.py::test_cr_api_receipt_crash_window_is_recovered_on_read",
+        "tests/test_code_review_delivery.py::test_cr_delivery_replay_and_conflict"
+      ]
+    },
+    {
+      "id": "CP-19",
+      "status": "partial",
+      "limitation": "本仓的交付 CAS（状态/租约/deadline/输入清单/绑定）已验证；『按 Nexus 版本 × HCZJ 目标』的跨侧 CAS 需双侧联调（T1–T5）。",
+      "tests": [
+        "tests/test_code_review_delivery.py::test_cr_delivery_cas_rejects_stale_lease_deadline_and_state",
+        "tests/test_code_review_http_contract.py::test_r34_upload_dto_reformatting_is_a_replay"
+      ]
+    },
+    {
+      "id": "CP-20",
+      "status": "partial",
+      "limitation": "历史只读（过期 410）与 epoch 失效拒绝已验证；『未完成 Run failed』的状态迁移属 HCZJ 状态机。",
+      "tests": [
+        "tests/test_code_review_api.py::test_cr_api_expired_artifact_returns_410",
+        "tests/test_code_review_http_contract.py::test_r32_lease_expiring_while_waiting_for_write_lock_is_caught"
+      ]
+    },
+    {
+      "id": "CP-21",
+      "status": "blocked",
+      "owner": "Hczj_Assistant_Agent",
+      "limitation": "『不回退版本、不重建旧目标』由目标/版本权威裁定，本仓不持有该状态。",
+      "tests": []
+    },
+    {
+      "id": "CP-22",
+      "status": "partial",
+      "limitation": "旧 epoch 无提交权已在事务内验证；『新 activation 与策略族核验规则』属 HCZJ。",
+      "tests": [
+        "tests/test_code_review_http_contract.py::test_r32_epoch_change_after_binding_read_is_caught",
+        "tests/test_code_review_http_contract.py::test_r32_attempt_rebinding_after_binding_read_is_caught"
+      ]
+    },
+    {
+      "id": "CP-23",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_profile.py::test_cr_digest_matches_frozen_cp23_vector",
+        "tests/test_code_review_profile.py::test_cr_digest_vectors_transform_expectations",
+        "tests/test_code_review_profile.py::test_cr_digest_outer_escaping_does_not_matter"
+      ],
+      "note": "结构面直接复算 fixtures/digest_vectors.json 的五个向量。"
+    },
+    {
+      "id": "CP-24",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_api.py::test_cp24_legacy_receipts_endpoint_rejects_profile_session",
+        "tests/test_code_review_api.py::test_r24_role_grant_required_even_if_credential_declares_role",
+        "tests/test_code_review_store.py::test_cr_role_grants_resolve_and_scope",
+        "tests/test_code_review_api.py::test_cr_api_message_read_requires_party_or_session_scope"
+      ],
+      "note": "角色级写授权；旧 /coordination/receipts 拒绝 Profile 会话；未授权不推进 Profile Session。"
+    },
+    {
+      "id": "CP-25",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_api.py::test_cr_api_assignment_fails_closed_when_capability_not_registered",
+        "tests/test_code_review_store.py::test_cr_enforcement_registry_fail_closed"
+      ],
+      "limitation": "验证的是『接单前即拒绝、不进入执行』；真实环境下的模型调用计数需要真实执行环境才能测量（与 CP-15 同一强制点缺口）。",
+      "note": "未登记 enforced 的必需约束一律 enforcement_unavailable。"
+    },
+    {
+      "id": "CP-26",
+      "status": "verified",
+      "tests": [
+        "tests/test_code_review_profile.py::test_cr_digest_rejects_bom_and_lone_surrogate",
+        "tests/test_code_review_api.py::test_cr_api_upload_digest_matches_frozen_vector"
+      ],
+      "note": "BOM/孤立 surrogate 拒绝、上传摘要等于冻结向量；legacy result_hash 的不兼容声明见 digest_vectors.legacy_incompatible（不得补造 report_digest）。"
+    }
+  ]
+}

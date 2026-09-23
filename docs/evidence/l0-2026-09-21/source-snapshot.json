@@ -199,6 +199,15 @@
       "result": "exit 0（semantic.14）",
       "reexecuted": false,
       "note": "仍为包自身自洽；未重跑本包 HTTP/JUnit 样例（semantic.9 时期产物），采集 pin 不得改写"
+    },
+    {
+      "checked_at": "2026-09-23T12:00:00Z",
+      "checked_against_sha256": "65b1dce872dfd66e2b4be6d1553079385d8997b273291cc136a5699df4a2a620",
+      "command": "python specs/profiles/code-review/v1/tools/validate.py && python specs/profiles/code-review/v1/tools/check_evidence.py --require-host-audit",
+      "scope": "semantic.15→16：新增 AgentNexus 侧 CP 覆盖映射（bindings/l0-agentnexus-cp-coverage.json）与 CP-01～26 执行记录（fixtures/binding/cp-execution-record-2026-09-23.md），并把 compatibility.json 的 adapter 段由 not_implemented 修正为 implemented_pending_wire_validation（附非声明清单）后的包自检",
+      "result": "exit 0（semantic.16；63/63 manifest；契约 24 码；正例 9/9；反例 14/14；T1-T6 全开放）",
+      "reexecuted": false,
+      "note": "仍为包自身自洽；**未**在 semantic.16 下重跑本包 HTTP/JUnit 样例（semantic.9 时期产物），采集 pin 保持原值不得改写；CP 执行记录只覆盖门禁允许范围，不构成符合性结论"
     }
   ]
 }

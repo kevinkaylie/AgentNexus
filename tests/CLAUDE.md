@@ -178,7 +178,7 @@ python tests/test_cases.py
 | test_obj_gateway_handle_decision_gate_max_retry | max_retry gate | 创建 pending decision |
 | test_obj_gateway_handle_decision_gate_low_confidence | low_confidence gate | 创建 pending decision, stage 正确 |
 
-## Code Review Profile v1 测试（2026-09-23，257 tests + 1 skip = 258 collected）
+## Code Review Profile v1 测试（2026-09-23，271 tests + 1 skip = 272 collected）
 
 | 文件 | 用例数 | 覆盖 |
 |------|--------|------|
@@ -190,6 +190,14 @@ python tests/test_cases.py
 | `test_code_review_q3_harness.py` | 12 (+1 skip) | q3 行为用例：HCZJ→Profile 转换（两种原 outcome 同语义、原义保留、溯源）、呈现规则与发布前拒绝（422）、交付重放幂等；发布重放半场属 HCZJ 边界，显式 skip |
 | `test_code_review_provider_adapter.py` | 15 | **可插拔性证明** + **B7/R2-5 回归**：注册表与 schema 自动识别、第二个 provider（ACME）走同一管线、未知 provider/schema → `unsupported_contract`、厂商无关不变式不可绕过；malformed finding/缺口条目 → `invalid_output`、未登记 schema → `unsupported_contract`；**显式 null 与字段缺失都不得当作空集合** |
 | `test_code_review_evidence_checklist.py` | 53 | **T1–T6 收口裁判的负例验证**：清单/模板自洽；摘要/长度/占位符/必填/覆盖/声明与实际不一致等按预期失败；**B9 + R2-6 拒绝事实样例级校验**（真正运行 `error.schema.json`；主体角色/方法+端点/错误码必须与场景匹配）；**B10 可移植性**；**S3 采集 pin**（改写 pin、复核记录缺失/时序错误/未声明重跑被拒） |
+| `test_code_review_cp_matrix.py` | 14 | **CP-01～26 执行记录的机械守卫**：覆盖映射与 `fixtures/cp-matrix.json` 的 CP 集合完全一致（增删 CP 会强制补映射）；映射的 node id 必须真实存在（测试改名立刻变红）；blocked 必须给 owner+限制、partial 必须给限制、verified 必须有测试；渲染器对参数化用例按前缀归并取最坏结果，blocked/partial 永不被写成"通过"；已提交记录必须覆盖全部 26 项、限制小节与声明一致、并声明 0 个证据失败；**门禁关闭期间 `compatibility.json` 允许列表必须全空**（防提前放行） |
+
+> **CP 执行记录**（自动生成，可重跑）：
+> ```bash
+> python scripts/run_cp_matrix.py --list-tests
+> python scripts/run_cp_matrix.py --input <pytest -rA 报告> --date <YYYY-MM-DD>
+> ```
+> 当前记录：`specs/profiles/code-review/v1/fixtures/binding/cp-execution-record-2026-09-23.md`（15 通过 / 6 部分 / 5 本仓无证据 / 0 失败；blocked 逐条写明 owner，不得读成通过）。
 
 > **写新测试的纪律**：Profile 接口的 wire 行为一律写进 `test_code_review_http_contract.py` 的
 > `MATRIX`（加一行），不要再写散落的 `assert resp.json()["field"]`——前三轮评审的同类缺陷

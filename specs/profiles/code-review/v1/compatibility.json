@@ -21,8 +21,9 @@
   "adapter": {
     "name": "agentnexus-code-review-adapter",
     "version": null,
-    "status": "not_implemented",
-    "unimplemented_requirements": [
+    "status": "implemented_pending_wire_validation",
+    "version_note": "version 留空：适配器版本必须与规范包版本 + 已提交 git revision 一起在冻结记录里给定（T6.compat_freeze_record），现为提交前候选，不得据此声明 wire conformance。",
+    "implemented_requirements": [
       "Profile 校验层（§15.2）",
       "字节摘要与 content_hash 填充（§15.3）",
       "external_coordinator_id / external_run_id / external_attempt_id / assignment_epoch（§15.6）",
@@ -30,6 +31,17 @@
       "角色级写授权与旧 /coordination/receipts 拒绝（§15.7）",
       "L0 读取上限与 413 语义（binding RC2 §10.1：raw/artifact 16 MiB、source-bytes 1 MiB 且 ≤2000 行、JSON 响应 4 MiB；超限在发送成功头部前拒绝）",
       "binding 端点与 DTO（RC2 §2–§5：Nexus 原始字节端点、HCZJ 服务接口、A/artifacts、Publisher 发布）"
+    ],
+    "unimplemented_requirements": [],
+    "evidence": {
+      "cp_execution_record": "fixtures/binding/cp-execution-record-2026-09-23.md",
+      "cp_coverage": "bindings/l0-agentnexus-cp-coverage.json",
+      "note": "CP-01～26 逐条执行记录：15 个 AgentNexus 侧通过、6 个部分（其余裁定权在 HCZJ/Nexus）、5 个无本仓证据、0 个证据失败。该记录只覆盖门禁允许范围，**不构成符合性结论**；其中 CP-15（预算强制）与 CP-16 的实强制部分仍缺执行环境。"
+    },
+    "non_claims": [
+      "未声明实现符合性或 wire conformance",
+      "未声明 enforcement 已强制（见本文件 enforcement 段）",
+      "未完成与 Nexus/HCZJ 的生产侧联调（T1–T5 全开放）"
     ]
   },
   "digest": {
@@ -61,7 +73,7 @@
     "document": "bindings/l0-agentnexus-http.md",
     "service_contract": "bindings/l0-service-contract.md",
     "review_records": ["bindings/l0-service-contract.md §9（RC1）", "bindings/l0-service-contract.md §11（RC2）"],
-    "note": "RC1 的 Q1–Q3/S1–S7 已关闭，RC2 契约文本层面无阻塞项；但 BINDING-GATE-1 维持关闭（T1–T6 未关闭、§15.2–15.7 未实现、本清单未三方冻结、CP-01～26 未执行）。定版前只允许独立语义验证开发，不得启动符合本 Profile 的集成运行（§15.1）",
+    "note": "RC1 的 Q1–Q3/S1–S7 已关闭，RC2 契约文本层面无阻塞项；但 BINDING-GATE-1 维持关闭（T1–T6 未关闭、本清单未三方冻结、CP-01～26 仅完成 AgentNexus 侧可验证部分：见 fixtures/binding/cp-execution-record-2026-09-23.md）。定版前只允许独立语义验证开发，不得启动符合本 Profile 的集成运行（§15.1）",
     "confirmation_record": "bindings/external-confirmations-2026-09-20.md"
   }
 }

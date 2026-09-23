@@ -1,11 +1,11 @@
 {
   "profile": "agentnexus.code-review/1.0-draft.2",
-  "package_version": "1.0-draft.2+semantic.14",
+  "package_version": "1.0-draft.2+semantic.16",
   "status": "frozen-semantics-pending-external-confirmation",
   "generated_at": "2026-09-20T00:00:00Z",
   "generated_at_note": "固定日期：本包为确定性冻结候选，重新生成时应同步更新并复核摘要",
   "source": {
-    "git_head": "85d3c15e80c7da5c35d5ffeea7d69497c794c934",
+    "git_head": "c88b69cd13e2d5fa0f544afde4c8a2eaf67ccd91",
     "worktree_dirty": true,
     "note": "文件为冻结候选；dirty=true 表示提交前的工作树状态，冻结发布必须登记已提交 revision"
   },
@@ -15,7 +15,7 @@
     "behavioral": "CP-01～26 行为测试，未包含在本包内",
     "wire": "未声明；需 L0 binding 定版（bindings/l0-agentnexus-http.md）"
   },
-  "file_count": 61,
+  "file_count": 63,
   "files": [
     {
       "path": "bindings/evidence/closure-checklist.json",
@@ -68,6 +68,11 @@
       "byte_length": 6445
     },
     {
+      "path": "bindings/l0-agentnexus-cp-coverage.json",
+      "sha256": "bcc80ed024469cfe5c37d6ac1f1af46bf7e99ba8fbddd5a9df5d162fa04f917a",
+      "byte_length": 13397
+    },
+    {
       "path": "bindings/l0-agentnexus-http.md",
       "sha256": "86f251365831e4896bf03bed86fb8200c26f4b3b921a0369c6b6235a70dc84e9",
       "byte_length": 16381
@@ -84,8 +89,13 @@
     },
     {
       "path": "compatibility.json",
-      "sha256": "9ccb1044575558288fe53c02844dd051fb31b38be6d55037c81b23d203907896",
-      "byte_length": 3730
+      "sha256": "dcf2edfe59cd910351c7804c529cfb7298b16ad1ff1d77e394c0f768a2bea051",
+      "byte_length": 4811
+    },
+    {
+      "path": "fixtures/binding/cp-execution-record-2026-09-23.md",
+      "sha256": "dfdbe1a08aac3747f35c8e1897780dfd1002f62a9cc089925391c6899d0abee1",
+      "byte_length": 6663
     },
     {
       "path": "fixtures/binding/q3-execution-record-2026-09-20.md",
@@ -314,7 +324,7 @@
     },
     {
       "path": "tools/make_manifest.py",
-      "sha256": "1ad4d945f3ff095040484baa9fa930991efc2cb5fe5f716da655a34a42151dce",
+      "sha256": "86117bb7ea6bd5202eebe9d5eb79cfa533eed267a535f54043e6947ef469c9af",
       "byte_length": 3250
     },
     {

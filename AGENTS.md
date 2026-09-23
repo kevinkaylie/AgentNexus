@@ -116,7 +116,7 @@
 | MCP 集成 | [docs/integrations/mcp.md](docs/integrations/mcp.md) | 生效 |
 | 产品路线图 | [docs/roadmap.md](docs/roadmap.md) | 生效（仅本地） |
 | WG DID Resolution | [specs/working-group/did-resolution.md](specs/working-group/did-resolution.md) | 生效（v1.0 RATIFIED） |
-| Code Review Profile v1 规范包 | [specs/profiles/code-review/v1/](specs/profiles/code-review/v1/README.md) | 语义件冻结候选（自检通过，`semantic.10`）；L0 binding 待评审，未声明符合性；T1–T6 关闭进度以 [收口追踪器](specs/profiles/code-review/v1/bindings/evidence/closure-checklist.json) 为唯一来源（当前六项全开放） |
+| Code Review Profile v1 规范包 | [specs/profiles/code-review/v1/](specs/profiles/code-review/v1/README.md) | 语义件冻结候选（自检通过，`1.0-draft.2+semantic.16`）；L0 binding 待三方冻结，未声明符合性；CP-01～26 已执行并留档（[运行记录](specs/profiles/code-review/v1/fixtures/binding/cp-execution-record-2026-09-23.md)：15 通过 / 6 部分 / 5 本仓无证据）；T1–T6 关闭进度以 [收口追踪器](specs/profiles/code-review/v1/bindings/evidence/closure-checklist.json) 为唯一来源（当前六项全开放，intake 见 [预检清单](docs/reviews/2026-09-23-l0-t-intake-and-freeze-preflight.md)） |
 
 ---
 

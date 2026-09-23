@@ -14,7 +14,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 PROFILE_VERSION = "agentnexus.code-review/1.0-draft.2"
-PACKAGE_VERSION = "1.0-draft.2+semantic.14"
+PACKAGE_VERSION = "1.0-draft.2+semantic.16"
 
 INCLUDE_DIRS = ("schemas", "fixtures", "bindings", "tools")
 INCLUDE_FILES = ("README.md", "compatibility.json")

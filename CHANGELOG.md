@@ -13,6 +13,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### 路线图第 2–4 步：CP 执行记录、T 项 intake 与冻结预检（2026-09-23）
+
+**第 4 步（CP-01～26 执行并留档）** —— 半机械、半行为，可重跑：
+
+- 新增 `scripts/run_cp_matrix.py`：把 `fixtures/cp-matrix.json` 的 26 个用例逐个落到可执行证据上——`structural` 用冻结 schema 复核 fixture（valid 必过、invalid 必不过），`digest` 直接复算 `digest_vectors.json`，`behavioral` 运行覆盖映射里的 AgentNexus 行为测试并按 node id 记结果；支持 `--run` 与受限环境的 `--input` 两种取数方式。运行记录**不内嵌 manifest 摘要**（记录本身由 manifest 登记，内嵌会成环）。
+- 新增 `bindings/l0-agentnexus-cp-coverage.json`（binding 级，非 Profile 通用要求）：逐条 CP 的状态与证据映射——**15 个 AgentNexus 侧通过、6 个部分（其余裁定权在 HCZJ/Nexus）、5 个本仓无证据、0 个证据失败**；blocked 必须写明 owner 与限制，partial 必须写明限制。有 5 个 CP（CP-06/12/13/15/21）明确不声称通过，其中 CP-15 是预算/网络强制点缺失（§15.5、评审 C-1）。
+- 新增运行记录 `fixtures/binding/cp-execution-record-2026-09-23.md`（87 个行为用例通过，0 失败）。
+- 新增 `tests/test_code_review_cp_matrix.py`（14 项守卫）：CP 集合与 cp-matrix 完全一致、映射的 node id 必须真实存在（改测试名会让记录立刻变红）、blocked/partial 不得被渲染成通过、渲染器对参数化用例要按前缀归并取最坏结果、记录必须覆盖全部 26 项且限制小节与声明一致。
+- 修正 `compatibility.json` 的 adapter 段：由 `not_implemented`（且列出 §15.2–15.7 等"未实现"项）改为 `implemented_pending_wire_validation`，把已实现项与非声明清单分开写清；**允许列表仍全部为空**。
+
+**第 2–3 步（T 项 intake 与冻结预检）** —— 见 [T 项 intake 与冻结预检](docs/reviews/2026-09-23-l0-t-intake-and-freeze-preflight.md)：
+
+- 逐一列出 6 个 T 项、25 条 `blocking` 证据要求的 owner、模板、`record_key`、必需字段与机械检查，以及本地 `non_closing` 对照证据与**缺口**；明确哪些是 AgentNexus 侧已做掉、不需要外部提供的。
+- 冻结预检：列出四方输入清单、冻结程序与防"提前放行"的机械底线；新增回归用例把底线固化——T1–T6 关闭前任何允许列表的非空填写都会让 `test_compatibility_allowlists_stay_empty_while_gate_closed` 变红。
+- 诚实边界：T1–T6 **仍 6/6 开放**；生产/部署证据与三方签字不在本工作区，`docs/evidence/l0-2026-09-21` 仍是 semantic.9 时期产物（采集 pin 未改写，仅追加 `profile_manifest_rechecks`）。
+
+规范包 `1.0-draft.2+semantic.14` → `+semantic.16`（63/63 manifest；契约 24 码；正例 9/9；反例 14/14）。
+
 ### 全量门禁加固：报告编码与跳过明细（2026-09-23）
 
 `scripts/check_full_suite.py` 有两处会让门禁**误判或崩溃**的缺陷，均为本轮自查实测触发：
