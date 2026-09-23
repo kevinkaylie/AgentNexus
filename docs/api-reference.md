@@ -315,6 +315,62 @@
 - `blocked` 状态 → 自动创建 DecisionGate
 - artifact body 自动写入 session 的 enclave Vault
 
+> **Code Review Collaboration Profile v1（草稿，未声明符合性）**：当 execution 绑定了 Profile 会话
+> （`objective_executions.profile_session_id` 非空）时，`/coordination/executions/{id}/result` 走
+> **专用路径**：先做 §15.2 翻译层二次校验，再在单个本地事务内完成 §15.6 CAS（状态/租约/deadline/
+> 输入清单/摘要幂等），只签发 `received` 回执（`validated`/`accepted`/`published` 由注册验证服务、
+> Coordinator、Publisher 分别签发）。未绑定 Profile 的 execution 保持上表旧语义不变。
+
+### Code Review Profile v1 — L0 服务接口（`/coordination/code-review/v1`）
+
+状态：**新增接口已实现，但整体仍为草稿，未声明 wire conformance 或实现符合性**（见
+`specs/profiles/code-review/v1/bindings/l0-service-contract.md` 与 Profile §15.1）。
+
+| 端点 | 方法 | 说明 | 鉴权 |
+|------|------|------|------|
+| `/coordination/code-review/v1/messages` | POST | 接收入站协作消息（`assignment`/`cancel_request`/`receipt`/`error`），先持久化再返回 202 TransportAck | token + 角色（见下） |
+| `/coordination/code-review/v1/messages/{message_id}` | GET | MessageView（`state`/`receipts`/`error`） | token（可选 actor_did） |
+| `/coordination/code-review/v1/artifacts` | POST | 上传产物：服务端按 §15.3 计算 `sha256:<hex>` 摘要与字节长度，不接受自报摘要 | token + worker 角色 |
+| `/coordination/code-review/v1/artifacts/{id}/raw` | GET | 原始字节（`ETag`/`Content-Length`/`If-Match`） | token |
+
+**角色（§15.7）**：`assignment`/`cancel_request`→coordinator；`receipt` 按 kind：
+`accepted`→coordinator、`published`→publisher、`received`/`validated`→validator。部署未登记任何角色时
+降级为"部署约定"，响应标记 `enforcement: declared_only`（不得据此声明强制隔离）。
+
+**错误**：本组接口返回 `code_review.error.v1` 信封（`code`/`retryable`/`action_required`/`scope`/
+`correlation_id`/`safe_message`/`retry_after_seconds`），不是 `{"detail": ...}`。读取上限（RC2 §10.1）：
+raw/artifact 16 MiB、source-bytes 1 MiB 且 ≤2000 行、JSON 响应 4 MiB；超限返回 `413 data_policy_denied`
+（`scope=read_limit`）。
+
+**§15.5 强制能力 fail-closed**：Assignment 携带的 `enforcement_requirements` 会在接单时与本部署
+注册表比对，未标记 `enforced` 的必需约束一律拒绝（`422 enforcement_unavailable`，`unsatisfied` 列出
+缺项），且不启动任何模型调用。
+
+**评审方可插拔（不限 HCZJ/Nexus）**：接入另一个评审方只需新增一个
+`agent_net.code_review.provider_adapter.ReviewProviderAdapter` 子类并用 `register_provider()` 注册，
+声明其原生 schema、outcome 词表、覆盖状态词表（`coverage_complete_token` / `native_status_key`）、
+严重度映射（`severity_map`）与字段映射钩子（`_map_findings` / `_map_coverage`）。
+**厂商无关规则**由基类统一收敛、provider 无法绕过：§6.3 outcome 推导、覆盖**不得提升**、
+缺口原义保留、溯源写入 `extensions`、结构校验，以及呈现/发布前 422 校验。
+
+厂商无关入口：
+
+```python
+from agent_net.code_review import build_profile_report
+
+report = build_profile_report(
+    provider_id="acme",              # 省略则按 native_report["schema_version"] 自动识别
+    native_report=acme_report,       # 该评审方的原生报告
+    native_coverage=acme_coverage,
+    identity=frozen_identity,        # §6.3 的 run_id/attempt_id/SHA/策略摘要等
+    execution_metadata=metadata,
+    usage=usage,
+)
+```
+
+未注册的 `provider_id` 或无法识别的 schema 返回 `unsupported_contract`（**不静默降级**到其他 provider）。
+参考实现：`hczj_adapter.py`（HCZJ）与 `tests/test_code_review_provider_adapter.py`（ACME 示例）。
+
 ### SDK — CoordinationClient (Objective Loop)
 
 ```python

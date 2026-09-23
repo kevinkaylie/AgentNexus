@@ -66,6 +66,7 @@
 | 4 | 测试覆盖 | 新功能、修复点、失败路径是否有测试 |
 | 5 | API 一致性 | 是否同步 `docs/api-reference.md` 和 SDK |
 | 6 | 代码规范 | 是否符合 `CLAUDE.md`、`agent_net/CLAUDE.md` |
+| 7 | **全量回归证据（硬规则）** | 评审请求必须附 `scripts/check_full_suite.py` 的判定结果（退出码 0）与汇总行；出现未登记失败即视为回归，**不得批准**，也不得直接刷新基线（见 `CLAUDE.md` 的 Workflow Rules 与 `tests/CLAUDE.md`） |
 
 问题分类：
 
@@ -74,6 +75,20 @@
 | 阻塞性 | 必须修复，且补测试 |
 | 建议性 | 可本次修复或记录后续 |
 | 信息性 | 仅记录，无需处理 |
+
+**回归门禁（评审前置条件）**
+
+```bash
+python -m pytest tests/ -q -p no:cacheprovider --tb=no -rs > .pytest_full_report.txt 2>&1
+python scripts/check_full_suite.py --input .pytest_full_report.txt   # 0=通过 1=回归 2=基线需维护
+```
+
+- 出现**未登记**失败 → 回归：先修复，不得刷新基线来"变绿"；
+- 出现**未登记跳过**（跳过数超出基线 + 已登记的环境跳过）同样按回归处理：环境依赖的跳过必须由 `tests/conftest.py` 的能力探针触发、并在 `scripts/check_full_suite.py` 的 `ENVIRONMENT_DEPENDENT_FILES` 登记原因，门禁按原因字符串逐字匹配；
+- 通过数下降 → 基线需维护（但下限 = 基线通过数 − 可解释的环境跳过数）；
+- 基线 `tests/full_suite_baseline.json` 只登记**可归因于运行环境**的失败并写明原因；**当前环境性失败为空**。
+
+> 2026-09-21 评审 S4 起不再把环境失败登记进基线：评审在不受限环境跑出 679 passed / 0 failed，证明那些用例本身是好的。登记成失败会让基线长期携带一批实际能过的条目，也会掩盖真实回归。
 
 ## 记录位置
 

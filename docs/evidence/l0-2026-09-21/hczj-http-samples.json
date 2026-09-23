@@ -1,0 +1,318 @@
+{
+  "evidence_kind": "synthetic_local_http_capture",
+  "production": false,
+  "command": "python tools/capture_l0_samples.py <output>",
+  "trusted_adapters": "synthetic verify_input/verify_evidence and local artifact bytes; not deployment evidence",
+  "records": [
+    {
+      "method": "POST",
+      "path": "/api/service/code-review/v1/requests",
+      "request": {
+        "profile": "agentnexus.code-review/1.0-draft.2",
+        "message_id": "msg_0001",
+        "type": "review_request",
+        "sender_id": "did:agentnexus:z6MkNexusCoordinator000000000000000000000000",
+        "receiver_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+        "session_id": "sess_cr_0001",
+        "correlation_id": "corr_mr42_head_1a2b",
+        "causation_id": null,
+        "created_at": "2026-09-18T04:00:00Z",
+        "request_id": "req_0001",
+        "payload": {
+          "request_id": "req_0001",
+          "idempotency_key": "idem_gitlab-main_proj_7788_mr42_initial",
+          "instance_id": "gitlab-main",
+          "project_id": "7",
+          "mr_iid": 42,
+          "generation": 3,
+          "execution_revision": 1,
+          "job_id": "J1",
+          "report_id": "R1",
+          "base_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+          "head_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+          "target_sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+          "impact_artifact": {
+            "artifact_id": "art_impact_R1",
+            "producer_id": "did:agentnexus:z6MkNexusScanner00000000000000000000000000000",
+            "media_type": "application/json",
+            "schema_version": "nexus.review_impact.v1",
+            "digest_algorithm": "sha256-bytes-v1",
+            "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "byte_length": 18456,
+            "locator": "nexus://reports/R1/impact.json",
+            "access_scope": "maintenance_domain_read",
+            "retention_until": "2027-03-18T00:00:00Z",
+            "replaces": null
+          },
+          "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "operation": "initial",
+          "authority_ref": "authz://hczj/review/req_0001",
+          "requested_by": "did:agentnexus:z6MkNexusCoordinator000000000000000000000000"
+        }
+      },
+      "authorization": "redacted synthetic credential",
+      "status": 202,
+      "body": {
+        "request_id": "req_0001",
+        "review_revision": 1,
+        "run_id": "276f4825c168429497bb56fc71da0d2c",
+        "status_url": "/api/service/code-review/v1/requests/req_0001"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "POST",
+      "path": "/api/service/code-review/v1/requests",
+      "request": {
+        "profile": "agentnexus.code-review/1.0-draft.2",
+        "message_id": "msg_0001",
+        "type": "review_request",
+        "sender_id": "did:agentnexus:z6MkNexusCoordinator000000000000000000000000",
+        "receiver_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+        "session_id": "sess_cr_0001",
+        "correlation_id": "corr_mr42_head_1a2b",
+        "causation_id": null,
+        "created_at": "2026-09-18T04:00:00Z",
+        "request_id": "req_0001",
+        "payload": {
+          "request_id": "req_0001",
+          "idempotency_key": "idem_gitlab-main_proj_7788_mr42_initial",
+          "instance_id": "gitlab-main",
+          "project_id": "7",
+          "mr_iid": 42,
+          "generation": 3,
+          "execution_revision": 1,
+          "job_id": "J1",
+          "report_id": "R1",
+          "base_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+          "head_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+          "target_sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+          "impact_artifact": {
+            "artifact_id": "art_impact_R1",
+            "producer_id": "did:agentnexus:z6MkNexusScanner00000000000000000000000000000",
+            "media_type": "application/json",
+            "schema_version": "nexus.review_impact.v1",
+            "digest_algorithm": "sha256-bytes-v1",
+            "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "byte_length": 18456,
+            "locator": "nexus://reports/R1/impact.json",
+            "access_scope": "maintenance_domain_read",
+            "retention_until": "2027-03-18T00:00:00Z",
+            "replaces": null
+          },
+          "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "operation": "initial",
+          "authority_ref": "authz://hczj/review/req_0001",
+          "requested_by": "did:agentnexus:z6MkNexusCoordinator000000000000000000000000"
+        }
+      },
+      "authorization": "redacted synthetic credential",
+      "status": 202,
+      "body": {
+        "request_id": "req_0001",
+        "review_revision": 1,
+        "run_id": "276f4825c168429497bb56fc71da0d2c",
+        "status_url": "/api/service/code-review/v1/requests/req_0001"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "GET",
+      "path": "/api/service/code-review/v1/requests/req_0001",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "body": {
+        "request_id": "req_0001",
+        "review_revision": 1,
+        "run_id": "276f4825c168429497bb56fc71da0d2c",
+        "status_url": "/api/service/code-review/v1/requests/req_0001"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "GET",
+      "path": "/api/service/code-review/v1/runs/276f4825c168429497bb56fc71da0d2c",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "body": {
+        "accepted_report_digest": null,
+        "activation_revision": 1,
+        "active_attempt_id": null,
+        "current": false,
+        "job_id": "J1",
+        "report_id": "R1",
+        "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "review_revision": 1,
+        "run_id": "276f4825c168429497bb56fc71da0d2c",
+        "state": "queued",
+        "target_revision": 1
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "GET",
+      "path": "/api/service/code-review/v1/targets/gitlab-main/7/42",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "body": {
+        "activation_revision": 1,
+        "execution_revision": 1,
+        "freshness": "unknown",
+        "generation": 3,
+        "instance_id": "gitlab-main",
+        "mr_iid": 42,
+        "project_id": "7",
+        "report_digest": null,
+        "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "review_revision": 1,
+        "run_id": "276f4825c168429497bb56fc71da0d2c",
+        "target_revision": 1
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "POST",
+      "path": "/api/service/code-review/v1/requests",
+      "request": {
+        "profile": "agentnexus.code-review/1.0-draft.2",
+        "message_id": "msg_0001",
+        "type": "review_request",
+        "sender_id": "did:agentnexus:z6MkNexusCoordinator000000000000000000000000",
+        "receiver_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+        "session_id": "sess_cr_0001",
+        "correlation_id": "corr_mr42_head_1a2b",
+        "causation_id": null,
+        "created_at": "2026-09-18T04:00:00Z",
+        "request_id": "req_0001",
+        "payload": {
+          "request_id": "req_0001",
+          "idempotency_key": "idem_gitlab-main_proj_7788_mr42_initial",
+          "instance_id": "gitlab-main",
+          "project_id": "7",
+          "mr_iid": 42,
+          "generation": 3,
+          "execution_revision": 1,
+          "job_id": "J1",
+          "report_id": "R1",
+          "base_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+          "head_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+          "target_sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+          "impact_artifact": {
+            "artifact_id": "art_impact_R1",
+            "producer_id": "did:agentnexus:z6MkNexusScanner00000000000000000000000000000",
+            "media_type": "application/json",
+            "schema_version": "nexus.review_impact.v1",
+            "digest_algorithm": "sha256-bytes-v1",
+            "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "byte_length": 18456,
+            "locator": "nexus://reports/R1/impact.json",
+            "access_scope": "maintenance_domain_read",
+            "retention_until": "2027-03-18T00:00:00Z",
+            "replaces": null
+          },
+          "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "operation": "initial",
+          "authority_ref": "authz://hczj/review/req_0001",
+          "requested_by": "did:agentnexus:z6MkNexusCoordinator000000000000000000000000"
+        }
+      },
+      "authorization": "absent",
+      "status": 401,
+      "body": {
+        "action_required": true,
+        "code": "authority_denied",
+        "correlation_id": "unassociated",
+        "retry_after_seconds": null,
+        "retryable": false,
+        "safe_message": "authority_denied",
+        "schema": "code_review.error.v1",
+        "scope": "policy"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "GET",
+      "path": "/api/service/code-review/v1/runs/276f4825c168429497bb56fc71da0d2c",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "body": {
+        "accepted_report_digest": "sha256:bcec1103b0bd6ce3ce8bd87c936342fb44edeb39decfb3a5d2ead3884ad260ed",
+        "activation_revision": 1,
+        "active_attempt_id": null,
+        "current": false,
+        "job_id": "J1",
+        "report_id": "R1",
+        "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "review_revision": 1,
+        "run_id": "276f4825c168429497bb56fc71da0d2c",
+        "state": "completed",
+        "target_revision": 1
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "GET",
+      "path": "/api/service/code-review/v1/runs/276f4825c168429497bb56fc71da0d2c/receipts",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "causation_id": "msg_0004",
+            "correlation_id": "corr_mr42_head_1a2b",
+            "created_at": "2026-09-21T02:01:47.552516Z",
+            "message_id": "6dbedc65880945bfa387bbb8847506cd",
+            "payload": {
+              "attempt_id": "1",
+              "authority_ref": "service-registry:did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+              "created_at": "2026-09-21T02:01:47.552510Z",
+              "decision": "confirmed",
+              "evidence_refs": [],
+              "issuer_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+              "kind": "accepted",
+              "receipt_id": "f4e37897bf304d1b90259620cdaecd62",
+              "report_digest": "sha256:bcec1103b0bd6ce3ce8bd87c936342fb44edeb39decfb3a5d2ead3884ad260ed",
+              "run_id": "276f4825c168429497bb56fc71da0d2c",
+              "schema": "code_review.receipt.v1",
+              "subject_ref": {
+                "id": "del_0001",
+                "kind": "delivery"
+              }
+            },
+            "profile": "agentnexus.code-review/1.0-draft.2",
+            "receiver_id": "did:agentnexus:z6MkReviewerWorker00000000000000000000000000000",
+            "run_id": "276f4825c168429497bb56fc71da0d2c",
+            "sender_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+            "session_id": "sess_cr_0001",
+            "type": "receipt"
+          }
+        ],
+        "next_cursor": null
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "method": "GET",
+      "path": "/api/service/code-review/v1/messages/msg_0004",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 403,
+      "body": {
+        "action_required": true,
+        "code": "authority_denied",
+        "correlation_id": "corr_mr42_head_1a2b",
+        "retry_after_seconds": null,
+        "retryable": false,
+        "safe_message": "authority_denied",
+        "schema": "code_review.error.v1",
+        "scope": "validation"
+      },
+      "cache_control": "no-store"
+    }
+  ]
+}

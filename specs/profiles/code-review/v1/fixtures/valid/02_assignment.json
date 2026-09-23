@@ -1,0 +1,39 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "message_id": "msg_0002",
+  "type": "assignment",
+  "sender_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+  "receiver_id": "did:agentnexus:z6MkReviewerWorker00000000000000000000000000000",
+  "session_id": "sess_cr_0001",
+  "correlation_id": "corr_mr42_head_1a2b",
+  "causation_id": "msg_0001",
+  "created_at": "2026-09-18T04:01:00Z",
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A1",
+  "assignment_epoch": 8,
+  "payload": {
+    "run_id": "RUN-ID-2026-09-14",
+    "attempt_id": "A1",
+    "assignment_epoch": 8,
+    "coordinator_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+    "input_manifest_digest": "sha256:1f4a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a",
+    "output_schema": "code_review.report.v1",
+    "policy_ref": "policy://hczj/code-review/v3",
+    "authority_ref": "authz://hczj/review/req_0001",
+    "deadline": "2026-09-18T05:00:00Z",
+    "limits": {
+      "max_tool_rounds": 12,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 40000,
+      "max_wall_clock_sec": 900,
+      "max_cost": { "amount": 3.5, "currency": "USD" }
+    },
+    "required_capabilities": ["code_review", "java"],
+    "enforcement_requirements": [
+      { "constraint": "provider_outbound_data", "level": "declared_only", "component": "hczj-model-gateway" },
+      { "constraint": "token_cost_budget", "level": "enforced", "component": "hczj-run-budget-ledger" },
+      { "constraint": "tool_rounds_and_time", "level": "enforced", "component": "hczj-skill-runtime" },
+      { "constraint": "source_scope", "level": "enforced", "component": "nexus-query-authz" }
+    ]
+  }
+}

@@ -1,5 +1,7 @@
 # Quick Start | 快速开始
 
+> 自动代码评审尚未作为本快速开始的可运行功能交付。Profile draft.2 已**设计评审通过**（ADR-015 已采纳），提议由 HCZJ 管业务 Run、AgentNexus 管适配；无 Coordinator 时仅可独立查询证据，不构成自动评审闭环。实施前仍需单独评审 L0 wire binding，参见 [Profile](design/code-review-collaboration-profile-v1.md) §15 与 [ADR-015](adr/015-code-review-state-authority.md)。
+
 **[中文](#-中文) | [English](#-english)**
 
 ---

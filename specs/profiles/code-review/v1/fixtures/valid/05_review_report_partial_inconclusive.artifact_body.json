@@ -1,0 +1,68 @@
+{
+  "schema_version": "code_review.report.v1",
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A1",
+  "input_manifest_digest": "sha256:1f4a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a",
+  "impact_artifact": {
+    "artifact_id": "art_impact_R1",
+    "producer_id": "did:agentnexus:z6MkNexusScanner00000000000000000000000000000",
+    "media_type": "application/json",
+    "schema_version": "nexus.review_impact.v1",
+    "digest_algorithm": "sha256-bytes-v1",
+    "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "byte_length": 18456,
+    "locator": "nexus://reports/R1/impact.json",
+    "access_scope": "maintenance_domain_read",
+    "retention_until": "2027-03-18T00:00:00Z",
+    "replaces": null
+  },
+  "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "review_revision": 1,
+  "base_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  "head_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+  "target_sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+  "generation": 3,
+  "execution_revision": 1,
+  "reviewer_id": "did:agentnexus:z6MkReviewerWorker00000000000000000000000000000",
+  "coverage": {
+    "status": "partial",
+    "planned_files": [
+      "src/main/java/com/example/OrderService.java",
+      "src/main/java/com/example/OrderRepository.java",
+      "src/main/java/com/example/OrderController.java"
+    ],
+    "reviewed_files": [
+      "src/main/java/com/example/OrderService.java"
+    ],
+    "omitted_files": [
+      { "path": "src/main/java/com/example/OrderRepository.java", "reason": "wall_clock_budget_exhausted" },
+      { "path": "src/main/java/com/example/OrderController.java", "reason": "wall_clock_budget_exhausted" }
+    ],
+    "gap_reasons": ["工具轮次与墙钟预算耗尽，未完成调用链验证"],
+    "inherited_gaps": [
+      { "source": "art_impact_R1", "reason": "依赖图谱在 200 节点处截断（truncated=true）" }
+    ]
+  },
+  "outcome": "inconclusive",
+  "findings": [],
+  "limitations": [
+    "跨模块调用链未在预算内验证，本报告不得解读为通过",
+    "删除分支的调用方影响未核实"
+  ],
+  "execution_metadata": {
+    "provider": "hczj-model-gateway",
+    "model": "code-review-model",
+    "model_version": null,
+    "skill_version": "code-review-skill/0.1.0",
+    "tool_versions": ["nexus-mcp/1.0"],
+    "started_at": "2026-09-18T04:01:20Z",
+    "completed_at": "2026-09-18T04:16:30Z"
+  },
+  "usage": {
+    "measurement": "partial",
+    "input_tokens": 152000,
+    "output_tokens": 21000,
+    "cost": { "amount": 1.9, "currency": "USD" },
+    "note": "一次超时重试的用量未完整计量；不视为零成本"
+  }
+}

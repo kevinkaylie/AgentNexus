@@ -1,0 +1,47 @@
+{
+  "date": "2026-09-23",
+  "production_services_used": false,
+  "worktree_dirty": true,
+  "r3_repro_output": "CONCURRENT_SAME_KEY [201, 201]\nCONCURRENT_ERRORS []\nSAME_BUSINESS_DIFFERENT_JSON 201 None\nEXPIRED_LEASE 409\nCANCEL_DURING_UPLOAD 409\nMESSAGE_NONBUSINESS_REPLAY 202 202\nUNREGISTERED_RECEIPT_SCOPE 409\n",
+  "r4_probes": [
+    {
+      "case": "rebind_attempt",
+      "status": 201,
+      "artifacts": 1,
+      "expired_at_response": null
+    },
+    {
+      "case": "rebind_coordinator",
+      "status": 201,
+      "artifacts": 1,
+      "expired_at_response": null
+    },
+    {
+      "case": "lease_expires_waiting_for_lock",
+      "status": 201,
+      "artifacts": 1,
+      "expired_at_response": true
+    }
+  ],
+  "source_sha256": {
+    "agent_net/persistence/code_review_store.py": "6069a4c552e9158a570c99626e97e4e05118fd57507d98b62d77c20c0836e056",
+    "agent_net/node/routers/code_review.py": "d9ad2bb1b14734e6f5615051a4b620d09048fc6af881552d6efcd43bc3682501",
+    "agent_net/code_review/projection.py": "ac2a982c15551d6f267cf2901da6881f9c1c705c9863842638e2877c7aba0785",
+    "docs/reviews/l0_r4_repro.py": "7f0bc5b709a8d43c7363ead9f6f99bc4413e181faed07e2659f0d49f8f879b85"
+  },
+  "validation": {
+    "full_suite": {
+      "passed": 803,
+      "skipped": 9,
+      "failed": 0,
+      "errors": 0,
+      "seconds": 421.58,
+      "gate_exit_code": 0,
+      "report": ".pytest_l0_r4_report.txt",
+      "report_sha256": "2221c4bdb2dfe227da74574cde6187f4d98104dc117782928724211310852a12"
+    },
+    "package_validate_exit_code": 0,
+    "host_audit_exit_code": 0,
+    "hczj_targeted_passed": 25
+  }
+}

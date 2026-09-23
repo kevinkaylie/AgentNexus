@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/cancel_request.schema.json",
+  "title": "code_review.cancel_request.v1",
+  "description": "Profile §5.2。取消是请求，不是停止事实：CancelRequest 使分配失效，Worker 返回 CancelAcknowledgement。不因进程未停止而恢复提交权限。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cancel_request_id",
+    "run_id",
+    "attempt_id",
+    "assignment_epoch",
+    "reason",
+    "requested_by",
+    "authority_ref",
+    "requested_at"
+  ],
+  "properties": {
+    "cancel_request_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "attempt_id": { "type": ["string", "null"] },
+    "assignment_epoch": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "人工停止未完成 Run 在 v1 映射 failed + cancelled_by_owner；MR/策略替换按 superseded"
+    },
+    "requested_by": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "authority_ref": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/authority_ref" },
+    "requested_at": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  }
+}

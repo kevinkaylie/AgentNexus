@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/publication_request.schema.json",
+  "title": "code_review.publication_request.v1",
+  "description": "Profile §8。发布前必须从权威服务核验；核验失败或超时为 freshness_unknown，禁止作为当前结论发布。仅比对 head_sha 不足以确认 current。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "operation_id",
+    "instance_id",
+    "project_id",
+    "mr_iid",
+    "run_id",
+    "report_digest",
+    "expected_version",
+    "expected_activation_revision",
+    "authority_ref"
+  ],
+  "properties": {
+    "operation_id": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "网络超时为 unknown 时必须保留该 ID，先按稳定评论标记查证，不得直接新增评论（§8）"
+    },
+    "instance_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "project_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "mr_iid": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "report_digest": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256" },
+    "expected_version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "execution_revision", "review_revision"],
+      "description": "目标版本元组；必须整体匹配当前目标，不能把不同来源的数简单求最大（§15.6）",
+      "properties": {
+        "generation": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+        "execution_revision": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+        "review_revision": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" }
+      }
+    },
+    "expected_activation_revision": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "authority_ref": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/authority_ref" },
+    "summary_text": {
+      "type": ["string", "null"],
+      "description": "待发布正文。候选中不可信文本不得改变发布正文来源（§10）；不承诺跨 GitLab/数据库原子性或 exactly-once"
+    },
+    "outbox_state": {
+      "type": "null",
+      "description": "客户端不得设置：outbox 状态属 Publisher 侧持久化记录，只经 PublicationView.state 暴露（binding RC1 §5）。此字段仅为兼容读取旧记录而保留，请求中只能缺省或为 null"
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  }
+}

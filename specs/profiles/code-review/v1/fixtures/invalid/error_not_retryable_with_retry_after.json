@@ -1,0 +1,10 @@
+{
+  "schema": "code_review.error.v1",
+  "code": "invalid_output",
+  "retryable": false,
+  "action_required": true,
+  "scope": "validation",
+  "correlation_id": "corr_mr42_head_1a2b",
+  "safe_message": "报告结构不合法，需人工处理。",
+  "retry_after_seconds": 60
+}

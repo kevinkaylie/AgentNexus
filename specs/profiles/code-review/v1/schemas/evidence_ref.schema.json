@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/evidence_ref.schema.json",
+  "title": "code_review.evidence_ref.v1",
+  "description": "Profile §6.1 + §15.3。两种形态互斥：source_location（绑定冻结版本的行区间证据）与 relation（无源码位置的图关系，禁止伪造行号）。两个分支各自完整声明属性并 additionalProperties=false，因此关系证据携带 path/start_line/end_line 会被拒绝。",
+  "oneOf": [
+    { "$ref": "#/$defs/source_location" },
+    { "$ref": "#/$defs/relation" }
+  ],
+  "$defs": {
+    "source_location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_id",
+        "report_id",
+        "side",
+        "snapshot_id",
+        "project",
+        "commit_sha",
+        "path",
+        "blob_sha",
+        "start_line",
+        "end_line",
+        "content_sha256"
+      ],
+      "properties": {
+        "provider_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "report_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "side": {
+          "type": "string",
+          "enum": ["before", "after"],
+          "description": "before/after 必须来自同一冻结快照对；删除行绑定 before（§6.1）"
+        },
+        "snapshot_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "project": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "commit_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+        "path": { "type": "string", "minLength": 1 },
+        "blob_sha": {
+          "type": "string",
+          "minLength": 1,
+          "description": "完整 Git blob 对象 ID，与 content_sha256 职责分离"
+        },
+        "start_line": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/line_number" },
+        "end_line": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/line_number" },
+        "content_sha256": {
+          "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/sha256_hex",
+          "description": "§15.3：指定行区间原始字节的 SHA256；LF 定界、保留 CRLF 中的 CR、保留末行是否有 LF，不做换行归一"
+        }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_id",
+        "report_id",
+        "side",
+        "snapshot_id",
+        "project",
+        "commit_sha",
+        "type",
+        "relation",
+        "relation_artifact"
+      ],
+      "properties": {
+        "provider_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "report_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "side": { "type": "string", "enum": ["before", "after"] },
+        "snapshot_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "project": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+        "commit_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+        "type": { "type": "string", "const": "relation" },
+        "relation": {
+          "type": "string",
+          "enum": ["depends_on", "imports", "calls", "implements", "extends"],
+          "description": "关系词表为局部定义；新增取值须在 compatibility.json 声明"
+        },
+        "relation_artifact": { "$ref": "https://agentnexus.dev/spec/code-review/v1/artifact_ref.schema.json" }
+      }
+    }
+  }
+}

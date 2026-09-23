@@ -1,0 +1,182 @@
+{
+  "evidence_kind": "synthetic_local_http_capture",
+  "production": false,
+  "command": "python tools/capture_l0_samples.py <output>",
+  "records": [
+    {
+      "method": "GET",
+      "path": "/v3/review/reports/review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96/artifact",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "headers": {
+        "content-length": "512",
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "artifact_id": "review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96",
+        "producer_id": "nexus:test",
+        "media_type": "application/json",
+        "schema_version": "nexus.review_impact.v1",
+        "digest_algorithm": "sha256-bytes-v1",
+        "digest": "sha256:e00a26bf9d88bb37196fa59ea063c0aeee89703332c171e4601a9fc93faa7732",
+        "byte_length": 968,
+        "locator": "nexus-report:nexus%3Atest:review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96",
+        "access_scope": "service_private",
+        "retention_until": "2099-01-01T00:00:00Z"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v3/review/reports/review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96/raw",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "headers": {
+        "etag": "\"sha256:e00a26bf9d88bb37196fa59ea063c0aeee89703332c171e4601a9fc93faa7732\"",
+        "content-length": "968",
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "after": {
+          "snapshot": {
+            "repositories": [
+              {
+                "project": "project",
+                "snapshot_id": "snap_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          }
+        },
+        "artifact_manifest": [
+          {
+            "path": "sources/index.json",
+            "sha256": "b08081807eb054924a1984c89b2780120b81b3e5b057ac094301501f0e3a8a2b"
+          },
+          {
+            "path": "sources/blobs/7d1c6fedfd3e7fa93222e0345f8c537be5958af29f030e715a904930ea34b99b.bin",
+            "sha256": "7d1c6fedfd3e7fa93222e0345f8c537be5958af29f030e715a904930ea34b99b"
+          }
+        ],
+        "before": {
+          "snapshot": {
+            "repositories": [
+              {
+                "project": "project",
+                "snapshot_id": "snap_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          }
+        },
+        "contract_revision": 3,
+        "report_id": "review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96",
+        "schema_version": "nexus.review_impact.v1"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v3/review/reports/review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96/source-bytes",
+      "request": {
+        "side": "after",
+        "snapshot_id": "snap_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "path": "Main.java",
+        "start_line": 2,
+        "end_line": 2
+      },
+      "authorization": "redacted synthetic credential",
+      "status": 200,
+      "headers": {
+        "etag": "\"sha256:6c0c903ef554743607e54222092da8f1f46599f7489daac411cf9b4eb99921ce\"",
+        "content-length": "19",
+        "content-type": "application/octet-stream",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "hex_bytes": "7365636f6e64e280a873616d652d6c696e650a"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v3/review/reports/review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96/raw",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 401,
+      "headers": {
+        "content-length": "210",
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "schema": "code_review.error.v1",
+        "code": "authority_denied",
+        "retryable": false,
+        "action_required": true,
+        "scope": "policy",
+        "correlation_id": "missing-auth",
+        "safe_message": "authority_denied",
+        "retry_after_seconds": null
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v3/review/reports/review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96/raw",
+      "request": null,
+      "authorization": "redacted synthetic credential",
+      "status": 403,
+      "headers": {
+        "content-length": "206",
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "schema": "code_review.error.v1",
+        "code": "data_policy_denied",
+        "retryable": false,
+        "action_required": true,
+        "scope": "policy",
+        "correlation_id": "test",
+        "safe_message": "data_policy_denied",
+        "retry_after_seconds": null
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v3/review/events?after_seq=0&limit=100",
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "schema_version": "nexus.review_event.v1",
+            "event_id": "7fd852e07bc34f7ab33bdadd3948d73e",
+            "seq": 1,
+            "event_type": "scan.succeeded",
+            "mr_key": "sample/7/42",
+            "generation": 1,
+            "execution_revision": 1,
+            "job_id": "synthetic-job",
+            "aggregate_revision": 1,
+            "occurred_at": "2026-09-21T02:07:28.708478+00:00",
+            "report_id": "review_bd8d301e3f74054b1980e44e09476efab2fbfe3db584a0ec84f685475d1c8d96",
+            "reason": null
+          }
+        ],
+        "next_seq": 1
+      },
+      "note": "synthetic seeded event; not a production scan completion"
+    },
+    {
+      "method": "POST",
+      "path": "/v3/review/events/ack",
+      "request": {
+        "consumer": "hczj-review",
+        "through_seq": 1
+      },
+      "status": 200,
+      "body": {
+        "acked": 1
+      }
+    }
+  ]
+}

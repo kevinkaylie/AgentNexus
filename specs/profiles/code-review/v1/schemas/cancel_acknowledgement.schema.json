@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/cancel_acknowledgement.schema.json",
+  "title": "code_review.cancel_acknowledgement.v1",
+  "description": "Profile §5.2。state=unknown 表示无法确认是否已停止；必须与 blocked/DecisionGate 区分记录，不得据此恢复提交权。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cancel_request_id",
+    "run_id",
+    "attempt_id",
+    "assignment_epoch",
+    "state",
+    "issuer_id",
+    "observed_at"
+  ],
+  "properties": {
+    "cancel_request_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "attempt_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "assignment_epoch": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "state": { "type": "string", "enum": ["stopped", "too_late", "unknown"] },
+    "issuer_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "observed_at": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" },
+    "detail": { "type": ["string", "null"] },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  }
+}

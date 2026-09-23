@@ -1,0 +1,76 @@
+{
+  "_template": "T6",
+  "_instructions": "复制到 bindings/evidence/received/T6.json 后回填。T6 是三方项：access_scope 词表语义需跨项目评审，冻结必须三方签署，且只能在 T1–T6 全部关闭后放行运行清单。候选值 service_private 在冻结前仅作审计记录。",
+  "t_item": "T6",
+  "owner": "three-party",
+  "item_status": "open",
+  "item_status_reason": "__TODO__",
+  "records": {
+    "access_scope_vocabulary": {
+      "status": "open",
+      "vocabulary": "__TODO__：本次放行的 access_scope 取值清单（冻结前应为空）",
+      "vocabulary_has_service_private": "__TODO__：true/false",
+      "authorization_semantics": "__TODO__：持有服务凭据后仍需通过产物所属项目、session/Run 与角色授权的规则",
+      "storage_services_implemented": "__TODO__：两个存储服务各自的实现证据引用；未实现者不得加入运行词表",
+      "nonexistence_leak_prevented": "__TODO__：无授权时不泄露 locator 存在性的实测结果",
+      "decided_by": "__TODO__",
+      "decided_at": "__TODO__"
+    },
+    "compat_freeze_record": {
+      "status": "open",
+      "maintainer": "__TODO__：compatibility.json 的填充责任人",
+      "freeze_date": "__TODO__：RFC3339 Z",
+      "freeze_basis": "__TODO__：引用的 T1–T6 关闭记录与适配器版本",
+      "attestations": [
+        {
+          "party": "AgentNexus",
+          "attested_by": "__TODO__",
+          "attested_at": "__TODO__：RFC3339 Z",
+          "scope": "中央清单维护、适配器版本与 CP 运行记录"
+        },
+        {
+          "party": "Nexus_Agent",
+          "attested_by": "__TODO__",
+          "attested_at": "__TODO__：RFC3339 Z",
+          "scope": "schema_versions 与 contract_revisions 的生产版本证据"
+        },
+        {
+          "party": "Hczj_Assistant_Agent",
+          "attested_by": "__TODO__",
+          "attested_at": "__TODO__：RFC3339 Z",
+          "scope": "映射 fixtures、服务鉴权证据与外部词表取值"
+        }
+      ],
+      "three_party_attested": "__TODO__：true/false",
+      "allowlist_after_freeze": {
+        "nexus_schema_versions": [],
+        "nexus_contract_revisions": [],
+        "artifact_access_scope": [],
+        "operative_allowlist": false
+      },
+      "allowlist_only_after_closure": "__TODO__：确认放行发生在 T1–T6 全部关闭之后"
+    },
+    "mapping_fixtures": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "severity_fixtures": [
+        {"native": "P0", "profile": "critical", "case": "severity_p0"},
+        {"native": "P1", "profile": "high", "case": "severity_p1"},
+        {"native": "P2", "profile": "medium", "case": "severity_p2"},
+        {"native": "P3", "profile": "low", "case": "severity_p3"},
+        {"native": "__TODO__：未知值样例", "profile": null, "case": "severity_unknown_refused", "expected_error_code": "invalid_output"}
+      ],
+      "severity_covers_p0_p3_and_unknown": "__TODO__：true/false",
+      "unknown_severity_refused": "__TODO__：true/false（不得降为 low）",
+      "unknown_value_refusal": "__TODO__：未知值的拒绝证据与响应摘要",
+      "outcome_coverage_fixtures": [
+        {"case": "findings_present_with_full_coverage", "findings_nonempty": true, "coverage_status": "complete", "expected_outcome": "issues_found"},
+        {"case": "no_findings_full_coverage", "findings_nonempty": false, "coverage_status": "complete", "expected_outcome": "no_findings"},
+        {"case": "no_findings_partial_coverage", "findings_nonempty": false, "coverage_status": "partial", "expected_outcome": "inconclusive"},
+        {"case": "findings_with_coverage_gap", "findings_nonempty": true, "coverage_status": "partial", "expected_outcome": "issues_found", "note": "有 findings 且覆盖不足仍为 issues_found，但不得显示『无问题』"},
+        {"case": "inherited_gap_caps_coverage", "findings_nonempty": false, "coverage_status": "complete", "inherited_gap": true, "expected_outcome": "inconclusive"}
+      ],
+      "outcome_quadrants_present": "__TODO__：true/false"
+    }
+  }
+}

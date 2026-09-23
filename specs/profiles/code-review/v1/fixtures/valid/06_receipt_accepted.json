@@ -1,0 +1,27 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "message_id": "msg_0005",
+  "type": "receipt",
+  "sender_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+  "receiver_id": "did:agentnexus:z6MkReviewerWorker00000000000000000000000000000",
+  "session_id": "sess_cr_0001",
+  "correlation_id": "corr_mr42_head_1a2b",
+  "causation_id": "msg_0004",
+  "created_at": "2026-09-18T04:18:00Z",
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A1",
+  "payload": {
+    "schema": "code_review.receipt.v1",
+    "receipt_id": "rcpt_0001",
+    "kind": "accepted",
+    "issuer_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+    "subject_ref": { "kind": "delivery", "id": "del_0001" },
+    "run_id": "RUN-ID-2026-09-14",
+    "attempt_id": "A1",
+    "decision": "confirmed",
+    "created_at": "2026-09-18T04:18:00Z",
+    "authority_ref": "authz://hczj/review/deliver/RUN-ID-2026-09-14",
+    "evidence_refs": [],
+    "report_digest": "sha256:6395a6edac10db12b303cccaa6cbedcb4a99e0f3721195de0312cf0d15766316"
+  }
+}

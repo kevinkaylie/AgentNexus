@@ -1,0 +1,170 @@
+{
+  "_template": "T1",
+  "_instructions": "复制到 bindings/evidence/received/T1.json 后逐字段回填。任何保留 __TODO__ 的记录不得置为 closed；tools/check_evidence.py 会拒绝。原始字节一律以 base64 承载并由校验脚本重算 sha256 与 byte_length，不接受自述摘要。脱敏时必须保持字节口径：不得重新序列化、不得压缩、不得改变换行或去尾换行；需要遮蔽的字段用等长占位符替换后再计算摘要，并在 redaction_note 中说明。",
+  "t_item": "T1",
+  "owner": "Nexus_Agent",
+  "item_status": "open",
+  "item_status_reason": "__TODO__：写清仍未取得的生产样例或版本证据",
+  "records": {
+    "deployment_version": {
+      "status": "open",
+      "source_revision": "__TODO__：部署对应的提交/镜像/包版本（不得填工作树或 null）",
+      "artifact_identifier": "__TODO__：可定位该制品的标识（镜像 digest / wheel 名称+版本 / 发布号）",
+      "endpoint_base_url": "__TODO__：loopback base URL，例如 http://127.0.0.1:PORT",
+      "captured_at": "__TODO__：RFC3339 Z，例如 2026-09-20T00:00:00Z",
+      "captured_by": "__TODO__：采集主体（角色 + 组织），不得只写 Agent 名",
+      "capture_method": "__TODO__：采集方式（命令/脚本/CI 任务），使他方可复现",
+      "notes": "__TODO__：与本地工作树的关系；若与 source-evidence.json 摘要不同请说明"
+    },
+    "event_ack_samples": {
+      "status": "open",
+      "attested_by": "__TODO__：Nexus 侧签署主体",
+      "samples": [
+        {
+          "case": "events_after_seq",
+          "endpoint": "GET /v3/review/events?after_seq=0&limit=100",
+          "request_headers": "__TODO__：仅保留认证方案名与 correlation id，凭据抹掉",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__：响应体的原始字节 base64",
+          "sha256": "__TODO__：sha256:<64 位小写十六进制>",
+          "byte_length": 0,
+          "redaction_note": "__TODO__：遮蔽了哪些字段、为何不改变字节口径",
+          "contains_scan_succeeded": false
+        },
+        {
+          "case": "events_ack",
+          "endpoint": "POST /v3/review/events/ack",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "acked_value": "__TODO__：响应中的 acked 值"
+        },
+        {
+          "case": "scan_succeeded_event",
+          "endpoint": "GET /v3/review/events?after_seq=N&limit=1",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "event_schema": "__TODO__：事件 schema 名，应为 nexus.review_event.v1",
+          "job_id": "__TODO__",
+          "report_id": "__TODO__",
+          "generation": "__TODO__",
+          "execution_revision": "__TODO__"
+        }
+      ]
+    },
+    "contract_revision_allowlist": {
+      "status": "open",
+      "allowed_values": [],
+      "unknown_value_behavior": "__TODO__：必须明确为拒绝（unsupported_contract），不得猜测字段兼容",
+      "decision_basis": "__TODO__：允许值来自哪个版本样例/端点核对",
+      "decided_by": "__TODO__",
+      "decided_at": "__TODO__"
+    },
+    "query_dto_freeze": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "freeze_basis": "__TODO__：对应的部署版本与 contract_revision",
+      "samples": [
+        {
+          "case": "job_projection",
+          "endpoint": "GET /v3/review/jobs/{job_id}",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "report_projection",
+          "endpoint": "GET /v3/review/reports/{report_id}",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "source_projection",
+          "endpoint": "POST /v3/review/reports/{report_id}/source",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "call_chain_projection",
+          "endpoint": "POST /v3/review/reports/{report_id}/call-chain",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "diagnostics_projection",
+          "endpoint": "GET /v3/review/reports/{report_id}/diagnostics",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        }
+      ]
+    },
+    "raw_byte_endpoints": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "samples": [
+        {
+          "case": "artifact_ref",
+          "endpoint": "GET /v3/review/reports/{report_id}/artifact",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "artifact_ref_digest": "__TODO__：ArtifactRef.digest，须与 /raw 的 sha256 相同",
+          "artifact_ref_byte_length": 0,
+          "locator": "__TODO__：nexus-report:<provider_id>:<report_id>",
+          "retention_until": "__TODO__：RFC3339 Z；不能承诺时改填 refuses_to_register 证据"
+        },
+        {
+          "case": "raw_report_bytes",
+          "endpoint": "GET /v3/review/reports/{report_id}/raw",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json",
+          "content_length": 0,
+          "etag": "__TODO__：\"sha256:<hex>\"，须与 sha256 一致",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__：原始字节不得被重新序列化；如遮蔽，需与 manifest 口径一致并说明",
+          "if_match_mismatch_status": "__TODO__：期望 412 evidence_digest_mismatch 的样例摘要或字节"
+        }
+      ]
+    }
+  }
+}

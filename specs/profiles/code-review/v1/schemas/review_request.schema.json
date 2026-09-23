@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/review_request.schema.json",
+  "title": "code_review.review_request.v1",
+  "description": "Profile §4.1。信封 type=review_request 时作为 payload。首次请求尚无 Run，使用 request_id；rescan 必须先交 Nexus 产生新证据。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "idempotency_key",
+    "instance_id",
+    "project_id",
+    "mr_iid",
+    "generation",
+    "execution_revision",
+    "job_id",
+    "report_id",
+    "base_sha",
+    "head_sha",
+    "target_sha",
+    "impact_artifact",
+    "review_policy_sha256",
+    "operation",
+    "authority_ref",
+    "requested_by"
+  ],
+  "properties": {
+    "request_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "idempotency_key": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "动作+资源范围内的幂等 key（§4.1）。比较投影与确定性算法见 Profile §15.8；凭据不得进入幂等摘要"
+    },
+    "instance_id": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "GitLab 实例允许列表标识；禁止由正文指定任意 clone 目标"
+    },
+    "project_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "mr_iid": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "generation": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "execution_revision": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "job_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "report_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "base_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+    "head_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+    "target_sha": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha",
+      "description": "目标分支版本，适配映射必须注明 GitLab 具体字段；不得用 oldrev 猜 MR base（§4.1）"
+    },
+    "impact_artifact": { "$ref": "https://agentnexus.dev/spec/code-review/v1/artifact_ref.schema.json" },
+    "review_policy_sha256": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/sha256_hex",
+      "description": "四元 Run 唯一键的一部分；变化即进入新策略族（§4.2/§15.8）"
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["initial", "rereview"],
+      "description": "rescan 不属于 operation，应先交 Nexus 产生新证据"
+    },
+    "authority_ref": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/authority_ref" },
+    "requested_by": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "已认证的请求者；不得仅信任正文自报身份（§4.1）"
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  }
+}

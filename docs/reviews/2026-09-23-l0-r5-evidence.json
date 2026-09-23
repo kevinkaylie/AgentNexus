@@ -1,0 +1,51 @@
+{
+  "date": "2026-09-23",
+  "production_services_used": false,
+  "worktree_dirty": true,
+  "r5_probes": [
+    {
+      "case": "rebind_attempt",
+      "status": 409,
+      "artifacts": 0,
+      "expired_at_response": null
+    },
+    {
+      "case": "rebind_coordinator",
+      "status": 409,
+      "artifacts": 0,
+      "expired_at_response": null
+    },
+    {
+      "case": "lease_expires_waiting_for_lock",
+      "status": 409,
+      "artifacts": 0,
+      "expired_at_response": true
+    },
+    {
+      "case": "empty_coordinator_then_rebind",
+      "status": 201,
+      "artifacts": 1,
+      "expired_at_response": null
+    }
+  ],
+  "source_sha256": {
+    "agent_net/persistence/code_review_store.py": "a3651e1ff78ee0d9a2813b2d40f08ba6715e25a4948370f26e143307691ad03d",
+    "agent_net/node/routers/code_review.py": "641e9bd4ebd80644f972a6fb277fe8f869032a0ab903ee5454694f75d8a9565a",
+    "agent_net/persistence/schemas.py": "4812d77cad623b7315203abb876ba19021386bfd9cf5c64fcd4536a999526d31",
+    "docs/reviews/l0_r5_repro.py": "d753cefa174b1b62793595ac89d0cabb8ab484fe6a47888e05cbcc87d455050e"
+  },
+  "contract_reference": "specs/profiles/code-review/v1/bindings/l0-service-contract.md \u00a7\u00a71,4",
+  "targeted_http_contract_passed": 65,
+  "package_validate_exit_code": 0,
+  "host_audit_exit_code": 0,
+  "full_suite": {
+    "passed": 806,
+    "skipped": 9,
+    "failed": 0,
+    "errors": 0,
+    "seconds": 417.76,
+    "report": ".pytest_l0_r5_report.txt",
+    "report_sha256": "3f4b5b6ddc03aff6947d94493a41f83067bdcbc44fc9fcc1a29eae0c601fa350",
+    "gate_exit_code": 0
+  }
+}

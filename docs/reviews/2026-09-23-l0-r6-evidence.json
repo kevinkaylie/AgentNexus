@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-23",
+  "production_services_used": false,
+  "worktree_dirty": true,
+  "r6_probe_output": "EMPTY_BINDING input_mismatch\nLEGACY_EMPTY_UPLOAD 409 stale_assignment\nARTIFACTS_AFTER_REJECT 0\nEMPTY_EXPECTED_FENCING stale_assignment\n",
+  "r4_regression_probes": [
+    {
+      "case": "rebind_attempt",
+      "status": 409,
+      "artifacts": 0,
+      "expired_at_response": null
+    },
+    {
+      "case": "rebind_coordinator",
+      "status": 409,
+      "artifacts": 0,
+      "expired_at_response": null
+    },
+    {
+      "case": "lease_expires_waiting_for_lock",
+      "status": 409,
+      "artifacts": 0,
+      "expired_at_response": true
+    }
+  ],
+  "source_sha256": {
+    "agent_net/persistence/code_review_store.py": "7c50b9fbc5e16757b9a2dce3f7a3202d65eb72e27436f9a906633fe3dfc91253",
+    "agent_net/node/routers/code_review.py": "6bd894588885a8e1400417961ba4982fd1cfc3db979e2d48762dc52e9d04b322",
+    "docs/reviews/l0_r6_repro.py": "50091078cf1c584094bd77c2c3423740a8df01321a7d61647ec6a281080d8da5"
+  },
+  "targeted_http_contract_passed": 69,
+  "package_validate_exit_code": 0,
+  "host_audit_exit_code": 0,
+  "full_suite": {
+    "passed": 810,
+    "skipped": 9,
+    "failed": 0,
+    "errors": 0,
+    "seconds": 437.8,
+    "report": ".pytest_l0_r6_report.txt",
+    "report_sha256": "fb02ce3df0b6660d4c95d22987ecf3a18ac6d93c9a88043015aa12ef771cd084",
+    "gate_exit_code": 0
+  }
+}

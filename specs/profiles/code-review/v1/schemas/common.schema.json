@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/common.schema.json",
+  "title": "Code Review Collaboration Profile v1 — 公共标量定义",
+  "description": "Profile §3/§15.3 的共享标量。除显式声明的扩展点外，所有对象默认 additionalProperties=false：未知字段必须拒绝，扩展只能放入 extensions（非关键）或 critical_extensions（关键，接收方不支持即拒绝）。",
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "description": "非空不透明字符串（§3）"
+    },
+    "positive_int": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "revision/generation 等正整数（§3）"
+    },
+    "non_negative_int": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sha256_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "小写十六进制 SHA256，不带算法前缀（策略摘要等沿用产生方算法，§3）"
+    },
+    "digest_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "带算法语义的产物摘要。含义固定为 §15.3：B = 解码外层 JSON 后 artifact_body 字符串的严格 UTF-8 编码（无 BOM、不加尾换行、禁止孤立 surrogate），digest = SHA256(B)"
+    },
+    "git_sha": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+      "description": "Git commit SHA，40 或 64 位（§3）"
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC RFC3339，必须以 Z 结尾；仅用于审计，排序与有效性不得只依赖发送方时间（§3）"
+    },
+    "nullable_timestamp_utc": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "null 表示不保证/未知，不得用零值或空串代替"
+    },
+    "profile_version": {
+      "type": "string",
+      "const": "agentnexus.code-review/1.0-draft.2",
+      "description": "同一 Session 固定 profile 版本（§3）"
+    },
+    "media_type": {
+      "type": "string",
+      "pattern": "^[a-z]+/[A-Za-z0-9.+-]+$"
+    },
+    "line_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "行号从 1 开始、闭区间（§6.1）"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"]
+    },
+    "authority_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "权限引用；必须与已认证上下文绑定，正文自报无效（§10）"
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "非关键扩展。不得用于承载权限、覆盖或版本语义（§3）"
+    },
+    "critical_extensions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true,
+      "description": "关键扩展标识。列出的标识必须能在 extensions 中找到；接收方不支持的必须拒绝并返回 unsupported_critical_extension（§3/§15.8）"
+    }
+  }
+}

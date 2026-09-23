@@ -1,0 +1,22 @@
+{
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A1",
+  "assignment_epoch": 8,
+  "coordinator_id": "hczj-coordinator",
+  "input_manifest_digest": "sha256:1f4a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a",
+  "output_schema": "code_review.report.v1",
+  "policy_ref": "policy://hczj/code-review/v3",
+  "authority_ref": "authz://hczj/review/req_0001",
+  "deadline": "2026-09-18T05:00:00Z",
+  "limits": {
+    "max_tool_rounds": 0,
+    "max_input_tokens": null,
+    "max_output_tokens": null,
+    "max_wall_clock_sec": null,
+    "max_cost": null
+  },
+  "required_capabilities": ["code_review"],
+  "enforcement_requirements": [
+    { "constraint": "provider_outbound_data", "level": "unsupported" }
+  ]
+}

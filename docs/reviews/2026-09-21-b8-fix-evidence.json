@@ -1,0 +1,46 @@
+{
+  "captured_at": "2026-09-21T08:16:40.079671+00:00",
+  "production": false,
+  "scope": "B8 local fix validation; other review items and gate unchanged",
+  "repository": "Hczj_Assistant_Agent",
+  "git_available": false,
+  "targeted_tests": {
+    "passed": 25,
+    "exit_code": 0,
+    "cross_repository_integration_executed": true
+  },
+  "full_unit_tests": {
+    "passed": 4240,
+    "skipped": 2,
+    "exit_code": 0,
+    "duration_seconds": 172.11
+  },
+  "profile_manifest_sha256": "4310e6c58f43b0ebfb31ebbffe356640b2f21cd39d43205c813a036d46267e7a",
+  "source_and_report_files": [
+    {
+      "path": "skills/code_review/service_clients.py",
+      "sha256": "c0a3512eea963bafdb989f0e39882b09de6e73d67e618d2a421ac9cb594042c9",
+      "byte_length": 10171
+    },
+    {
+      "path": "skills/code_review/service_runtime.py",
+      "sha256": "dd970a0d41144f5b185b200dc3c1c30d2d806bc0408b2f4a81572b94d6811ee8",
+      "byte_length": 3374
+    },
+    {
+      "path": "tests/unit/test_code_review_evidence_auth.py",
+      "sha256": "ede5b35c1dfeb8729ec727d12347f35adbdf537c2294bd23536f2da036a60084",
+      "byte_length": 3357
+    },
+    {
+      "path": "tests/support/l0_nexus_auth_probe.py",
+      "sha256": "23cabd821da15748575d5f3e6858b54445f73c8d858af64dcabcce7de929872c",
+      "byte_length": 7687
+    },
+    {
+      "path": ".pytest_l0_auth_fix_report.txt",
+      "sha256": "79592be54294a147afc3a3036d97091e166d496bbe47cfc1fd520c93f0385152",
+      "byte_length": 21393
+    }
+  ]
+}

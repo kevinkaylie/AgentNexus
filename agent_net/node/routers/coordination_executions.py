@@ -23,6 +23,89 @@ from .coordination_common import (
     uuid,
 )
 
+from agent_net.code_review import ProfileError, translate_agentnexus_result
+from agent_net.code_review.authz import authorize as _authorize_profile_role
+from agent_net.persistence.code_review_store import commit_profile_delivery
+
+
+async def _submit_profile_result(existing: dict, req, execution_id: str) -> dict:
+    """Profile 交付路径：§15.2 二次校验 + §15.6 单事务 CAS。
+
+    与旧路径的关键区别：
+    - 必须先经翻译层校验（不能相信客户端已校验，CP-17）；
+    - 合法的 ``changes_requested`` 归一为 ``completed``，**不触发评审重跑**（§15.2/CP-09）；
+    - 只签发 ``received`` 回执（存储事实）；``validated``/``accepted``/``published``
+      由注册验证服务与 Coordinator/Publisher 签发，本入口不得越权（§15.7）；
+    - 不产生旧 ``approved`` 收据，也不把正文截断成 content_ref。
+    """
+    r = req.result
+    report = None
+    if r.artifact_body:
+        try:
+            report = json.loads(r.artifact_body)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ProfileError(
+                "invalid_output",
+                f"artifact_body 不是合法 JSON 对象：{exc}",
+                scope="delivery",
+            ) from exc
+
+    translation = translate_agentnexus_result(
+        r.status,
+        artifact_type=r.artifact_type,
+        artifact_body=r.artifact_body,
+        report=report if isinstance(report, dict) else None,
+    )
+    enforcement = await _authorize_profile_role(
+        req.actor_did, role="worker", profile_session_id=existing["profile_session_id"]
+    )
+
+    if translation.profile_run_state != "completed":
+        # 失败/受阻：不构成交付，只更新执行状态并交回 Coordinator 处理
+        await update_objective_execution(
+            execution_id,
+            status="failed",
+            error=translation.domain_status,
+            completed_at=time.time(),
+        )
+        return {
+            "status": "failed",
+            "domain_status": translation.domain_status,
+            "requires_human": translation.requires_human,
+            "action_required": translation.action_required,
+            "notes": translation.notes,
+            "next_action_hint": "coordinator_handles_failure",
+            "enforcement": enforcement,
+        }
+
+    committed = await commit_profile_delivery(
+        execution_id,
+        actor_did=req.actor_did,
+        artifact_type=r.artifact_type,
+        artifact_body=r.artifact_body,
+        media_type="application/json",
+        schema_version=report.get("schema_version", "code_review.report.v1"),
+        summary=r.summary,
+        run_state="completed",
+        outcome=translation.outcome,
+        domain_status=translation.domain_status,
+        enforcement=enforcement,
+        receipt_issuer=req.actor_did,
+        report_input_manifest_digest=(report or {}).get("input_manifest_digest", ""),
+    )
+    return {
+        "status": "completed",
+        "outcome": translation.outcome,
+        "domain_status": translation.domain_status,
+        "delivery_id": committed["delivery_id"],
+        "artifact_id": committed["artifact_id"],
+        "artifact_ref": committed["artifact_ref"],
+        "receipts": committed["receipts"],
+        "replayed": committed["replayed"],
+        "enforcement": enforcement,
+        "next_action_hint": "await_coordinator",
+    }
+
 # ═══════════════════════════════════════════════════════════════════
 # Objective Loop V1.1 — Execution API
 # ═══════════════════════════════════════════════════════════════════
@@ -164,6 +247,11 @@ async def submit_execution_result(
     if existing is None:
         raise HTTPException(404, f"Execution {execution_id} not found")
     await _verify_session_access(existing["coordination_session_id"], req.actor_did)
+
+    # Code Review Profile v1：绑定 Profile 会话的执行走专用路径
+    # （§15.2 Daemon 二次校验 + §15.6 单事务 CAS）。未绑定者保持旧语义不变。
+    if existing.get("profile_session_id"):
+        return await _submit_profile_result(existing, req, execution_id)
 
     r = req.result
 

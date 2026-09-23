@@ -1,0 +1,97 @@
+{
+  "schema_version": "code_review.report.v1",
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A3",
+  "input_manifest_digest": "sha256:1f4a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a",
+  "impact_artifact": {
+    "artifact_id": "art_impact_R1",
+    "producer_id": "did:agentnexus:z6MkNexusScanner00000000000000000000000000000",
+    "media_type": "application/json",
+    "schema_version": "nexus.review_impact.v1",
+    "digest_algorithm": "sha256-bytes-v1",
+    "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "byte_length": 18456,
+    "locator": "nexus-report:did:agentnexus:z6MkNexusScanner00000000000000000000000000000:R1",
+    "access_scope": "service_private",
+    "retention_until": "2027-03-18T00:00:00Z",
+    "replaces": null
+  },
+  "review_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "review_revision": 1,
+  "base_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  "head_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+  "target_sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+  "generation": 3,
+  "execution_revision": 1,
+  "reviewer_id": "did:agentnexus:z6MkReviewerWorker00000000000000000000000000000",
+  "coverage": {
+    "status": "partial",
+    "planned_files": [
+      "src/main/java/com/example/OrderService.java",
+      "src/main/java/com/example/OrderRepository.java"
+    ],
+    "reviewed_files": [
+      "src/main/java/com/example/OrderService.java"
+    ],
+    "omitted_files": [
+      { "path": "src/main/java/com/example/OrderRepository.java", "reason": "inherited_gap_impact_graph_truncated" }
+    ],
+    "gap_reasons": ["继承输入证据缺口：依赖图谱在 200 节点处截断"],
+    "inherited_gaps": [
+      { "source": "art_impact_R1", "reason": "依赖图谱在 200 节点处截断（truncated=true）" }
+    ]
+  },
+  "outcome": "issues_found",
+  "findings": [
+    {
+      "finding_id": "F7",
+      "severity": "medium",
+      "title": "库存校验失败路径未释放预留额度",
+      "trigger": "库存校验返回 false 后未回滚预留记录",
+      "impact": "失败订单长期占用库存额度",
+      "location": {
+        "side": "after",
+        "commit_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+        "path": "src/main/java/com/example/OrderService.java",
+        "start_line": 120,
+        "end_line": 128
+      },
+      "evidence_refs": [
+        {
+          "provider_id": "did:agentnexus:z6MkNexusScanner00000000000000000000000000000",
+          "report_id": "R1",
+          "side": "after",
+          "snapshot_id": "snap_after_g3",
+          "project": "proj_7788",
+          "commit_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+          "path": "src/main/java/com/example/OrderService.java",
+          "blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+          "start_line": 120,
+          "end_line": 128,
+          "content_sha256": "5e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f"
+        }
+      ],
+      "suggested_validation": "补充库存校验失败后的预留回滚断言"
+    }
+  ],
+  "limitations": [
+    "本报告仅覆盖冻结 file_selection 内已评审部分；依赖图谱截断导致调用方影响未完整核实",
+    "outcome=issues_found 不代表评审范围充分，必须与 coverage 一并阅读"
+  ],
+  "execution_metadata": {
+    "provider": "hczj-model-gateway",
+    "model": "code-review-model",
+    "model_version": null,
+    "skill_version": "code-review-skill/0.1.0",
+    "tool_versions": ["nexus-mcp/1.0"],
+    "started_at": "2026-09-20T02:00:00Z",
+    "completed_at": "2026-09-20T02:09:00Z"
+  },
+  "usage": {
+    "measurement": "partial",
+    "input_tokens": 96000,
+    "output_tokens": 11000,
+    "cost": null,
+    "note": "成本未计量；不得视为零成本"
+  }
+}

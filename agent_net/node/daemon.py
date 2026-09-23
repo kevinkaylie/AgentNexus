@@ -33,7 +33,7 @@ async def _trust_decay_loop():
                 logger.info(f"[TrustDecay] {updated} edges updated")
         except Exception as e:
             logger.warning(f"[TrustDecay] error: {e}")
-from agent_net.node.routers import agents, messages, handshake, adapters, push, enclave, governance, secretary, coordination
+from agent_net.node.routers import agents, messages, handshake, adapters, push, enclave, governance, secretary, coordination, code_review
 from agent_net.storage import init_db
 
 
@@ -90,6 +90,8 @@ app.include_router(enclave.router)
 app.include_router(governance.router)
 app.include_router(secretary.router)
 app.include_router(coordination.router)
+app.include_router(code_review.router)
+code_review.register_error_handler(app)
 
 # Web 仪表盘静态文件挂载（v1.0-01）
 from pathlib import Path

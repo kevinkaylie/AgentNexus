@@ -1,0 +1,25 @@
+{
+  "provider_id": "nexus-scanner",
+  "report_id": "R1",
+  "side": "after",
+  "snapshot_id": "snap_after_g3",
+  "project": "proj_7788",
+  "commit_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+  "type": "relation",
+  "relation": "calls",
+  "relation_artifact": {
+    "artifact_id": "art_impact_R1",
+    "producer_id": "nexus-scanner",
+    "media_type": "application/json",
+    "schema_version": "nexus.review_impact.v1",
+    "digest_algorithm": "sha256-bytes-v1",
+    "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "byte_length": 10,
+    "locator": "nexus://reports/R1/impact.json",
+    "access_scope": "maintenance_domain_read",
+    "retention_until": null
+  },
+  "path": "a.java",
+  "start_line": 1,
+  "end_line": 2
+}

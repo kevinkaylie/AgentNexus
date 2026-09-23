@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/review_report.schema.json",
+  "title": "code_review.report.v1",
+  "description": "Profile §6.3 + §15.8。外层 agentnexus_json_v1 的 artifact_body 是本对象的序列化字符串；artifact_type 必须为 CodeReviewReport。结构校验通过不等于事实正确，也不等于允许合并。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "attempt_id",
+    "input_manifest_digest",
+    "impact_artifact",
+    "review_policy_sha256",
+    "review_revision",
+    "base_sha",
+    "head_sha",
+    "target_sha",
+    "generation",
+    "execution_revision",
+    "reviewer_id",
+    "coverage",
+    "outcome",
+    "findings",
+    "limitations",
+    "execution_metadata",
+    "usage"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "code_review.report.v1" },
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "attempt_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "input_manifest_digest": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256" },
+    "impact_artifact": { "$ref": "https://agentnexus.dev/spec/code-review/v1/artifact_ref.schema.json" },
+    "review_policy_sha256": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/sha256_hex" },
+    "review_revision": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "base_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+    "head_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+    "target_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+    "generation": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "execution_revision": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "reviewer_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "planned_files", "reviewed_files", "omitted_files", "gap_reasons", "inherited_gaps"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["complete", "partial"],
+          "description": "complete 仅针对冻结 file_selection，不得暗示整个仓库或依赖均已评审（§6.3）"
+        },
+        "planned_files": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "reviewed_files": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "omitted_files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "reason"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "gap_reasons": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "inherited_gaps": {
+          "type": "array",
+          "description": "继承自输入证据的缺口；非空时 coverage.status 必须为 partial（§15.8），且不得用缩小 file_selection 隐藏",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "reason"],
+            "properties": {
+              "source": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["issues_found", "no_findings", "inconclusive"],
+      "description": "运行状态与结论分离：completed 只表示有效产物已保存（§5.2/§6.3）"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding_id", "severity", "title", "trigger", "impact", "location", "evidence_refs", "suggested_validation"],
+        "properties": {
+          "finding_id": {
+            "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+            "description": "只保证报告内唯一；跨报告关联由反馈层显式维护（§6.3）"
+          },
+          "severity": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/severity" },
+          "title": { "type": "string", "minLength": 1 },
+          "trigger": { "type": "string", "minLength": 1 },
+          "impact": { "type": "string", "minLength": 1 },
+          "location": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["side", "commit_sha", "path", "start_line", "end_line"],
+            "properties": {
+              "side": { "type": "string", "enum": ["before", "after"] },
+              "commit_sha": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/git_sha" },
+              "path": { "type": "string", "minLength": 1 },
+              "start_line": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/line_number" },
+              "end_line": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/line_number" }
+            }
+          },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "https://agentnexus.dev/spec/code-review/v1/evidence_ref.schema.json" }
+          },
+          "suggested_validation": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "description": "无法证实的问题与待核实项必须写在这里，不得冒充确定缺陷（§6.3）",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "execution_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "model_version", "skill_version", "tool_versions", "started_at", "completed_at"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "model_version": {
+          "type": ["string", "null"],
+          "description": "模型版本未知必须显式 null；不承诺复现模型权重（§6.3）"
+        },
+        "skill_version": { "type": ["string", "null"] },
+        "tool_versions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "started_at": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" },
+        "completed_at": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "已知用量与 unknown 必须区分；超时可能计费的请求不得当作零成本释放预算（§6.3）",
+      "required": ["measurement", "input_tokens", "output_tokens", "cost", "note"],
+      "properties": {
+        "measurement": { "type": "string", "enum": ["known", "unknown", "partial"] },
+        "input_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "output_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "cost": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["amount", "currency"],
+              "properties": {
+                "amount": { "type": "number", "minimum": 0 },
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+              }
+            }
+          ]
+        },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  },
+  "allOf": [
+    {
+      "comment": "§6.3：findings 非空必须 issues_found",
+      "if": { "properties": { "findings": { "minItems": 1 } }, "required": ["findings"] },
+      "then": { "properties": { "outcome": { "const": "issues_found" } } }
+    },
+    {
+      "comment": "§6.3：no_findings 要求声明范围 complete 且 findings 为空",
+      "if": { "properties": { "outcome": { "const": "no_findings" } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "coverage": { "properties": { "status": { "const": "complete" } } },
+          "findings": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "comment": "§6.3：无 findings 且 partial 必须 inconclusive",
+      "if": {
+        "properties": {
+          "findings": { "maxItems": 0 },
+          "coverage": { "properties": { "status": { "const": "partial" } }, "required": ["status"] }
+        },
+        "required": ["findings", "coverage"]
+      },
+      "then": { "properties": { "outcome": { "const": "inconclusive" } } }
+    },
+    {
+      "comment": "§15.8：存在 inherited_gap 时 coverage 上限为 partial",
+      "if": {
+        "properties": {
+          "coverage": { "properties": { "inherited_gaps": { "minItems": 1 } }, "required": ["inherited_gaps"] }
+        },
+        "required": ["coverage"]
+      },
+      "then": { "properties": { "coverage": { "properties": { "status": { "const": "partial" } } } } }
+    },
+    {
+      "comment": "§6.3：usage.measurement=unknown 时不得给出具体用量或成本",
+      "if": { "properties": { "usage": { "properties": { "measurement": { "const": "unknown" } }, "required": ["measurement"] } }, "required": ["usage"] },
+      "then": {
+        "properties": {
+          "usage": {
+            "properties": {
+              "input_tokens": { "type": "null" },
+              "output_tokens": { "type": "null" },
+              "cost": { "type": "null" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "comment": "§6.3：usage.measurement=known 时必须给出 token 用量",
+      "if": { "properties": { "usage": { "properties": { "measurement": { "const": "known" } }, "required": ["measurement"] } }, "required": ["usage"] },
+      "then": {
+        "properties": {
+          "usage": {
+            "properties": {
+              "input_tokens": { "type": "integer" },
+              "output_tokens": { "type": "integer" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

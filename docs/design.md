@@ -1,5 +1,11 @@
 # AgentNexus 设计文档
 
+评审结论：Profile 1.0-draft.2 的 P1–P7 已关闭、S1–S14 已采纳，**设计评审通过**（见文档 §14.10）；字段映射与实施门禁见 §15，wire binding 仍需单独评审。
+
+- [Code Review Collaboration Profile v1](design/code-review-collaboration-profile-v1.md)（2026-09-18，1.0-draft.2，设计评审通过；协作契约及 CP-01～26 验收矩阵）。
+
+- 新增专题：[Code Review V1](design/design-code-review-v1.md)（2026-09-07，需求与设计草案，待评审；未实现）。
+
 > 本文件为设计文档索引。设计按版本拆分为独立文件。
 > 已实现的架构参考 [architecture.md](architecture.md)，关键决策参考 [ADR](adr/)。
 
@@ -9,6 +15,7 @@
 
 | 文件 | 版本范围 | 状态 | 行数 |
 |------|---------|------|------|
+| [design/code-review-collaboration-profile-v1.md](design/code-review-collaboration-profile-v1.md) | Profile 1.0-draft.2 | **设计评审通过**（实施门禁见 §15） | ~560 |
 | [design/design-v1.0.md](design/design-v1.0.md) | v1.0.0 团队协作开发者预览 + v1.5 前瞻 + 鉴权矩阵 | **活跃** | ~1400 |
 | [design/design-objective-loop-v1.1.md](design/design-objective-loop-v1.1.md) | Objective Loop V1.1：跨运行时、跨机器、跨网络的目标驱动 Agent 协作循环 | 草案 | ~400 |
 | [design/design-coding-coordination-v1.md](design/design-coding-coordination-v1.md) | Coding Coordination V1：跨 session / runtime 的可信协调闭环 | 设计/草稿实现未接入 | ~750 |

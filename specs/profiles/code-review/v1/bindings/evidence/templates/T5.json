@@ -1,0 +1,190 @@
+{
+  "_template": "T5",
+  "_instructions": "复制到 bindings/evidence/received/T5.json 后回填。这是 HCZJ F-223 首版之外的待评审扩展：本地 current 指针切换不等于 published，暂未读到评论不等于未发布。所有样例以原始字节 base64 承载。不要提交任何 GitLab 凭据明文。",
+  "t_item": "T5",
+  "owner": "Hczj_Assistant_Agent",
+  "item_status": "open",
+  "item_status_reason": "__TODO__",
+  "records": {
+    "publisher_ownership": {
+      "status": "open",
+      "publisher_boundary": "__TODO__：Publisher 位于哪个应用边界、由谁运行",
+      "credential_separation": "__TODO__：GitLab 写凭据与 worker/其他服务凭据的隔离方式（不写明文）",
+      "worker_publish_refusal_sample": "__TODO__：说明 worker 调用发布接口为何被拒（说明性字段；**判据是下面的 worker_publish_refused 样例**）",
+      "decided_by": "__TODO__",
+      "decided_at": "__TODO__",
+      "refusal_samples": [
+        {
+          "case": "worker_publish_refused",
+          "subject": "__TODO__：尝试发布的 worker 主体",
+          "endpoint": "__TODO__：发布端点",
+          "response_status": 403,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__：拒绝响应原始字节 base64（必须能解码为冻结 error 信封）",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "expected_error_code": "authority_denied",
+          "redaction_note": "__TODO__"
+        }
+      ]
+    },
+    "outbox_persistence": {
+      "status": "open",
+      "migration_id": "__TODO__：ReviewStore 新迁移标识",
+      "tables": ["publication_operations", "publication_attempts", "message_outbox"],
+      "unique_keys": "__TODO__：逐表列出唯一键（publication_operations.operation_id 唯一等）",
+      "unique_key_declared": "__TODO__：true/false",
+      "same_transaction_proof": "__TODO__：创建操作与 outbox 同事务的证据（迁移/代码位置或测试输出）",
+      "crash_recovery_sample": "__TODO__：崩溃恢复后 in_flight→unknown 的实测输出",
+      "sample_raw_bytes_b64": "__TODO__：同事务/恢复证据的原始字节 base64（如为文本输出）",
+      "sample_sha256": "__TODO__",
+      "attested_by": "__TODO__"
+    },
+    "publication_samples": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "summary_text_not_executed": "__TODO__：服务端基于 accepted 报告与确定性模板生成正文的证据；不一致 summary_text 返回 422 invalid_output",
+      "samples": [
+        {
+          "case": "published",
+          "endpoint": "POST H/publications",
+          "method": "POST",
+          "request_headers": "__TODO__：Idempotency-Key=operation_id",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "gitlab_note_id": "__TODO__：正整数",
+          "verified_note_body_sha256": "__TODO__：查证到的正文摘要"
+        },
+        {
+          "case": "unknown",
+          "endpoint": "GET H/publications/{operation_id}",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "state": "unknown",
+          "unknown_reason": "__TODO__：为何无法证明未执行（如分页查证不完整）"
+        },
+        {
+          "case": "obsolete",
+          "endpoint": "GET H/publications/{operation_id}",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "state": "obsolete",
+          "target_revision_change": "__TODO__：触发过期的目标变更证据"
+        },
+        {
+          "case": "summary_text_mismatch_rejected",
+          "endpoint": "POST H/publications",
+          "method": "POST",
+          "request_headers": "__TODO__",
+          "response_status": 422,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "expected_error_code": "invalid_output"
+        }
+      ]
+    },
+    "gitlab_write_verification": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "gitlab_api_version": "v4",
+      "allowed_scope": "__TODO__：仅注册实例与项目、仅 MR 普通评论",
+      "pagination_completeness": "__TODO__：列出评论时读取全部分页的证据",
+      "forbidden_operations_absent": "__TODO__：确认无 approve/merge/执行正文命令",
+      "no_forbidden_operations": "__TODO__：true/false",
+      "samples": [
+        {
+          "case": "create_note",
+          "endpoint": "POST /projects/:id/merge_requests/:merge_request_iid/notes",
+          "method": "POST",
+          "request_headers": "__TODO__：PRIVATE-TOKEN 仅写方案名",
+          "response_status": 201,
+          "content_type": "application/json",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "note_id": "__TODO__：响应 id"
+        },
+        {
+          "case": "update_note_with_verify",
+          "endpoint": "PUT /projects/:id/merge_requests/:merge_request_iid/notes/:note_id",
+          "method": "PUT",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json",
+          "raw_bytes_b64": "__TODO__：包含更新后 GET 查证的原始字节",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "note_id": "__TODO__",
+          "verified_after_update": "__TODO__"
+        },
+        {
+          "case": "list_notes_paged",
+          "endpoint": "GET /projects/:id/merge_requests/:merge_request_iid/notes",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "pages_read": "__TODO__：读取的页数与总条数",
+          "stable_marker_seen": "__TODO__：<!-- agentnexus-code-review:<operation_id> --> 的匹配结果"
+        }
+      ]
+    },
+    "publication_replay_proof": {
+      "status": "open",
+      "operation_id": "__TODO__",
+      "note_count_before": 0,
+      "note_count_after": 0,
+      "note_count_unchanged": "__TODO__：true/false",
+      "replay_samples": [
+        {
+          "case": "first_publication",
+          "endpoint": "POST H/publications",
+          "request_headers": "__TODO__",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "gitlab_note_id": "__TODO__"
+        },
+        {
+          "case": "replay_same_operation_id",
+          "endpoint": "POST H/publications",
+          "request_headers": "__TODO__：同 operation_id",
+          "response_status": "__TODO__：期望返回原操作，不新建评论",
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "gitlab_note_id": "__TODO__：须与首次相同"
+        }
+      ],
+      "attested_by": "__TODO__"
+    }
+  }
+}

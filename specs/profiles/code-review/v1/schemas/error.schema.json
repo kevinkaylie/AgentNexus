@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/error.schema.json",
+  "title": "code_review.error.v1",
+  "description": "Profile §9 + §15.8。错误码为局部命名空间，不与 ACF 错误直接等价；ACF binding 未来必须另给显式映射，禁止按同名猜测。HTTP 状态由 binding 映射，不得仅据 500/超时无限重试。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "code",
+    "retryable",
+    "action_required",
+    "scope",
+    "correlation_id",
+    "safe_message",
+    "retry_after_seconds"
+  ],
+  "properties": {
+    "schema": { "type": "string", "const": "code_review.error.v1" },
+    "code": {
+      "type": "string",
+      "enum": [
+        "unsupported_profile",
+        "unsupported_contract",
+        "unsupported_capability",
+        "unsupported_critical_extension",
+        "authority_denied",
+        "data_policy_denied",
+        "input_mismatch",
+        "evidence_digest_mismatch",
+        "evidence_unavailable",
+        "stale_assignment",
+        "superseded_input",
+        "policy_changed",
+        "idempotency_conflict",
+        "delivery_conflict",
+        "budget_exhausted",
+        "deadline_exceeded",
+        "invalid_output",
+        "temporarily_unavailable",
+        "rate_limited",
+        "freshness_unknown",
+        "publication_unknown",
+        "enforcement_unavailable",
+        "artifact_expired",
+        "coordinator_unavailable"
+      ]
+    },
+    "retryable": { "type": "boolean" },
+    "action_required": { "type": "boolean" },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "description": "故障阶段：如 transport / assignment / execution / validation / publication / freshness"
+    },
+    "correlation_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "safe_message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "面向人工的安全信息；不得回显私有资源详情或私有策略（§7/§9）"
+    },
+    "retry_after_seconds": { "type": ["integer", "null"], "minimum": 1 },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  },
+  "allOf": [
+    {
+      "comment": "§9：不可重试的错误不得携带退避时间",
+      "if": { "properties": { "retryable": { "const": false } }, "required": ["retryable"] },
+      "then": { "properties": { "retry_after_seconds": { "type": "null" } } }
+    },
+    {
+      "comment": "§15.8：coordinator_unavailable 区分未配置与暂时不可达",
+      "if": { "properties": { "code": { "const": "coordinator_unavailable" } }, "required": ["code"] },
+      "then": {
+        "properties": {
+          "scope": { "type": "string", "minLength": 1 },
+          "safe_message": { "type": "string", "minLength": 1 }
+        },
+        "description": "未配置时 retryable=false/action_required=true；已配置但暂时不可达时 retryable=true/action_required=false，仅允许有界连接与状态查询重试，不重调模型"
+      }
+    }
+  ]
+}

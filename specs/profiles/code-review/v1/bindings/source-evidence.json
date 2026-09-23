@@ -1,0 +1,84 @@
+{
+  "date": "2026-09-20",
+  "scope": "local working trees; not deployment evidence",
+  "files": [
+    {
+      "repository": "Nexus_Agent",
+      "path": "api/routes/v3_review_jobs.py",
+      "sha256": "f50a391d40b0d1a2ea40da8953ad845b5ad04991f5267685c93dc8fd08bd5f4f"
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "api/routes/v3_review.py",
+      "sha256": "b9b5af3ae7c168ae9b92cb09ba102fcfd897710e4491a593da632ed4a1c36a2c"
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "review_jobs/store.py",
+      "sha256": "f4476203604c71ed09787a4b103e2fca603b450f5a36d9018afb3177f1a433e6"
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "impact/review.py",
+      "sha256": "aa9852f8fff273617238811b3e86680b2e0d9f9ac09cdc37883c958682243f28"
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "impact/review_artifacts.py",
+      "sha256": "ca74d1028ad82c864dc987b1fb4ec321c4889cbf673062dde127ff1b450e6b77"
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "impact/review_queries.py",
+      "sha256": "2fecc51361b8f838728a0c54530154a55f2a8b2630870300dbb64fa29ad8c8d9"
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "admin/routes_reviews.py",
+      "sha256": "80acf32f650e69dc4034584e06f6d6f9cf6d9ca03f1b3837d965bd2a44f11360"
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/contracts.py",
+      "sha256": "00457b08ba234d4c060e9c5eae6339380fc70cb42b151b020cd60eb1491d34ec"
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/storage/store_runs.py",
+      "sha256": "49c28bd64c0aaca7c179a0ba40fbd4fa0111f5fa475bc9995e339effc6af988c"
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/storage/store_targets.py",
+      "sha256": "e0533078751a84d3d58985f1ffdebcf69692b06b9f7afa8ed0d435772c21314b"
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/storage/store_verify.py",
+      "sha256": "e2736ceb1795c2f1fd99328c28238d967cd9516844a69c0faa4d1418ec2db51c"
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "docs/specs/2026-09-14-hczj-auto-review-design.md",
+      "sha256": "fb026eca62334a691ddc3c41e467988e4ff3291a79975831f75214c2375e5156"
+    }
+  ],
+  "repository_states": [
+    {
+      "repository": "Nexus_Agent",
+      "git_head": null,
+      "worktree_dirty": null,
+      "availability": "unavailable",
+      "note": "RC2 metadata capture, not original review-time or deployment state"
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "git_head": null,
+      "worktree_dirty": null,
+      "availability": "unavailable",
+      "note": "RC2 metadata capture, not original review-time or deployment state"
+    }
+  ],
+  "metadata_captured_at": "2026-09-20",
+  "file_hash_recheck": "12/12 matched at RC2 revision"
+}

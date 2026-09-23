@@ -18,7 +18,10 @@ _OBJECTIVE_EXECUTION_SELECT = """
     SELECT execution_id, coordination_session_id, run_id, stage,
            worker_did, backend_kind, status, lease_expires_at, attempt,
            external_session_id, artifact_id, receipt_id, result_hash,
-           error, metadata, created_at, updated_at, completed_at
+           error, metadata, created_at, updated_at, completed_at,
+           external_coordinator_id, external_run_id, external_attempt_id,
+           assignment_epoch, input_manifest_digest, output_schema, deadline,
+           enforcement_json, profile_session_id
     FROM objective_executions
 """
 
@@ -43,6 +46,16 @@ def _obj_exec_row_to_dict(row: tuple) -> dict:
         "created_at": row[15],
         "updated_at": row[16],
         "completed_at": row[17],
+        # Code Review Profile v1（§15.6/§15.5）：仅在 Profile 路径下非空
+        "external_coordinator_id": (row[18] or "") if len(row) > 18 else "",
+        "external_run_id": (row[19] or "") if len(row) > 19 else "",
+        "external_attempt_id": (row[20] or "") if len(row) > 20 else "",
+        "assignment_epoch": (row[21] or 0) if len(row) > 21 else 0,
+        "input_manifest_digest": (row[22] or "") if len(row) > 22 else "",
+        "output_schema": (row[23] or "") if len(row) > 23 else "",
+        "deadline": row[24] if len(row) > 24 else None,
+        "enforcement": json.loads(row[25]) if len(row) > 25 and row[25] else {},
+        "profile_session_id": (row[26] or "") if len(row) > 26 else "",
     }
 
 

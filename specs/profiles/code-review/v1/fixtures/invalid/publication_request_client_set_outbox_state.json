@@ -1,0 +1,16 @@
+{
+  "operation_id": "pub_0001",
+  "instance_id": "gitlab-main",
+  "project_id": "proj_7788",
+  "mr_iid": 42,
+  "run_id": "RUN-ID-2026-09-14",
+  "report_digest": "sha256:6395a6edac10db12b303cccaa6cbedcb4a99e0f3721195de0312cf0d15766316",
+  "expected_version": {
+    "generation": 3,
+    "execution_revision": 1,
+    "review_revision": 1
+  },
+  "expected_activation_revision": 1,
+  "authority_ref": "authz://hczj/review/publish/RUN-ID-2026-09-14",
+  "outbox_state": "published"
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": "code_review.report.v1",
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A1",
+  "input_manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "impact_artifact": {
+    "artifact_id": "art_impact_R1",
+    "producer_id": "nexus-scanner",
+    "media_type": "application/json",
+    "schema_version": "nexus.review_impact.v1",
+    "digest_algorithm": "sha256-bytes-v1",
+    "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "byte_length": 10,
+    "locator": "nexus://reports/R1/impact.json",
+    "access_scope": "maintenance_domain_read",
+    "retention_until": null
+  },
+  "review_policy_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "review_revision": 1,
+  "base_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  "head_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+  "target_sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+  "generation": 3,
+  "execution_revision": 1,
+  "reviewer_id": "reviewer-1",
+  "coverage": {
+    "status": "complete",
+    "planned_files": ["a.java"],
+    "reviewed_files": ["a.java"],
+    "omitted_files": [],
+    "gap_reasons": [],
+    "inherited_gaps": []
+  },
+  "outcome": "no_findings",
+  "findings": [],
+  "limitations": [],
+  "execution_metadata": {
+    "provider": "p",
+    "model": "m",
+    "model_version": null,
+    "skill_version": null,
+    "tool_versions": [],
+    "started_at": "2026-09-18T00:00:00Z",
+    "completed_at": "2026-09-18T00:01:00Z"
+  },
+  "usage": { "measurement": "unknown", "input_tokens": 12000, "output_tokens": 800, "cost": null, "note": "超时重试" }
+}

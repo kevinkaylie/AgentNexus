@@ -1,0 +1,436 @@
+{
+  "tracker": "T1-T6-closure-checklist",
+  "tracker_version": 1,
+  "binding_revision": "RC2",
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "updated_at": "2026-09-20",
+  "purpose": "T1–T6 的**唯一收口追踪器**。这里登记每项关闭所需的证据、责任人、采集模板与机械验收条件；items[].status 是声明，tools/check_evidence.py 依据收到的记录计算实际状态并拒绝两者不一致。『源码已确认』既不等于『生产样例已取得』，也不等于『实现已验证』。",
+  "authority": {
+    "t_table": "bindings/l0-agentnexus-http.md §7",
+    "wire_contract": "bindings/l0-service-contract.md §2–§6",
+    "source_confirmations": "bindings/external-confirmations-2026-09-20.md",
+    "source_evidence": "bindings/source-evidence.json"
+  },
+  "rules": [
+    "claiming_closed_requires_mechanical_proof：任何 status=closed 的证据记录必须无 __TODO__ 占位、具备部署版本与采集元数据，且随附原始字节能被重算摘要；否则 tools/check_evidence.py 退出码 1。",
+    "no_premature_enablement：T1–T6 全部关闭前，compatibility.json 的 operative_allowlist 必须为 false 且 artifact_access_scope 必须为空。",
+    "raw_bytes_are_the_only_caliber：报告字节以 base64 承载并重算 sha256，不接受『与生产一致』这类自述；HTTP GET 响应字节不得冒充持久化字节。",
+    "deployment_not_worktree：本地工作树摘要（source-evidence.json）只能定位核对对象，不能作为部署版本证据。",
+    "each_item_needs_version_and_refusal：每项除正例外还必须给出拒绝/冲突例与未知值处理，只有正例不算关闭。"
+  ],
+  "gate": {
+    "name": "BINDING-GATE-1",
+    "status": "closed",
+    "opens_when": [
+      "T1-T6.status 全部为 closed（由 tools/check_evidence.py 计算，不由本文件声明）",
+      "compatibility.json 已完成三方冻结（T6.compat_freeze_record）",
+      "CP-01～26 在门禁允许范围内执行并保存运行记录",
+      "tools/validate.py 通过"
+    ]
+  },
+  "local_evidence_package": {
+    "path": "docs/evidence/l0-2026-09-21",
+    "snapshot": "source-snapshot.json",
+    "closing": false,
+    "host_markers": ["AGENTS.md", "docs/wip.md", "tests/conftest.py"],
+    "why_not_closing": "样例由本地 FastAPI/Flask 路由与合成输入生成（production=false），没有真实部署版本、生产响应或真实 GitLab 写入；因此只能证明『接口已实现且行为符合契约』，不能关闭任何 T 项。",
+    "checked_by": "tools/check_evidence.py（宿主审计：快照摘要自洽、声明仍为 production=false、采集 pin 未被改写且版本漂移有复核记录）",
+    "portability": "这是**中央仓库专有**的审计。规范包必须能独立交付：复制包到任意目录后该审计按 host_markers 自动跳过（返回 SKIP），包内收到的关闭证据仍逐条严格校验。中央仓库自身可用 --require-host-audit 把『标记缺失』升级为失败。",
+    "relabeling_forbidden": "所有测试样例必须持续保留 production=false；复核时替换该标签以关闭 T1–T6 属禁止操作。",
+    "note": "快照的 profile_manifest_sha256 是**采集时 pin，不得改写**。中央包升级后必须另记 profile_manifest_rechecks（检查时间晚于采集时间、checked_against_sha256 指向当前包、附命令/范围/结果，并显式声明是否重跑旧样例）——版本漂移不能只退化成告警。"
+  },
+  "items": [
+    {
+      "id": "T1",
+      "title": "Nexus 事件、报告与原始字节端点",
+      "owner": "Nexus_Agent",
+      "status": "open",
+      "status_reason": "已从源码确认事件/ACK/查询端点存在，contract_revision=3 只是源码观察值；缺生产部署响应样例、版本证据与原始字节读取实现验证。",
+      "confirmed_from_source": [
+        "/v3/review/events 拉取与 /events/ack 累计 ACK；Bearer 认证；事件 schema nexus.review_event.v1",
+        "源码产出 nexus.review_impact.v1，观察到 contract_revision=3",
+        "报告冻结查询端点已存在"
+      ],
+      "not_equivalent_to": [
+        "生产部署的响应样例",
+        "允许启用的 contract_revision 允许清单",
+        "新增 /artifact 与 /raw 端点的实现与实现验证"
+      ],
+      "local_evidence": {
+        "status": "non_closing",
+        "artifacts": ["nexus-http-samples.json", "nexus-test-results.xml"],
+        "note": "本地合成样例已覆盖事件拉取/累计 ACK 与报告 schema；scan.succeeded 是合成种子，不是实际扫描完成。"
+      },
+      "template": "templates/T1.json",
+      "evidence": [
+        {
+          "id": "T1.deployment_version",
+          "kind": "deployment_version",
+          "record_key": "deployment_version",
+          "blocking": true,
+          "description": "Nexus 生产部署的可复现版本标识与 loopback base URL。",
+          "required_fields": ["source_revision", "artifact_identifier", "endpoint_base_url", "captured_at", "captured_by", "capture_method"],
+          "checks": ["loopback_url", "rfc3339", "no_placeholder"]
+        },
+        {
+          "id": "T1.event_ack_samples",
+          "kind": "production_sample",
+          "record_key": "event_ack_samples",
+          "blocking": true,
+          "description": "/v3/review/events 与 /events/ack 的脱敏真实响应原始字节；至少一个 scan.succeeded 事件含 job_id/report_id/generation/execution_revision。",
+          "required_fields": ["samples", "attested_by"],
+          "checks": ["sample_bytes", "scan_succeeded_fields"],
+          "min_samples": 3
+        },
+        {
+          "id": "T1.contract_revision_allowlist",
+          "kind": "design_decision",
+          "record_key": "contract_revision_allowlist",
+          "blocking": true,
+          "description": "生产允许的 contract_revision 取值清单，以及未知取值的处理方式。",
+          "required_fields": ["allowed_values", "unknown_value_behavior", "decided_by", "decided_at"],
+          "checks": ["no_placeholder", "unknown_behavior_must_refuse"]
+        },
+        {
+          "id": "T1.query_dto_freeze",
+          "kind": "production_sample",
+          "record_key": "query_dto_freeze",
+          "blocking": true,
+          "description": "job / report / source / call-chain / diagnostics 五个旧查询端点的真实响应样例，用于冻结旧 DTO。",
+          "required_fields": ["samples", "attested_by"],
+          "checks": ["sample_bytes", "covers_endpoints"],
+          "min_samples": 5,
+          "required_endpoint_coverage": ["/v3/review/jobs/{job_id}", "/v3/review/reports/{report_id}", "/v3/review/reports/{report_id}/source", "/v3/review/reports/{report_id}/call-chain", "/v3/review/reports/{report_id}/diagnostics"]
+        },
+        {
+          "id": "T1.raw_byte_endpoints",
+          "kind": "production_sample",
+          "record_key": "raw_byte_endpoints",
+          "blocking": true,
+          "description": "新增 /artifact 与 /raw 的响应样例；/raw 原始字节必须与 ArtifactRef.digest 及 ETag 一致。",
+          "required_fields": ["samples", "attested_by"],
+          "checks": ["sample_bytes", "artifact_digest_matches_raw", "etag_matches_digest", "content_length_matches"]
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Nexus 持久化报告字节与行边界口径",
+      "owner": "Nexus_Agent",
+      "status": "open",
+      "status_reason": "字节口径已从源码确认（ensure_ascii=False/sort_keys=True/indent=2/无尾换行），但缺生产持久化字节样例与 GET 重序列化的实证；行边界向量口径依赖 §15.3 复核。",
+      "confirmed_from_source": [
+        "report.json 以 UTF-8 编码，ensure_ascii=False、sort_keys=True、indent=2、无尾换行",
+        "manifest.report_sha256 哈希的是该持久化字节"
+      ],
+      "not_equivalent_to": [
+        "HTTP 响应字节（GET report 会解析并重序列化）",
+        "Nexus report_id（不是字节摘要）",
+        "源码 splitlines 结果（与 Profile LF 行边界不同）"
+      ],
+      "local_evidence": {
+        "status": "non_closing",
+        "artifacts": ["nexus-http-samples.json", "nexus-test-results.xml"],
+        "note": "本地样例含 ArtifactRef/raw/source-bytes 与真实字节摘要、CRLF/Unicode 分隔符测试；不含实际部署的保留承诺。"
+      },
+      "template": "templates/T2.json",
+      "evidence": [
+        {
+          "id": "T2.persisted_report_bytes",
+          "kind": "raw_bytes",
+          "record_key": "persisted_report_bytes",
+          "blocking": true,
+          "description": "至少一份真实 report.json 的持久化原始字节（base64）+ sha256 + byte_length，并证明与 manifest.report_sha256 相等。",
+          "required_fields": ["raw_bytes_b64", "sha256", "byte_length", "media_type", "provider_id", "report_id", "manifest_report_sha256", "attested_by"],
+          "checks": ["sample_bytes", "report_digest_matches_manifest", "media_type_is_json"]
+        },
+        {
+          "id": "T2.get_vs_persisted_divergence",
+          "kind": "production_sample",
+          "record_key": "get_vs_persisted_divergence",
+          "blocking": true,
+          "description": "同一报告的 GET /reports/{id} 响应字节与持久化字节对比；两摘要相同必须显式说明，否则 CP-23 口径需修改。",
+          "required_fields": ["report_id", "get_response_bytes_b64", "get_response_sha256", "persisted_sha256", "same_caliber", "explanation", "attested_by"],
+          "checks": ["sample_bytes", "divergence_stated"]
+        },
+        {
+          "id": "T2.line_boundary_vectors",
+          "kind": "mapping_fixture",
+          "record_key": "line_boundary_vectors",
+          "blocking": true,
+          "description": "以 LF 0x0A 分行的行范围字节向量：含 CRLF、末行无 LF、空文件、越界；每例给出期望字节。",
+          "required_fields": ["vectors", "attested_by"],
+          "checks": ["line_vector_bytes"],
+          "min_samples": 4,
+          "required_case_coverage": ["crlf_preserved", "no_trailing_lf", "empty_file", "out_of_range"]
+        },
+        {
+          "id": "T2.locator_and_retention",
+          "kind": "design_decision",
+          "record_key": "locator_and_retention",
+          "blocking": true,
+          "description": "locator 形态、media_type 与 retention_until 的承诺来源；不能承诺时须声明拒绝注册。",
+          "required_fields": ["locator_template", "media_type", "access_scope", "retention_source", "refuses_when_unable_to_promise", "decided_by", "decided_at"],
+          "checks": ["no_placeholder", "locator_shape"]
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "HCZJ 状态权威服务接口、认证与 CAS",
+      "owner": "Hczj_Assistant_Agent",
+      "status": "open",
+      "status_reason": "源码确认 ReviewStore 已有 Run/Attempt、lease、activation_revision/target_revision CAS，但现有运营 BFF 是 Admin session/CSRF 接口，不能冒充服务凭据；缺服务间 wire 契约、认证与实测样例。",
+      "confirmed_from_source": [
+        "ReviewStore 已有 Run/Attempt、lease、activation_revision 与 target_revision 的 CAS",
+        "运营 BFF 已存在，但属 Admin session/CSRF/项目权限边界"
+      ],
+      "not_equivalent_to": [
+        "用运营会话冒充服务凭据",
+        "Attempt 内部观察标签（不是第二套 Profile 状态机）"
+      ],
+      "local_evidence": {
+        "status": "non_closing",
+        "artifacts": ["hczj-http-samples.json", "hczj-service-results.xml", "hczj-unit-results.xml"],
+        "note": "本地样例含请求/重放/Run/Target/401 与同库 CAS、activation、renew 测试；生产服务身份尚未登记。"
+      },
+      "template": "templates/T3.json",
+      "evidence": [
+        {
+          "id": "T3.deployment_version",
+          "kind": "deployment_version",
+          "record_key": "deployment_version",
+          "blocking": true,
+          "description": "HCZJ 生产部署的可复现版本标识与 loopback base URL。",
+          "required_fields": ["source_revision", "artifact_identifier", "endpoint_base_url", "captured_at", "captured_by", "capture_method"],
+          "checks": ["loopback_url", "rfc3339", "no_placeholder"]
+        },
+        {
+          "id": "T3.service_auth_contract",
+          "kind": "auth_evidence",
+          "record_key": "service_auth_contract",
+          "blocking": true,
+          "description": "/api/service/code-review/v1 的独立 Bearer 凭据、principal→角色映射、资源授权范围，以及与 Admin Cookie/CSRF 分离的实证。",
+          "required_fields": ["credential_kind", "principal_role_mapping", "resource_scope_rules", "unconfigured_behavior", "samples", "refusal_samples", "attested_by"],
+          "checks": ["sample_bytes", "must_refuse_when_unconfigured", "not_admin_session"],
+          "min_samples": 1,
+          "required_case_coverage": ["auth_success"]
+        },
+        {
+          "id": "T3.run_attempt_cas_samples",
+          "kind": "production_sample",
+          "record_key": "run_attempt_cas_samples",
+          "blocking": true,
+          "description": "requests/runs/attempts/targets/activation/renew 七个端点的脱敏实测响应，含成功的 CAS 与冲突拒绝。",
+          "required_fields": ["samples", "attested_by"],
+          "checks": ["sample_bytes", "covers_endpoints", "conflict_samples_present"],
+          "min_samples": 9,
+          "required_endpoint_coverage": [
+            "POST H/requests",
+            "GET H/requests/{request_id}",
+            "GET H/runs/{run_id}",
+            "GET H/runs/{run_id}/attempts/{attempt_id}",
+            "GET H/targets/{instance_id}/{project_id}/{mr_iid}",
+            "POST H/targets/{instance_id}/{project_id}/{mr_iid}/activation",
+            "POST H/runs/{run_id}/attempts/{attempt_id}/renew"
+          ],
+          "required_case_coverage": ["activation_success", "activation_revision_conflict", "renew_success", "renew_epoch_conflict", "idempotent_replay"]
+        },
+        {
+          "id": "T3.attempt_label_mapping_fixtures",
+          "kind": "mapping_fixture",
+          "record_key": "attempt_label_mapping_fixtures",
+          "blocking": true,
+          "description": "§3.1 七个内部观察标签到 Profile 可观察事实的正反例，重点区分 expired 的三种去向。",
+          "required_fields": ["fixtures", "attested_by"],
+          "checks": ["covers_labels"],
+          "min_samples": 7,
+          "required_case_coverage": ["expired_deadline", "expired_lease_only", "expired_superseded", "rejected_internal", "cancelled_mapping"]
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "HCZJ Coordinator 标识与消息/回执 wire",
+      "owner": "Hczj_Assistant_Agent",
+      "status": "open",
+      "status_reason": "Coordinator 权威在 HCZJ 已确认，稳定 ID 形态仅为建议；缺 Assignment/Acceptance/Delivery/Cancel 外部端点、认证主体、幂等与 ACK 语义及实测样例。",
+      "confirmed_from_source": [
+        "Coordinator 权威保留在 HCZJ；内部调度事务分配 Attempt 与单调 epoch",
+        "内部 lease_token 不跨服务传输"
+      ],
+      "not_equivalent_to": [
+        "worker 自报的 coordinator_id",
+        "Attempt 标签作为第二权威状态机"
+      ],
+      "local_evidence": {
+        "status": "non_closing",
+        "artifacts": ["hczj-http-samples.json", "hczj-service-results.xml"],
+        "note": "本地已有 Coordinator/Run/Attempt/epoch 持久化与消息 inbox/outbox、TransportAck 与 Receipt 区分测试；后台可靠投递与旧 BFF 适配未接通。"
+      },
+      "template": "templates/T4.json",
+      "evidence": [
+        {
+          "id": "T4.coordinator_identity",
+          "kind": "design_decision",
+          "record_key": "coordinator_identity",
+          "blocking": true,
+          "description": "稳定 coordinator_id 形态（建议 urn:code-review:coordinator:<deployment-id>）及重启不变的实证。",
+          "required_fields": ["coordinator_id_form", "sample_value", "restart_stability_samples", "decided_by", "decided_at"],
+          "checks": ["no_placeholder", "restart_stability_evidenced"]
+        },
+        {
+          "id": "T4.message_wire_contract",
+          "kind": "production_sample",
+          "record_key": "message_wire_contract",
+          "blocking": true,
+          "description": "Assignment / AssignmentAcceptance / Delivery / Cancel 四类消息的端点、方法、Content-Type、认证主体、幂等键与 202 TransportAck 实测样例。",
+          "required_fields": ["samples", "attested_by"],
+          "checks": ["sample_bytes", "covers_endpoints", "transport_ack_shape"],
+          "min_samples": 6,
+          "required_endpoint_coverage": ["POST A/messages", "POST H/messages", "GET H/messages/{message_id}"],
+          "required_case_coverage": ["assignment", "assignment_acceptance", "delivery", "cancel_request", "cancel_acknowledgement", "duplicate_delivery"]
+        },
+        {
+          "id": "T4.idempotency_conflict_samples",
+          "kind": "production_sample",
+          "record_key": "idempotency_conflict_samples",
+          "blocking": true,
+          "description": "同 delivery_id 同 digest 返回原回执、不同 digest 返回 409 delivery_conflict、同 request_id 不同投影返回 idempotency_conflict 的实测样例。",
+          "required_fields": ["samples", "attested_by"],
+          "checks": ["sample_bytes"],
+          "required_case_coverage": ["same_delivery_same_digest", "same_delivery_diff_digest_conflict", "request_id_conflict"]
+        },
+        {
+          "id": "T4.receipt_issuance_authority",
+          "kind": "auth_evidence",
+          "record_key": "receipt_issuance_authority",
+          "blocking": true,
+          "description": "received/validated/accepted/published 四类回执的签发主体与角色路由实测，含 worker 自带 receipt/issuer_did/signature 不赋权的**拒绝样例**。",
+          "required_fields": ["receipt_kind_to_role", "samples", "refusal_samples", "attested_by"],
+          "checks": ["sample_bytes", "covers_receipt_kinds", "forged_receipt_refused"]
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "HCZJ Publisher、outbox 与 GitLab 写入边界",
+      "owner": "Hczj_Assistant_Agent",
+      "status": "open",
+      "status_reason": "HCZJ 首版 F-223 明确不写 GitLab；当前没有发布接口与 outbox。这是待评审扩展，不能把本地 current 指针切换当作 published。",
+      "confirmed_from_source": [
+        "Nexus scan outbox 不是 GitLab publication outbox",
+        "Publisher 归属与独立 GitLab 写凭据为待评审建议"
+      ],
+      "not_equivalent_to": [
+        "本地 current 指针切换",
+        "尚未读完全部分页就断言未发布"
+      ],
+      "local_evidence": {
+        "status": "non_closing",
+        "artifacts": ["hczj-http-samples.json", "hczj-service-results.xml"],
+        "note": "本地已有 publication 操作/尝试表、GitLab 客户端、Publisher 独立身份与 unknown 查证不重发测试；测试使用假 GitLab，未发送真实评论。"
+      },
+      "template": "templates/T5.json",
+      "evidence": [
+        {
+          "id": "T5.publisher_ownership",
+          "kind": "design_decision",
+          "record_key": "publisher_ownership",
+          "blocking": true,
+          "description": "Publisher 归属、独立 GitLab 凭据边界，以及 worker 无发布权限的**拒绝样例**（样例级校验，不接受布尔自报）。",
+          "required_fields": ["publisher_boundary", "credential_separation", "worker_publish_refusal_sample", "refusal_samples", "decided_by", "decided_at"],
+          "checks": ["sample_bytes", "no_placeholder", "worker_refusal_evidenced"]
+        },
+        {
+          "id": "T5.outbox_persistence",
+          "kind": "schema_evidence",
+          "record_key": "outbox_persistence",
+          "blocking": true,
+          "description": "publication_operations / publication_attempts / message_outbox 迁移、唯一约束，以及『创建操作与 outbox 同事务』的证明。",
+          "required_fields": ["migration_id", "tables", "unique_keys", "same_transaction_proof", "crash_recovery_sample", "attested_by"],
+          "checks": ["sample_bytes", "no_placeholder", "unique_key_declared"]
+        },
+        {
+          "id": "T5.publication_samples",
+          "kind": "production_sample",
+          "record_key": "publication_samples",
+          "blocking": true,
+          "description": "POST H/publications 与 GET H/publications/{operation_id} 实测样例，至少覆盖 published、unknown、obsolete 三态。",
+          "required_fields": ["samples", "attested_by"],
+          "checks": ["sample_bytes", "covers_publication_states", "summary_text_not_executed"],
+          "required_case_coverage": ["published", "unknown", "obsolete", "summary_text_mismatch_rejected"]
+        },
+        {
+          "id": "T5.gitlab_write_verification",
+          "kind": "production_sample",
+          "record_key": "gitlab_write_verification",
+          "blocking": true,
+          "description": "GitLab Notes API 创建/更新/分页查证的实际调用记录（脱敏），含 note_id 与正文摘要，且不含 approve/merge。",
+          "required_fields": ["samples", "pagination_completeness", "forbidden_operations_absent", "attested_by"],
+          "checks": ["sample_bytes", "note_id_recorded", "no_forbidden_operations"],
+          "required_case_coverage": ["create_note", "update_note_with_verify", "list_notes_paged"]
+        },
+        {
+          "id": "T5.publication_replay_proof",
+          "kind": "behavior_evidence",
+          "record_key": "publication_replay_proof",
+          "blocking": true,
+          "description": "相同 operation_id 重放不新增评论的实证（重放前后评论总数不变）。",
+          "required_fields": ["operation_id", "note_count_before", "note_count_after", "replay_samples", "attested_by"],
+          "checks": ["note_count_unchanged", "no_placeholder"]
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "兼容清单责任、冻结时点与外部词表",
+      "owner": "three-party",
+      "status": "open",
+      "status_reason": "责任与冻结流程已确认，但词表的认证/资源授权语义仍需跨项目评审，运行词表仍为空，冻结需三方签署。",
+      "confirmed_from_source": [
+        "由 AgentNexus 维护中央清单，双方提供生产方版本证据，经 binding 评审与适配验证后冻结",
+        "候选 access_scope=service_private 仅为审计记录"
+      ],
+      "not_equivalent_to": [
+        "候选值提前放行",
+        "单方签署"
+      ],
+      "local_evidence": {
+        "status": "non_closing",
+        "artifacts": ["hczj-http-samples.json", "hczj-service-results.xml"],
+        "note": "本地已有 service_private 项目/session/角色检查与拒绝测试；候选词表尚未三方冻结，中央允许列表仍为空。"
+      },
+      "template": "templates/T6.json",
+      "evidence": [
+        {
+          "id": "T6.access_scope_vocabulary",
+          "kind": "design_decision",
+          "record_key": "access_scope_vocabulary",
+          "blocking": true,
+          "description": "artifact_ref.access_scope 词表及其认证/资源授权语义；两个存储服务均实现授权后方可加入运行词表。",
+          "required_fields": ["vocabulary", "authorization_semantics", "storage_services_implemented", "nonexistence_leak_prevented", "decided_by", "decided_at"],
+          "checks": ["no_placeholder", "vocabulary_has_service_private"]
+        },
+        {
+          "id": "T6.compat_freeze_record",
+          "kind": "cross_review",
+          "record_key": "compat_freeze_record",
+          "blocking": true,
+          "description": "compatibility.json 的填充责任人、冻结时点与三方签署记录；冻结以 T1–T6 关闭为前置。",
+          "required_fields": ["maintainer", "freeze_date", "attestations", "allowlist_after_freeze"],
+          "checks": ["three_party_attested", "allowlist_only_after_closure"]
+        },
+        {
+          "id": "T6.mapping_fixtures",
+          "kind": "mapping_fixture",
+          "record_key": "mapping_fixtures",
+          "blocking": true,
+          "description": "Nexus contract_revision 映射与 HCZJ severity/outcome 映射 fixture，含未知值拒绝。",
+          "required_fields": ["severity_fixtures", "outcome_coverage_fixtures", "unknown_value_refusal", "attested_by"],
+          "checks": ["severity_covers_p0_p3_and_unknown", "outcome_quadrants_present", "unknown_severity_refused"]
+        }
+      ]
+    }
+  ]
+}

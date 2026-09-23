@@ -1,0 +1,22 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "message_id": "msg_0007",
+  "type": "error",
+  "sender_id": "did:agentnexus:z6MkPublisher0000000000000000000000000000000000",
+  "receiver_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+  "session_id": "sess_cr_0001",
+  "correlation_id": "corr_mr42_head_1a2b",
+  "causation_id": "msg_0006",
+  "created_at": "2026-09-18T06:20:00Z",
+  "run_id": "RUN-ID-2026-09-14",
+  "payload": {
+    "schema": "code_review.error.v1",
+    "code": "freshness_unknown",
+    "retryable": true,
+    "action_required": false,
+    "scope": "freshness",
+    "correlation_id": "corr_mr42_head_1a2b",
+    "safe_message": "无法在当前时限内确认 MR 的 opened/eligible 与目标版本，暂不发布。",
+    "retry_after_seconds": 30
+  }
+}

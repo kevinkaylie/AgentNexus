@@ -1,0 +1,327 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "package_version": "1.0-draft.2+semantic.14",
+  "status": "frozen-semantics-pending-external-confirmation",
+  "generated_at": "2026-09-20T00:00:00Z",
+  "generated_at_note": "固定日期：本包为确定性冻结候选，重新生成时应同步更新并复核摘要",
+  "source": {
+    "git_head": "85d3c15e80c7da5c35d5ffeea7d69497c794c934",
+    "worktree_dirty": true,
+    "note": "文件为冻结候选；dirty=true 表示提交前的工作树状态，冻结发布必须登记已提交 revision"
+  },
+  "authoritative_base": "https://agentnexus.dev/spec/code-review/v1/",
+  "conformance": {
+    "structural": "schemas/ + fixtures/（本 manifest 覆盖）",
+    "behavioral": "CP-01～26 行为测试，未包含在本包内",
+    "wire": "未声明；需 L0 binding 定版（bindings/l0-agentnexus-http.md）"
+  },
+  "file_count": 61,
+  "files": [
+    {
+      "path": "bindings/evidence/closure-checklist.json",
+      "sha256": "d2da5058cdb2e6f3dd54460735e2034975904a9b7a1c2c617cbe4a9385498392",
+      "byte_length": 24963
+    },
+    {
+      "path": "bindings/evidence/README.md",
+      "sha256": "c34fdc181c44604becf9343a519665bac17950a01b55d79f9a8c7474a56ac015",
+      "byte_length": 4029
+    },
+    {
+      "path": "bindings/evidence/received/README.md",
+      "sha256": "2b046fb35884cb87037c9efe38c51fe6ef6e89eed5072585d13fbdc5592521f3",
+      "byte_length": 836
+    },
+    {
+      "path": "bindings/evidence/templates/T1.json",
+      "sha256": "36f98ce7445ec5a6590d17e57b3c0c8a07f38a79ea5ee8929a48e85bdffe0e8e",
+      "byte_length": 7354
+    },
+    {
+      "path": "bindings/evidence/templates/T2.json",
+      "sha256": "2e761a46f62becf286ce0b2526f0181503f88ac6708850e93415002311ae0742",
+      "byte_length": 4507
+    },
+    {
+      "path": "bindings/evidence/templates/T3.json",
+      "sha256": "fb0e4a0a329afeba1fe40e0d970140cd1d9ff90e8a6612a6422f9ea9ff270a05",
+      "byte_length": 10655
+    },
+    {
+      "path": "bindings/evidence/templates/T4.json",
+      "sha256": "531dfcf9524226a86eb5f8709eba7f406be75efe6e2021c079eee37ef963bfe4",
+      "byte_length": 8329
+    },
+    {
+      "path": "bindings/evidence/templates/T5.json",
+      "sha256": "9ab6ef047583dff2b8018c75e6d02fa5daa73b4d562130b1a6a9ff4fac618255",
+      "byte_length": 8005
+    },
+    {
+      "path": "bindings/evidence/templates/T6.json",
+      "sha256": "adcafa38a1f6188f84f0079c71ffedb07d5437fbc7d1c399239c74e61349adc1",
+      "byte_length": 4143
+    },
+    {
+      "path": "bindings/external-confirmations-2026-09-20.md",
+      "sha256": "1cb76e1d16121b6fcb5491492f31db53b33babdc0a0933507f56cd6fc8ef18a2",
+      "byte_length": 6445
+    },
+    {
+      "path": "bindings/l0-agentnexus-http.md",
+      "sha256": "86f251365831e4896bf03bed86fb8200c26f4b3b921a0369c6b6235a70dc84e9",
+      "byte_length": 16381
+    },
+    {
+      "path": "bindings/l0-service-contract.md",
+      "sha256": "fe777eb19728b7238fef22efb9176f9adce545677e1d361a4d768e65cf2ac4db",
+      "byte_length": 45594
+    },
+    {
+      "path": "bindings/source-evidence.json",
+      "sha256": "c37b94e9fd18f1377b7d445c1e088b316a51615241fec6dab5106ef529ff80f7",
+      "byte_length": 2971
+    },
+    {
+      "path": "compatibility.json",
+      "sha256": "9ccb1044575558288fe53c02844dd051fb31b38be6d55037c81b23d203907896",
+      "byte_length": 3730
+    },
+    {
+      "path": "fixtures/binding/q3-execution-record-2026-09-20.md",
+      "sha256": "8da10514b6a849bf8cb2f7d7de6dda1b97a8c06edd57a69c50ca89c6d26a13e9",
+      "byte_length": 4357
+    },
+    {
+      "path": "fixtures/binding/q3-outcome-coverage.md",
+      "sha256": "f395d1036b50f4861ba080849bdb8337abd5181538df15ce70e2f16c26f4dbfa",
+      "byte_length": 4309
+    },
+    {
+      "path": "fixtures/cp-matrix.json",
+      "sha256": "32799440b4d46075ce1f477e2c4e0543047ffa5dcf0f5df94855245ef71c205d",
+      "byte_length": 5853
+    },
+    {
+      "path": "fixtures/digest_vectors.json",
+      "sha256": "bdae1696abeef2df7f54aa978b46c1b5c30e332da050c0a4429fb8c276722e04",
+      "byte_length": 3381
+    },
+    {
+      "path": "fixtures/index.json",
+      "sha256": "8ebfacdc6cdd05d614688557ab5a2ea8bfc88103787461e5b13ec52fa67e440e",
+      "byte_length": 5080
+    },
+    {
+      "path": "fixtures/invalid/acceptance_rejected_without_reason.json",
+      "sha256": "93d97b39a804194ff3ccc7a5f2d769f79e65d6d991225be0c705bb482c75f6e3",
+      "byte_length": 325
+    },
+    {
+      "path": "fixtures/invalid/artifact_ref_http_locator.json",
+      "sha256": "f9aa89e0ea033b71f01d5cc0d22c1404b0f8865abc67e5572e96d0caa532698a",
+      "byte_length": 423
+    },
+    {
+      "path": "fixtures/invalid/assignment_zero_limit_for_unknown.json",
+      "sha256": "b3584314bf9522b44c0f9abf94967b799f4fd8464c7b170020a95b13e8b311f8",
+      "byte_length": 717
+    },
+    {
+      "path": "fixtures/invalid/delivery_correction_without_replaces.json",
+      "sha256": "feec148a4b4f780d861946bc100427c04391a4c176b0065bd67e75c0418b1b9b",
+      "byte_length": 714
+    },
+    {
+      "path": "fixtures/invalid/envelope_unregistered_message_type.json",
+      "sha256": "29b2c42d9cde544da0711d5fda03cf488480054913d52f7cb7c7ec9cf99b6cae",
+      "byte_length": 470
+    },
+    {
+      "path": "fixtures/invalid/error_not_retryable_with_retry_after.json",
+      "sha256": "a0fc6aeafe53a38b78b47d0c5985bcf6ea26de2df1680f1478a2cb34c41ad360",
+      "byte_length": 277
+    },
+    {
+      "path": "fixtures/invalid/evidence_relation_with_line_numbers.json",
+      "sha256": "619e954d418dc89c196c8af6d7cbfc7d5c222866e9f2dba53d7734c4a37807e4",
+      "byte_length": 765
+    },
+    {
+      "path": "fixtures/invalid/evidence_source_location_missing_content_sha256.json",
+      "sha256": "f06a5f1c346c80e61d980cc1a51b58a89fda1e950f9c8c0172ba664a9c6850ca",
+      "byte_length": 315
+    },
+    {
+      "path": "fixtures/invalid/publication_request_client_set_outbox_state.json",
+      "sha256": "569b30efc33e8521f0e4d8a37fe2e9f892789cf506e07b37b2333aa05f59e30e",
+      "byte_length": 477
+    },
+    {
+      "path": "fixtures/invalid/receipt_rejected_without_reason.json",
+      "sha256": "5c260f157dc877183214b56796b162eab278e4018c67b4121c64a843d4ec0b53",
+      "byte_length": 407
+    },
+    {
+      "path": "fixtures/invalid/report_findings_without_issues_found.json",
+      "sha256": "053ba0dfad0bd13c0d3e543fbff2822fa8adcd45b75929eaa6047f0a12fb64ce",
+      "byte_length": 2574
+    },
+    {
+      "path": "fixtures/invalid/report_inherited_gap_with_complete_coverage.json",
+      "sha256": "ca16c9922ba8198844c53ac6aebc1a96a794d7b08bf8295244ad97e88b777c8f",
+      "byte_length": 1696
+    },
+    {
+      "path": "fixtures/invalid/report_no_findings_with_partial_coverage.json",
+      "sha256": "a08d328c7581ae64977b42f989afe5ed93e5e7c7a7a8be80375825cc76f9574d",
+      "byte_length": 1708
+    },
+    {
+      "path": "fixtures/invalid/report_usage_unknown_with_token_counts.json",
+      "sha256": "35430e2168ef14903637dd5f840215f7bb0b7f8751202ec7529616ad3b792d81",
+      "byte_length": 1653
+    },
+    {
+      "path": "fixtures/valid/01_review_request.json",
+      "sha256": "e5b92a4207f19f7aca7723b6b93c8ba74b547c7b6e3d419ed4efd5116ca5459a",
+      "byte_length": 1754
+    },
+    {
+      "path": "fixtures/valid/02_assignment.json",
+      "sha256": "d31445d28a28e2ac8de692afb2a87778d80e8cce4c6e369a0c6c2acaf183dee1",
+      "byte_length": 1698
+    },
+    {
+      "path": "fixtures/valid/03_assignment_acceptance.json",
+      "sha256": "48a0f61b8ae0eaecb64d7c58cf103743356d44c832916d6e2502d58aae2deba3",
+      "byte_length": 908
+    },
+    {
+      "path": "fixtures/valid/04_delivery.json",
+      "sha256": "79365cd809adb574c4e5c8abf75f6c49a2028cd5fdd00c6edac4d811d1a970f6",
+      "byte_length": 1372
+    },
+    {
+      "path": "fixtures/valid/05_review_report_partial_inconclusive.artifact_body.json",
+      "sha256": "6395a6edac10db12b303cccaa6cbedcb4a99e0f3721195de0312cf0d15766316",
+      "byte_length": 2704
+    },
+    {
+      "path": "fixtures/valid/06_receipt_accepted.json",
+      "sha256": "28138d49e81126b110d27a3de28dcbbd03f7e066d6b180cbd5bb36afcbb85633",
+      "byte_length": 1046
+    },
+    {
+      "path": "fixtures/valid/07_error_freshness_unknown.json",
+      "sha256": "6bc9aca6b765ef4b258bc8db7372a3b1b2ed341861a5b9d98eab8a081cfcf199",
+      "byte_length": 799
+    },
+    {
+      "path": "fixtures/valid/08_review_report_issues_found.artifact_body.json",
+      "sha256": "7c88a76ffa055b9e44826ed4ef08e3dc17c161c07843450f6cd9cb387777b876",
+      "byte_length": 4435
+    },
+    {
+      "path": "fixtures/valid/09_review_report_issues_found_with_inherited_gap.artifact_body.json",
+      "sha256": "21cc14d91983c724bce736bb377542a5076b4a43b63afd7fc1a090f8e19226d3",
+      "byte_length": 3816
+    },
+    {
+      "path": "README.md",
+      "sha256": "9b49b244349a204432234d6344d47b37a26b35be4c0bdf76d5daf4087fae5ed1",
+      "byte_length": 9479
+    },
+    {
+      "path": "schemas/artifact_ref.schema.json",
+      "sha256": "c4f74a4cc0b7111a5e1dd967c4c5728358b1f663392eaa480561b5e83268d4f0",
+      "byte_length": 2689
+    },
+    {
+      "path": "schemas/assignment.schema.json",
+      "sha256": "b3cb332122232b6923bc72449157a024a09ab38553602da1df39add4e44ab6c4",
+      "byte_length": 4649
+    },
+    {
+      "path": "schemas/assignment_acceptance.schema.json",
+      "sha256": "b6038598c6c029064d330ff3e1cb30358edacf72c64da7eb01b3402d94eb8250",
+      "byte_length": 2583
+    },
+    {
+      "path": "schemas/cancel_acknowledgement.schema.json",
+      "sha256": "baac3ea9731a7a75a1bfa7e495542ae5470989d4d34be363904f1beda33e44e2",
+      "byte_length": 1655
+    },
+    {
+      "path": "schemas/cancel_request.schema.json",
+      "sha256": "faa856f7549ee4ad186070a2dda132ad372a33bbaa79b6137194c35b9bdb54a1",
+      "byte_length": 1820
+    },
+    {
+      "path": "schemas/common.schema.json",
+      "sha256": "0e5878c0fdfc3aa0c2fbde8b0583058c517348b8c648abe4b3d28ee166d7df53",
+      "byte_length": 3196
+    },
+    {
+      "path": "schemas/delivery.schema.json",
+      "sha256": "227f75beaefb2743290e509eb559460d710952d891f86742383cfbad44f2a9ec",
+      "byte_length": 2572
+    },
+    {
+      "path": "schemas/envelope.schema.json",
+      "sha256": "388d9d31a17f795add5ee9018b8786e066af6a3a6969ae639c303f89d54899e3",
+      "byte_length": 6091
+    },
+    {
+      "path": "schemas/error.schema.json",
+      "sha256": "a863cd4573097eae49518d6d33f496f20fb933673d3c453540085a253374a1dc",
+      "byte_length": 3291
+    },
+    {
+      "path": "schemas/evidence_ref.schema.json",
+      "sha256": "e38ac731184162d598636c552d1defdac502bf57af5fe2d6e3012f7abca7efb1",
+      "byte_length": 3942
+    },
+    {
+      "path": "schemas/feedback.schema.json",
+      "sha256": "656d743b5275761a6402b8b8d2c75d069b734ffb3d7f1401ebd139a9cf654ef9",
+      "byte_length": 2321
+    },
+    {
+      "path": "schemas/publication_request.schema.json",
+      "sha256": "c35eca38d619cab83320426097fefb44136052e4df50cc89d4e3264bfae15c2d",
+      "byte_length": 3218
+    },
+    {
+      "path": "schemas/receipt.schema.json",
+      "sha256": "2023dfea68179d7243ceb6158c5ec84cd73095ee15bafe3ac47d12c97af18008",
+      "byte_length": 3440
+    },
+    {
+      "path": "schemas/review_report.schema.json",
+      "sha256": "8febaea04fa755ff3c3e274be375a36c91e3b9368737f94167686011a430e47a",
+      "byte_length": 11007
+    },
+    {
+      "path": "schemas/review_request.schema.json",
+      "sha256": "90132a3010dcb6866ca5b09ec81f310464c74b2c76477a18e7620b31139efc51",
+      "byte_length": 3652
+    },
+    {
+      "path": "tools/check_evidence.py",
+      "sha256": "603e9b26055c5f3594d61c2f273467e84bec25711ca3e83cb721c986789dbd41",
+      "byte_length": 56191
+    },
+    {
+      "path": "tools/make_manifest.py",
+      "sha256": "1ad4d945f3ff095040484baa9fa930991efc2cb5fe5f716da655a34a42151dce",
+      "byte_length": 3250
+    },
+    {
+      "path": "tools/validate.py",
+      "sha256": "3bff6e57f274524fc10471490aa60415634a97a278a91472c79cdb6888a832ea",
+      "byte_length": 11704
+    }
+  ],
+  "usage": "其他仓库只引用『版本 + 摘要』；禁止各自修改后仍使用同版本名（§15.9）"
+}

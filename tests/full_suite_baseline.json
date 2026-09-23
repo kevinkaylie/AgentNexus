@@ -1,0 +1,32 @@
+{
+  "generated_at_command": "python -m pytest tests/ -q -p no:cacheprovider --tb=no -rs",
+  "profile": "环境无关：失败集合必须为空；环境依赖用例由 tests/conftest.py 的能力探针显式跳过",
+  "counts": {
+    "passed": 679,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 9,
+    "xfailed": 0,
+    "xpassed": 0
+  },
+  "environment_dependent_files": {
+    "tests/test_local_cli_backend.py": "受限环境：禁止创建子进程（asyncio.create_subprocess_exec → PermissionError）",
+    "tests/test_local_runner.py": "受限环境：禁止创建子进程（asyncio.create_subprocess_exec → PermissionError）",
+    "tests/test_runner_loop.py": "受限环境：禁止创建子进程（asyncio.create_subprocess_exec → PermissionError）",
+    "tests/test_vault_git.py": "受限环境：禁止创建子进程（asyncio.create_subprocess_exec → PermissionError）",
+    "tests/test_relay_did_web.py": "受限环境：工作区外临时目录/家目录不可读写（PermissionError）"
+  },
+  "environmental_failures": [],
+  "counts_note": "counts.passed/skipped 取自**能力齐备**环境（评审 2026-09-21 实测 679 passed / 9 skipped / 0 failed）。受限环境下这些文件整体跳过，门禁按 `passed >= 基线 passed - 环境跳过数` 判定，且**任何未登记失败或未登记跳过都直接失败**。",
+  "history": [
+    "2026-09-20：曾把 25 个受限沙箱下失败的用例登记为 environmental_failures。",
+    "2026-09-21：评审在不受限环境跑出 679 passed / 0 failed，证明这些用例本身通过——登记成失败会让基线长期携带一批实际能过的条目并掩盖真实回归。已改为能力探针显式跳过（tests/conftest.py 的 pytest_collection_modifyitems），environmental_failures 收窄为**空**。"
+  ],
+  "discipline": [
+    "本文件只登记可归因于运行环境的失败；现在环境性失败应为**空**。",
+    "新增失败必须先修复；禁止为了让门禁变绿而登记真实失败。",
+    "未分类（UNCLASSIFIED）的失败不得写入基线，需先判断是否为回归。",
+    "环境依赖的跳过必须在 tests/conftest.py 里由能力探针触发，并登记在 environment_dependent_files；无理由的跳过按回归处理。"
+  ],
+  "unclassified_pending_human": []
+}

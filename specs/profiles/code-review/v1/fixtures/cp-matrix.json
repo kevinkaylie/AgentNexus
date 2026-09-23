@@ -1,0 +1,32 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "note": "CP-01～26 与 Profile 正文 §12/§15.9 一致。kind=structural 的用例可由 JSON Schema + fixture 静态判定；kind=digest 的用例由 fixtures/digest_vectors.json 判定；kind=behavioral 的用例必须通过行为测试（状态、租约、CAS、发布未知、角色授权），schema 只能检查结构，不能替代行为测试。",
+  "cases": [
+    { "id": "CP-01", "phase": "ingest", "kind": "behavioral", "expected": "同一目标/Run；先持久化再 ACK", "sections": ["2", "4.2"] },
+    { "id": "CP-02", "phase": "ingest", "kind": "behavioral", "expected": "idempotency_conflict，原请求不变", "sections": ["4.1", "9", "15.8"] },
+    { "id": "CP-03", "phase": "assignment", "kind": "behavioral", "expected": "unsupported_contract 拒绝，不悄悄包装文本成功", "sections": ["6.2", "9", "15.9"], "requires": "compatibility.json 的 Nexus contract_revision 清单" },
+    { "id": "CP-04", "phase": "validation", "kind": "behavioral", "expected": "input_mismatch / evidence_digest_mismatch，不能 accepted", "sections": ["7", "15.3"], "fixtures": ["valid/08_review_report_issues_found.artifact_body.json"] },
+    { "id": "CP-05", "phase": "execution", "kind": "behavioral", "expected": "stale_assignment，旧 epoch 不覆盖新分配", "sections": ["5.2", "15.6"] },
+    { "id": "CP-06", "phase": "execution", "kind": "behavioral", "expected": "自动路径不覆盖更高人工 revision", "sections": ["4.2"] },
+    { "id": "CP-07", "phase": "execution", "kind": "behavioral", "expected": "旧 epoch 不能提交，completed 只能重新核验", "sections": ["4.2", "5.2"] },
+    { "id": "CP-08", "phase": "validation", "kind": "structural", "expected": "inconclusive，不能显示通过", "sections": ["6.3", "15.8"], "fixtures": ["valid/05_review_report_partial_inconclusive.artifact_body.json", "invalid/report_no_findings_with_partial_coverage.json", "invalid/report_inherited_gap_with_complete_coverage.json", "fixtures/binding/q3-outcome-coverage.md#q3-empty-partial"] },
+    { "id": "CP-09", "phase": "validation", "kind": "structural", "expected": "completed + issues_found，不触发执行失败重试", "sections": ["6.4", "15.2"], "fixtures": ["valid/08_review_report_issues_found.artifact_body.json", "valid/09_review_report_issues_found_with_inherited_gap.artifact_body.json", "invalid/report_findings_without_issues_found.json", "fixtures/binding/q3-outcome-coverage.md#q3-found-partial"] },
+    { "id": "CP-10", "phase": "evidence", "kind": "behavioral", "expected": "权限/缺失/暂时不可达分类，不伪造证据", "sections": ["6.1", "9"], "fixtures": ["invalid/evidence_source_location_missing_content_sha256.json"] },
+    { "id": "CP-11", "phase": "delivery", "kind": "behavioral", "expected": "delivery_conflict", "sections": ["7"], "fixtures": ["valid/04_delivery.json", "invalid/delivery_correction_without_replaces.json"] },
+    { "id": "CP-12", "phase": "publication", "kind": "behavioral", "expected": "unknown → 查证原操作，不重复评论", "sections": ["8"] },
+    { "id": "CP-13", "phase": "publication", "kind": "behavioral", "expected": "阻止当前发布或标记已发评论过期", "sections": ["8"] },
+    { "id": "CP-14", "phase": "execution", "kind": "behavioral", "expected": "旧分配无提交权，停止事实单独记录", "sections": ["5.2"], "fixtures": ["schemas/cancel_acknowledgement.schema.json"] },
+    { "id": "CP-15", "phase": "execution", "kind": "behavioral", "expected": "不清零预算、不再调用模型（budget_exhausted）", "sections": ["5.1", "9", "15.5"] },
+    { "id": "CP-16", "phase": "assignment", "kind": "behavioral", "expected": "data_policy_denied / enforcement_unavailable", "sections": ["10", "15.5"], "fixtures": ["valid/02_assignment.json", "invalid/assignment_zero_limit_for_unknown.json"] },
+    { "id": "CP-17", "phase": "validation", "kind": "behavioral", "expected": "缺少 ReviewReport 校验时不能完成 Run", "sections": ["6.4", "15.2"], "requires": "AgentNexus Profile-aware 校验层（尚未实现）" },
+    { "id": "CP-18", "phase": "recovery", "kind": "behavioral", "expected": "恢复持久化目标，不回退 revision/activation", "sections": ["4.2", "15.6"] },
+    { "id": "CP-19", "phase": "execution", "kind": "behavioral", "expected": "按 Nexus 版本与 HCZJ 目标 CAS，旧目标不能覆盖新目标", "sections": ["15.6"] },
+    { "id": "CP-20", "phase": "execution", "kind": "behavioral", "expected": "epoch 失效、未完成 Run failed；历史只读，禁止发布", "sections": ["15.8"] },
+    { "id": "CP-21", "phase": "ingest", "kind": "behavioral", "expected": "不回退版本、不重建旧目标", "sections": ["15.6"] },
+    { "id": "CP-22", "phase": "execution", "kind": "behavioral", "expected": "新 activation；新策略族/旧族核验规则明确，旧 epoch 无提交权", "sections": ["4.2", "15.8"] },
+    { "id": "CP-23", "phase": "validation", "kind": "digest", "expected": "外层转义变化摘要不变；内层字节变化摘要改变", "sections": ["3", "15.3"], "fixtures": ["fixtures/digest_vectors.json"] },
+    { "id": "CP-24", "phase": "authorization", "kind": "behavioral", "expected": "未授权拒绝，不推进 Profile Session", "sections": ["2", "7", "15.7"], "requires": "角色级写授权（尚未实现；旧 /coordination/receipts 必须拒绝）" },
+    { "id": "CP-25", "phase": "assignment", "kind": "behavioral", "expected": "enforcement_unavailable，模型调用次数为零", "sections": ["15.5"], "fixtures": ["valid/02_assignment.json"] },
+    { "id": "CP-26", "phase": "validation", "kind": "digest", "expected": "不发布成功、不以截断正文或旧 result_hash 冒充产物", "sections": ["15.3", "15.4"], "fixtures": ["fixtures/digest_vectors.json"] }
+  ]
+}

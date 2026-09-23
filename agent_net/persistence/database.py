@@ -13,6 +13,7 @@ from .context import connect, get_db_path
 from .schemas import (
     _column_exists,
     _safe_migrate,
+    init_code_review_tables,
     init_coordination_tables,
     init_enclave_tables,
     init_secretary_tables,
@@ -110,6 +111,7 @@ async def init_db():
         await init_secretary_tables(db)
         await init_trust_tables(db)
         await init_coordination_tables(db)
+        await init_code_review_tables(db)
 
         # 向后兼容：为后续模块创建的表追加 coordination 列
         for alter in [

@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-09-22T08:19:30.834656+00:00",
+  "production": false,
+  "command": "python docs/reviews/l0_r3_repro.py",
+  "exit_code": 0,
+  "stdout": "CONCURRENT_SAME_KEY [201, 500]\nCONCURRENT_ERRORS ['Internal Server Error']\nSAME_BUSINESS_DIFFERENT_JSON 409 delivery_conflict\nEXPIRED_LEASE 201\nCANCEL_DURING_UPLOAD 201\nMESSAGE_NONBUSINESS_REPLAY 202 409\nUNREGISTERED_RECEIPT_SCOPE 202\n",
+  "stderr": "",
+  "source_sha256": {
+    "agent_net/node/routers/code_review.py": "03dfb9484dfb3c6b331adfe2df037659f1321b2dd96f1c4651703ae00a01c0af",
+    "agent_net/persistence/code_review_store.py": "37bfaf9b24131da9093fcca3b0d8edb10f0c8efef362e504d773ddca5f126fe4",
+    "agent_net/code_review/service_auth.py": "75ea0447a81b7be049c46dc090a7383921bf4f5f2b35d666c93f4371c3b1397a",
+    "specs/profiles/code-review/v1/bindings/l0-service-contract.md": "64808c109a1c9e3fc42cf3f9fa641ad04f5ac610d752f82ea8a19cbf077e2583"
+  }
+}

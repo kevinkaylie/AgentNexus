@@ -34,6 +34,15 @@ env/
 
 # Testing
 .pytest_cache/
+.pytest_scratch/
+.pytest_tmp/
+.pytest_root/
+.pytest_bt_*/
+.pytest_full_report.txt
+.pytest_*_report.txt
+.pytest_synthetic_*.txt
+.probe_*/
+.tmp_probe*/
 .coverage
 htmlcov/
 .tox/

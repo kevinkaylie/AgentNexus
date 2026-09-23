@@ -200,6 +200,18 @@ async def api_submit_receipt(req: dict, _=Depends(_require_token)):
     sess = await get_coordination_session(coord_id)
     if not sess:
         raise HTTPException(404, "Coordination session not found")
+
+    # §15.7 / CP-24：Profile Session 的权威回执不得经通用入口写入，
+    # 必须走 POST /coordination/code-review/v1/messages（kind → 角色校验）。
+    from agent_net.persistence.code_review_store import get_profile_session
+
+    if await get_profile_session(coordination_session_id=coord_id):
+        raise HTTPException(
+            403,
+            "Profile session receipts must be submitted via "
+            "/coordination/code-review/v1/messages (Profile 15.7)",
+        )
+
     await _verify_actor_can_access_session(sess, req["issuer_did"])
     run_id = req.get("run_id") or sess.get("playbook_run_id", "")
     run = await _get_session_run(coord_id, run_id)

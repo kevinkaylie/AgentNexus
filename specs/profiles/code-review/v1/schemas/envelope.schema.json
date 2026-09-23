@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/envelope.schema.json",
+  "title": "agentnexus.code-review/1.0-draft.2 协作信封",
+  "description": "Profile §3。UTF-8 JSON，拒绝重复键、NaN/Infinity、类型不符与未知关键字段。扩展只放 extensions；critical_extensions 列出的未知扩展必须拒绝。type 决定 payload 必须匹配的消息 schema。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profile",
+    "message_id",
+    "type",
+    "sender_id",
+    "receiver_id",
+    "session_id",
+    "correlation_id",
+    "causation_id",
+    "created_at",
+    "payload"
+  ],
+  "properties": {
+    "profile": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/profile_version",
+      "description": "显式携带 profile 版本，便于在解析 payload 前拒绝不支持的版本（unsupported_profile）；同一 Session 固定版本"
+    },
+    "message_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "type": {
+      "type": "string",
+      "enum": [
+        "review_request",
+        "assignment",
+        "assignment_acceptance",
+        "delivery",
+        "receipt",
+        "feedback",
+        "publication_request",
+        "cancel_request",
+        "cancel_acknowledgement",
+        "error"
+      ],
+      "description": "本 Profile v1 的消息类型登记表；新增类型必须提升 profile/契约版本"
+    },
+    "sender_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "receiver_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "session_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "correlation_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "causation_id": {
+      "type": ["string", "null"],
+      "description": "可为 null（首条消息）"
+    },
+    "created_at": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" },
+    "request_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "run_id": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "任务消息必须携带；Profile run_id 恒为 HCZJ Run ID，AgentNexus 以 external_run_id 关联（§15.6）"
+    },
+    "attempt_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "assignment_epoch": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "payload": { "type": "object" },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "review_request" } }, "required": ["type"] },
+      "then": {
+        "required": ["request_id"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/review_request.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "assignment" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id", "attempt_id", "assignment_epoch"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/assignment.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "assignment_acceptance" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id", "attempt_id", "assignment_epoch"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/assignment_acceptance.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "delivery" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id", "attempt_id", "assignment_epoch"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/delivery.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "receipt" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/receipt.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "feedback" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/feedback.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "publication_request" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/publication_request.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "cancel_request" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id", "assignment_epoch"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/cancel_request.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "cancel_acknowledgement" } }, "required": ["type"] },
+      "then": {
+        "required": ["run_id", "attempt_id", "assignment_epoch"],
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/cancel_acknowledgement.schema.json" } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "error" } }, "required": ["type"] },
+      "then": {
+        "properties": { "payload": { "$ref": "https://agentnexus.dev/spec/code-review/v1/error.schema.json" } }
+      }
+    }
+  ]
+}

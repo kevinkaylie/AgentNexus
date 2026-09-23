@@ -1,0 +1,67 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "status": "frozen-semantics-pending-external-confirmation",
+  "default_decision": "reject",
+  "wildcards_allowed": false,
+  "note": "§15.9：默认空列表拒绝全部，不得使用通配符推测兼容。任何未在此声明的版本、契约 revision 或外部词表取值都不得自动接受；填充前不得声称 wire conformance。",
+  "nexus": {
+    "status": "source_confirmed_pending_producer_samples_and_wire_validation",
+    "schema_versions": [],
+    "contract_revisions": [],
+    "source_of_truth": "Nexus N-M3 交付记录与已确认 RUN-ID-2026-09-14；需以生产方对应版本的实际响应核对后填写（§15.9）",
+    "unsupported_behavior": "unsupported_contract",
+    "observed_contract": {
+      "event_schema": "nexus.review_event.v1",
+      "report_schema": "nexus.review_impact.v1",
+      "contract_revision": 3,
+      "operative_allowlist": false,
+      "evidence": "bindings/external-confirmations-2026-09-20.md"
+    }
+  },
+  "adapter": {
+    "name": "agentnexus-code-review-adapter",
+    "version": null,
+    "status": "not_implemented",
+    "unimplemented_requirements": [
+      "Profile 校验层（§15.2）",
+      "字节摘要与 content_hash 填充（§15.3）",
+      "external_coordinator_id / external_run_id / external_attempt_id / assignment_epoch（§15.6）",
+      "交付入口的本地 CAS（§15.6）",
+      "角色级写授权与旧 /coordination/receipts 拒绝（§15.7）",
+      "L0 读取上限与 413 语义（binding RC2 §10.1：raw/artifact 16 MiB、source-bytes 1 MiB 且 ≤2000 行、JSON 响应 4 MiB；超限在发送成功头部前拒绝）",
+      "binding 端点与 DTO（RC2 §2–§5：Nexus 原始字节端点、HCZJ 服务接口、A/artifacts、Publisher 发布）"
+    ]
+  },
+  "digest": {
+    "algorithm": "sha256-bytes-v1",
+    "byte_caliber": "B = utf8(解码外层 JSON 后的 artifact_body 字符串)，无 BOM、不加尾换行、禁止孤立 surrogate",
+    "vectors": "fixtures/digest_vectors.json",
+    "legacy_incompatible": [
+      "result_hash"
+    ],
+    "legacy_note": "旧 result_hash 为重序列化摘要且混入 execution_id，不得用于 Profile delivery 冲突判断或补造 report_digest"
+  },
+  "enforcement": {
+    "registry_status": "not_registered",
+    "levels": [
+      "enforced",
+      "declared_only",
+      "unsupported"
+    ],
+    "note": "受信任部署注册必须给出每项的执行组件；Worker 自报不足以满足要求。无强制点时不得声称 CP-15/16 通过（§15.5）"
+  },
+  "externally_owned_vocabularies": {
+    "artifact_access_scope": [],
+    "observed_candidates": ["service_private"],
+    "operative_allowlist": false,
+    "note": "artifact 的 access_scope 词表由产物所属服务声明；空列表表示未声明，未声明的取值不得自动接受（§15.4）。observed_candidates 记录 binding RC1 的候选值，仅为审计用，不代表已放行"
+  },
+  "binding": {
+    "status": "rc2_reviewed_not_frozen",
+    "document": "bindings/l0-agentnexus-http.md",
+    "service_contract": "bindings/l0-service-contract.md",
+    "review_records": ["bindings/l0-service-contract.md §9（RC1）", "bindings/l0-service-contract.md §11（RC2）"],
+    "note": "RC1 的 Q1–Q3/S1–S7 已关闭，RC2 契约文本层面无阻塞项；但 BINDING-GATE-1 维持关闭（T1–T6 未关闭、§15.2–15.7 未实现、本清单未三方冻结、CP-01～26 未执行）。定版前只允许独立语义验证开发，不得启动符合本 Profile 的集成运行（§15.1）",
+    "confirmation_record": "bindings/external-confirmations-2026-09-20.md"
+  }
+}

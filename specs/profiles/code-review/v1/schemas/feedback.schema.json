@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/feedback.schema.json",
+  "title": "code_review.feedback.v1",
+  "description": "Profile §8。反馈是人工断言，不自动改写原报告、不通过合并、不更新全局模型规则。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["feedback_id", "report_digest", "finding_id", "label", "actor_id", "comment", "created_at"],
+  "properties": {
+    "feedback_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "report_digest": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256",
+      "description": "绑定具体报告字节，避免对同名 finding 误用反馈"
+    },
+    "finding_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "label": { "type": "string", "enum": ["valid", "false_positive", "fixed", "deferred"] },
+    "actor_id": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "必须与已认证上下文绑定（§10）"
+    },
+    "comment": { "type": "string" },
+    "fix_revision": {
+      "type": ["string", "null"],
+      "description": "label=fixed 时必填：修复版本（如 commit SHA 或 MR 版本标识）"
+    },
+    "validation_basis": {
+      "type": ["string", "null"],
+      "description": "label=fixed 时必填：验证依据（测试、复现步骤或人工确认记录）"
+    },
+    "created_at": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "label": { "const": "fixed" } }, "required": ["label"] },
+      "then": {
+        "required": ["fix_revision", "validation_basis"],
+        "properties": {
+          "fix_revision": { "type": "string", "minLength": 1 },
+          "validation_basis": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ]
+}

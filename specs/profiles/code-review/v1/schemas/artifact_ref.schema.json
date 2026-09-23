@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/artifact_ref.schema.json",
+  "title": "code_review.artifact_ref.v1",
+  "description": "Profile §6.1 + §15.4。词表与既有 AgentNexus artifact / 旧 ReviewReceipt 不共用；映射要求见 Profile §15.4。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_id",
+    "producer_id",
+    "media_type",
+    "schema_version",
+    "digest_algorithm",
+    "digest",
+    "byte_length",
+    "locator",
+    "access_scope",
+    "retention_until"
+  ],
+  "properties": {
+    "artifact_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "producer_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "media_type": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/media_type" },
+    "schema_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "产物自身契约版本（如 code_review.report.v1）。不得仅凭相同 schema_version 接受任意结构（§6.2）"
+    },
+    "digest_algorithm": {
+      "type": "string",
+      "enum": ["sha256-bytes-v1"],
+      "description": "算法升级必须另定契约版本（§3）"
+    },
+    "digest": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256" },
+    "byte_length": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "§15.3：len(B)，B 为 artifact_body 字符串的严格 UTF-8 字节"
+    },
+    "locator": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!https?://).+",
+      "description": "允许列表服务内的不透明引用，不得是模型可指定的任意 http(s) URL（§6.1）；读取需再次鉴权"
+    },
+    "access_scope": {
+      "type": "string",
+      "minLength": 1,
+      "description": "取值词表由产物所属服务声明并持久化；未在 compatibility.json 声明的取值不得自动接受（§15.4）"
+    },
+    "retention_until": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/nullable_timestamp_utc"
+    },
+    "replaces": {
+      "type": ["string", "null"],
+      "description": "修正他人产物时指向被替代 artifact_id；内容改变必须产生新 artifact，不得覆盖原字节（§6.1）"
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  }
+}

@@ -1,5 +1,10 @@
 # Changelog
 
+### 2026-09-21 L0 外部端点实现与本地证据
+
+- 两外部项目新增 RC2 服务接口及验证；Nexus 29 项通过，HCZJ 全量 4229 通过/2 跳过，最终服务定向 14 项通过。
+- [T1–T6 本地证据包](docs/evidence/l0-2026-09-21/README.md) 含脱敏合成 HTTP 样例、JUnit 与源码指纹；不是生产证据，不关闭门禁、不改兼容允许列表。
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
@@ -7,6 +12,289 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ---
 
 ## [Unreleased]
+
+### L0 第六轮复审（2026-09-23）
+
+- 独立全量 810 passed / 9 skipped，回归门禁 exit 0；HTTP 契约专项 69 passed，规范包及宿主审计通过。
+- [独立评审](docs/reviews/2026-09-23-l0-r6-review.md)：R5-1 代码缺陷关闭；空绑定写入、旧库空绑定上传、事务空预期比较均已独立验证，常规竞争路径保持正确。整体实施门禁仍关闭。
+
+### L0 第五轮复审 R5-1 修复（2026-09-23）
+
+针对[第五轮复审](docs/reviews/2026-09-23-l0-r5-review.md)的 R5-1 做修复，确认见[修复记录](docs/reviews/2026-09-22-l0-r3-fix-confirmation.md) §3.2。
+
+- **R5-1 空 Coordinator 绕过事务身份围栏（P2）**：`external_coordinator_id` 可为空字符串，而事务复检写作 `if expected_coordinator_id and ...`——**预期值为空时整段比较被跳过**，于是"从空 ID 改绑到另一 Coordinator"不被发现，旧上传仍 201 并登记产物。根因是把空值当成"无需比较"的信号；**空字符串是可比较的值**。
+- **修法（三条建议逐条落实）**：① 绑定入口 `bind_execution_assignment()` 要求 `profile_session_id`/`external_coordinator_id`/`external_run_id`/`external_attempt_id` 非空白且 `assignment_epoch ≥ 1`，否则 422 `input_mismatch`——从源头拒绝不完整绑定；② 上传入口对**既有空绑定** fail-closed → 409 `stale_assignment`；③ 事务内三处身份比较（Attempt/Coordinator/worker）**去掉全部真值守卫**，改为 `(actual or "") != (expected or "")`（空与空相等、空与非空判失败）。函数 docstring 写明该原则，防止回退。
+- **负例证据**：把 Coordinator 比较改回旧守卫后，`test_r32_in_transaction_comparison_has_no_truthiness_guard` 报 `DID NOT RAISE`（空值确实被跳过），对照组仍通过；恢复后两条均通过。临时回退已还原并经脚本核对无残留。
+- **契约文本无需改动**：`bindings/l0-service-contract.md` §1 已要求"ID 为非空字符串"，§4「上传的分配围栏」已要求在事务内校验 Coordinator——本次是**实现未落实既有契约**（真值守卫），故规范包维持 `1.0-draft.2+semantic.14`，不改动、不重生成清单。
+- 测试：`test_code_review_http_contract.py` 68 → 69（新增绑定入口拒绝空身份、既有空绑定入口 409、事务内无真值守卫 + 对照组）；Code Review Profile 系列 257 tests + 1 skip。
+- 全量门禁：**762 passed, 57 skipped, 0 failed, 0 errors** → `[PASS]` exit 0。
+- **未修**：H/messages 的错误映射对齐属外部仓库（HCZJ 侧）；原 S1 仍开放。T1–T6 全开放、BINDING-GATE-1 维持关闭、未声明 wire conformance。
+
+### L0 第五轮复审（2026-09-23）
+
+- 独立全量 806 passed / 9 skipped、回归门禁 exit 0；HTTP 契约专项 65 passed，规范包自检及宿主审计通过。
+- [独立评审](docs/reviews/2026-09-23-l0-r5-review.md)：R4-2 关闭，R4-1 的普通改绑已修复；发现空 Coordinator 绑定可绕过事务身份比较，上传仍登记产物。需修改后复审；T1–T6 与 BINDING-GATE-1 不变。
+
+### L0 第四轮复审（2026-09-23）
+
+- 独立全量 803 passed / 9 skipped，回归门禁 exit 0；规范包自检及宿主审计通过，HCZJ 定向/跨仓库组合 25 passed。
+- [独立评审](docs/reviews/2026-09-23-l0-r4-review.md)：R3-1/R3-3/R3-4 原问题关闭，R3-2 仍需修复；真实 ASGI/SQLite 探针确认改绑 Attempt/Coordinator 后旧上传仍成功，以及等待写锁期间租约到期仍成功。
+- 新增评审复现脚本与证据，未修改运行时代码、测试基线或兼容清单。整体需修改后复审，BINDING-GATE-1 维持关闭。
+
+### L0 第三轮复审 R3-1～R3-4 修复（2026-09-22）
+
+针对[第三轮复审](docs/reviews/2026-09-22-l0-r3-review.md)的 4 项问题做修复，确认见[修复记录](docs/reviews/2026-09-22-l0-r3-fix-confirmation.md)。
+
+- **R3-1 未知 session 绕过资源授权（P1）**：新增 `resolve_profile_session()` 返回 `ok`/`not_found`/`ambiguous`（不再 `fetchone()` 取第一条）；消息入口对未登记 session → **409 `stale_assignment`**、歧义 → 409、缺 `session_id` → 422，**"查不到"不再是放行条件**；资源许可改用 `require_session` 与角色许可分离；新增**受信任关联核对**（信封 `run_id` 必须等于会话绑定的 Run；assignment 的 `coordinator_id` 必须由已认证主体代表）。契约 §4 明确新 Run 绑定由部署初始化流程建立，本组端点不承担创建职责。
+- **R3-2 租约不参与校验、分配未在事务内复检（P1）**：`resolve_assignment_binding` 读取 `lease_expires_at`，入口增加租约过期拒绝；新增 `_verify_assignment_in_transaction()`，在 `commit_artifact_with_idempotency` 的 `BEGIN IMMEDIATE` 内**重新读取并校验** session/run、worker、epoch、执行状态、租约、deadline——任一项失效即回滚，不登记产物、不置 committed。契约 §4 明确"提前查询不构成原子围栏"。
+  - **补修一（第三轮复审）**：身份元组（Attempt / Coordinator）此前"读了不用"，且过期判断取的是 `BEGIN` **之前**的时间戳。已改为整体比对 + 在持锁后读时钟。
+  - **补修二（第四轮复审）**：比较仍带真值守卫 `if expected_x and ...`，**预期值为空时整段被跳过**——"从空 Coordinator 改绑到另一 Coordinator"逃过围栏。已去掉全部守卫（空与空相等、空与非空判失败），入口侧同步去守卫并新增"分配未绑定 Coordinator 即拒绝"。
+- **R3-3 同 key 并发上传 500（P2）**：提交事务内先看幂等状态，已 committed 直接返回**原产物**（replay），不再无条件 `INSERT`；只有未 committed 才写入。
+- **R3-4 幂等比较用原始字节/完整信封（P2）**：新增 `agent_net/code_review/projection.py` 实现 §7 规则——消息剔除 `message_id`/`created_at`/`correlation_id`/`causation_id` 并固定缺省，产物取业务字段且 `artifact_body` **原样取字符串**；递归排序键、数组原顺序、无空白 UTF-8、**禁止浮点**；命名空间 `(principal, action, resource_scope)` 与幂等 key 分离。
+- **保留建议**：`retention_until_text` 改为**写库**（不再只靠内存回显）；`assignment_epoch` 新增 `_strict_positive_int()` 拒绝 bool/小数/字符串；同名 Run 歧义改为显式 `ambiguous` 并拒绝。
+- **测试有效性有负例证据**：每一处补修都先用"临时回退修复"确认对应用例会变红（改绑/写锁等待/空值守卫分别复现 201 或 `DID NOT RAISE`），再恢复修复。
+- 规范包 `semantic.13` → `semantic.14`。测试：`test_code_review_http_contract.py` 47 → 68。
+- 全量门禁：**761 passed, 57 skipped, 0 failed, 0 errors** → `[PASS]` exit 0。
+- **未修**：H/messages 的错误映射对齐属外部仓库（HCZJ 侧）；原 S1 仍开放。T1–T6 全开放、BINDING-GATE-1 维持关闭。
+
+### L0 第三轮代码复审（2026-09-22）
+
+- [第三轮报告](docs/reviews/2026-09-22-l0-r3-review.md)确认消息幂等头规则、HTTP 矩阵及 R2-3～R2-6 修复；仍有 R3-1～R3-4（2 P1、2 P2）：消息资源授权、失效分配提交围栏、并发上传幂等、业务投影比较。附确定性并发/取消及重放复现，不批准整体完成。
+- semantic.13 规范包及强制宿主审计通过；HCZJ 25 项定向及跨仓库组合通过。生产门禁不变，本轮未修改运行时代码或测试基线。
+- 本轮独立 AgentNexus 全量 **788 passed / 9 skipped**（440.14 秒），回归检查器 exit 0；4 项发现均由补充边界复现确认，常规回归通过不能替代修复。
+
+### 消息幂等键裁决落地（2026-09-22）
+
+按评审裁决「**POST A/messages 必须携带 `Idempotency-Key`，且值必须等于信封 `message_id`**」修订契约与实现——§1 规定**传输位置**（HTTP 头），§4 规定**取值**，二者表示同一个逻辑幂等键，**不分别建立幂等记录**；§1 保留，§4 表同步澄清（此前表述有歧义）。
+
+- **契约 §4 修订**（`bindings/l0-service-contract.md`）：幂等键列改为「**必须**经 `Idempotency-Key` 头传递」并写明取值（`= envelope.message_id`；`POST H/messages` 的 **delivery 例外** `= delivery_id`，不得机械要求等于 `message_id`）；新增四条执行规则的统一表格，并声明冲突判定必须在**任何写入之前**完成。
+- **实现**（`agent_net/node/routers/code_review.py`）：缺少/空头 → **422 `input_mismatch`**（在解析正文前拒绝，属传输层要求）；头 ≠ `message_id` → **409 `idempotency_conflict`**；两种情况都不写入。同键同投影 → 返回原结果；同键不同投影 → 409 且**无副作用**。
+- **信封严格性统一**：`parse_envelope` 改为复用 `parse_strict_json`，信封与产物上传遵守**完全相同**的 §3 规则（严格 UTF-8、拒 BOM、拒重复键、拒 NaN/Infinity），不再一个严格一个宽松。
+- **测试**：矩阵新增行 `messages.idempotency_missing`；新增四条执行规则的专项用例（含"不写入"与"无副作用"断言）以及上传键独立性用例。`test_code_review_api.py` 的客户端按信封自动注入该头（业务语义文件），该头本身的契约行为由矩阵覆盖。
+- 规范包 `1.0-draft.2+semantic.12` → `semantic.13`。全量门禁：**740 passed, 57 skipped, 0 failed, 0 errors** → `[PASS]` exit 0。
+- **结论不变**：T1–T6 全部开放、BINDING-GATE-1 维持关闭、未声明 wire conformance。
+
+### HTTP 契约矩阵（2026-09-22）
+
+按复审建议「补实际 HTTP 契约矩阵后收口，避免再次出现『字段存在但 wire 不一致』」新增 `tests/test_code_review_http_contract.py`（41 项）。矩阵**行是数据**：每个端点 × 每个声明的失败/成功条件各一行，执行器发**真实 HTTP 请求**，并对**实际响应**做三重校验——状态码、`code`/`scope`、**真正通过冻结 schema**（错误响应跑 `error.schema.json` 的类型/const/additionalProperties/allOf）。
+
+**首次运行即红 27 项**，一次抓出前三轮评审陆续发现的那类问题（详见 [矩阵说明](docs/reviews/2026-09-22-http-contract-matrix.md)）：
+
+- **错误响应不是合法的 `code_review.error.v1`**：`correlation_id` 为空（schema 要求 `minLength: 1`），约 20 处失败路径都如此 → 异常处理器就地生成并回显；同时给 `error_envelope()` 加**守卫**，schema 未声明的顶层字段直接抛错而不是静默拼进去。
+- **413 响应体不合法**：`limit`/`limit_value`/`observed` 在顶层 → 移入 `extensions.read_limit`；`violations`、`unsatisfied`/`declared` 同类问题一并移入 `extensions`。
+- **JSON 响应缺 `charset=utf-8`** → 前缀级中间件补齐（raw 端点除外，必须原样返回 media_type）。
+- **缺 `X-Correlation-Id` 未被强制** → 四个新端点统一拒绝（422）。
+- **raw 的 `If-Match` 不匹配返回 409** → 改为 **412**（RC2 §2）；409 保留给"存储字节与登记摘要不一致"。
+- **`Range` 未显式拒绝**（静默返回全量）→ 显式 422。
+- **上传用裸 `json.loads`**（重复键/NaN/BOM 全放行）→ 新增 `parse_strict_json`，与信封共用同一套 §3 严格规则。
+
+另发现一处**契约措辞冲突待裁决**：§1 说"变更接口带 `Idempotency-Key`"，§4 表却说 A/messages 的幂等键是 `message_id`。当前采取不冲突处理（仍以 `message_id` 为准；若给出该头则必须与之一致，否则 409），已在矩阵说明中登记待评审裁决。
+
+全量门禁：**734 passed, 57 skipped, 0 failed, 0 errors** → `[PASS]` exit 0。**结论不变**：T1–T6 全部开放、BINDING-GATE-1 维持关闭、未声明 wire conformance。
+
+### L0 复审 R2-1～R2-6 修复（2026-09-22）
+
+针对[整体复审](docs/reviews/2026-09-22-l0-rereview.md)的 6 项阻塞问题做修复，确认见[修复记录](docs/reviews/2026-09-22-l0-rereview-fix-confirmation.md)。复审已**关闭 B8 与 B10 的代码缺陷**。
+
+- **R2-1 幂等失败可恢复**：`code_review_artifact_idempotency` 新增 `state`（pending/committed）；预留只在"同 key **不同请求内容**"时判 `delivery_conflict`，pending 表示上次未提交成功 → 允许**续用同一 artifact_id** 重试；新增 `commit_artifact_with_idempotency` 把产物登记与置 committed 放进**同一事务**，任一步失败整体回滚。原"Vault 失败一次 → 同 key 永久 409"已封堵。
+- **R2-2 上传绑定真实分配**：未知 Run → 422；强制 `require_session`；新增 `resolve_assignment_binding` 解析**唯一** `(session, run, attempt)` 绑定，未分配/歧义/epoch 不符/已取消/超 deadline → 409 `stale_assignment`，非该 Attempt 的 worker → 403；消息读取的当事人分支同样执行 session 范围检查。原"unregistered-run / unassigned-attempt / epoch=999 都 201"已封堵。
+- **R2-3 回执与 inbox 同事务**：新增 `store_receipt_message`，在**单事务**内先校验消息与回执的幂等投影（同 `receipt_id` 必须同投影），全部通过后才写回执、inbox 与 `processed`；冲突在写入前抛出，**无副作用**。原"409 之后 receipt 仍落库"已封堵。
+- **R2-4 回执角色回归**：`require_receipt_authority` 改为**返回**该 kind 唯一对应的角色，路由统一用它做角色与强制级别判定，删除 `or "coordinator"` 兜底。原"合法 validator/publisher 被要求 coordinator（403）"已修复。
+- **R2-5 显式 null 不再当空集合**：`_strict_list` 区分字段缺失与显式 null；`findings`/`omitted_files`/`inherited_gaps` 为必填集合，缺失或 null 一律 `invalid_output`。原"outcome=findings_present + findings=null → no_findings"已封堵。
+- **R2-6 拒绝证据按冻结 schema 与场景验证**：`check_evidence.py` 现在构建**可执行 validator** 并真正运行 `error.schema.json`（类型/const/additionalProperties/allOf），新增 `REFUSAL_EXPECTATIONS` 把每个用例绑定到主体角色、方法+端点与允许错误码；未登记期望的用例直接失败。原"无关 403 + 键齐全但 schema 不合法"已封堵。
+- **部署依赖**：`pyproject.toml` 的 `dependencies` 与 `dev` 补登 `jsonschema>=4.18.0`、`referencing>=0.30.0`（`frozen.py` 运行时导入的强制校验路径）。
+- **协议边界（部分）**：新增 `artifacts.retention_until_text`，`retention_until` **原样回显请求字符串**，不再经 float 反格式化丢微秒。其余边界（消息接口未强制 `Idempotency-Key`、`X-Correlation-Id` 可缺省、上传 `json.loads` 不拒重复键、raw `If-Match` 不匹配返回 409 而 RC2 要求 412、Range 未显式拒绝）记录为下一批。
+- 规范包 `1.0-draft.2+semantic.11` → `semantic.12`。测试：`test_code_review_api.py` 30 → 41、provider 12 → 15、收口裁判 48 → 53。
+- 全量门禁：**693 passed, 57 skipped, 0 failed, 0 errors** → `[PASS]` exit 0。
+- **结论不变**：T1–T6 全部开放、**BINDING-GATE-1 维持关闭**、`compatibility.json` 保持默认拒绝、未声明 wire conformance。原 S1（HCZJ reviewer 归属）仍开放，属外部仓库。
+
+### L0 第二轮整体复审（2026-09-22）
+
+- [复审](docs/reviews/2026-09-22-l0-rereview.md)确认 B8/B10 对应代码缺陷关闭，剩余 R2-1～R2-6 六项阻塞：上传幂等故障恢复、Run/分配资源授权、回执事务副作用、严格角色表下的合法回执误拒、null finding 转换、拒绝样例 schema/场景校验。附隔离复现与源码指纹，整体需修改后复审。
+- 独立全量 **722 passed / 9 skipped**，基线检查 exit 0；规范包及强制宿主审计 exit 0，独立复制包自检通过；Nexus/HCZJ 定向 **12/25 passed**。T1–T6 与生产门禁不变。本次仅写评审材料，未修改生产代码或基线。
+
+### B8 修复：HCZJ 到 Nexus 的独立凭据接线（2026-09-21）
+
+- 按用户要求修复 HCZJ 客户端：L0 raw/source-bytes 与旧 MR/Job 元数据使用显式不同凭据，旧读桥接器执行项目范围和 job 归属校验，缺配置拒绝且不回退凭据；报告证据改走 L0 raw。
+- 定向 25 passed（含两侧真实路由/鉴权组合），HCZJ 全量 4240 passed / 2 skipped。B8 已修复并本地验证、待复审；其余问题和门禁不变。详见[跟进记录](docs/reviews/2026-09-21-l0-overall-code-review.md)与[B8 新证据](docs/reviews/2026-09-21-b8-fix-evidence.json)，未改写旧采集快照。
+
+### L0 代码评审 B1–B9 修复与基线收窄（2026-09-21）
+
+针对 [整体代码评审](docs/reviews/2026-09-21-l0-overall-code-review.md) 的阻塞项做修复，修复确认见[修复记录](docs/reviews/2026-09-21-l0-review-fix-confirmation.md)。**B8 超出本工作区写权限（外部仓库），未修复**。
+
+- **B1 身份与角色**：新增 `agent_net/code_review/service_auth.py` 与服务凭据登记表（只存 sha256 摘要）。服务接口不再用 Daemon token + 信封 `sender_id` 判断身份：未登记任何凭据一律 **401 拒绝**（不再"未配置则放行"），`sender_id`/`issuer_id` 必须落在凭据可代表的 DID 内，回执 kind 按角色路由并要求 issuer 绑定。原冒充路径（同一 token 改 sender → 403 变 202 且标记 enforced）已封堵。
+- **B2 资源授权**：消息与产物读取必须命中凭据的 session 范围；产物读取另有保留期检查（过期 → 410 `artifact_expired`）。不再"知道 ID 就能读"。
+- **B3 wire 契约**：新增 `agent_net/code_review/frozen.py`，以冻结 `envelope.schema.json`/`artifact_ref.schema.json` 做接收前与返回前校验。上传只接受契约七字段；`retention_until` 按 RFC3339 严格解析、持久化并**原样返回**（不再静默 null）；ArtifactRef 不再多出 schema 禁止的 `enforcement`；TransportAck 恰好三字段、MessageView 恰好四字段且 `receipts` 为 Profile 回执**信封**。
+- **B4 幂等与不可变**：Vault key 改为按内容摘要寻址（失败请求不再覆盖已登记字节）；按 `(principal, Idempotency-Key)` 做幂等映射，同 key 同请求返回原 artifact_id，内容不同 409 `delivery_conflict`，缺幂等键 422。
+- **B5 入站校验**：接收前用冻结 schema 校验信封**及其按 type 的 payload**；`enforcement_requirements` 缺失/为空一律拒绝（不再当空数组）；信封与 payload 的 `run_id`/`attempt_id`/`assignment_epoch` 必须一致。空 Assignment 曾被 202 ACK 的路径已封堵。
+- **B6 崩溃恢复**：消息 + 回执 + `processed` 状态**同一事务**提交，并提供 `reprocess_pending_messages()` 与 GET 路径的可重放补偿；不再出现"重试永远跳过处理"。
+- **B7 provider 严格校验**：`provider_adapter` 删除全部 `isinstance(Mapping)` 静默过滤，改为逐项严格校验（非法 finding / 缺口条目 → `invalid_output`），`source_report_schemas`/`source_coverage_schemas` 由"仅声明"变为**强制核对**。原"malformed finding 被丢掉后报 no_findings"已封堵。
+- **B9 收口裁判**：三个自述检查（worker 发布被拒 / 伪造回执被拒 / 未配置被拒）改为**样例级校验**——必须给出样例、主体、端点、401/403 状态、可解码的冻结错误信封与允许的错误码；布尔与文字不再作数。
+- **B10 包可移植性**：宿主证据审计与包内自检分离（`host_markers` 自动跳过，`--require-host-audit` 收紧）；**真实包复制到任意目录后 `validate.py` 通过**已作为测试固定。
+- **S3 采集 pin**：恢复采集时 pin，删除此前"直接刷新 pin"的做法，改为 `capture_package_version` + `profile_manifest_rechecks` 复核记录（并显式声明**未**重跑旧样例）。
+- **S4 基线收窄**：不再把环境失败登记进基线。`tests/conftest.py` 增加能力探针，能力缺失时**显式跳过**并写明原因；`environmental_failures` 收窄为**空**；`scripts/check_full_suite.py` 改为"未登记失败/未登记跳过一律失败，通过数下限 = 基线 − 可解释的环境跳过数"。
+- 规范包 `1.0-draft.2+semantic.10` → `semantic.11`。测试：`test_code_review_api.py` 按新契约重写（30 项，含评审要求的全部负例）、provider 回归 +5、收口裁判 28 → 48。
+- **结论不变**：T1–T6 全部开放、**BINDING-GATE-1 维持关闭**、`compatibility.json` 保持默认拒绝、未声明 wire conformance。
+
+### L0 三方整体代码评审（2026-09-21）
+
+- 对当前 Profile 适配器、收口裁判及此前 Nexus/HCZJ 端点一并完成[代码评审](docs/reviews/2026-09-21-l0-overall-code-review.md)，结论为**需修改后复审，不批准实现完成**。B1–B10 涉及身份/资源授权、wire 契约、不可变上传及幂等、消息校验及恢复、finding 丢失、跨项目鉴权接线、证据裁判和包可移植性；附隔离复现脚本及输出。
+- 本次独立全量 **679 passed / 9 skipped，无失败**；基线检查器 exit 2，原 25 项环境失败豁免已过时，未修改基线。规范包与证据自检 exit 0，Nexus/HCZJ 定向测试分别 12/14 passed。测试通过未覆盖的缺陷已复现，T1–T6 全部开放、BINDING-GATE-1 维持关闭。
+- 本次只写评审与状态记录，没有修复生产代码或改写旧采集证据；此前本助手编写的 HCZJ 客户端接线问题也纳入阻塞项 B8。
+
+### T1–T6 收口清单与证据采集包（2026-09-20）
+
+**把「T1–T6 关了没有」从自述变成可重算的事实。** 此前唯一的进度信号是 binding 文档自己写的「契约定义已补齐」，而它从不包含生产样例——于是「已在源码确认」很容易被读成「已经关闭」。
+
+- **新增唯一收口追踪器** `specs/profiles/code-review/v1/bindings/evidence/closure-checklist.json`：把 T1–T6 展开为 **25 条逐项证据要求**，每条写明责任人（Nexus_Agent 9 条 / Hczj_Assistant_Agent 13 条 / 三方 3 条）、采集模板、必需字段、机械验收检查与最小样例数。`items[].status` 是**声明**，实际状态由收到的记录计算，两者不一致即失败。
+- **新增采集模板** `bindings/evidence/templates/T1–T6.json` 与落点 `bindings/evidence/received/`，配 `bindings/evidence/README.md` 说明采集约定：原始字节以 base64 承载、脱敏不得改字节口径、部署版本不得用工作树冒充、每项除正例还须给拒绝例、不得提交凭据。
+- **新增校验器** `specs/profiles/code-review/v1/tools/check_evidence.py`（接入 `tools/validate.py`）：重算所有 `*_bytes_b64` 的 sha256 与 byte_length；声明 `closed` 但残留 `__TODO__`、缺必需字段、缺用例覆盖、缺部署版本或摘要不符 → 直接失败；T1–T6 未全部关闭时 `compatibility.json` 的 `operative_allowlist` 必须为 `false` 且 `artifact_access_scope` 必须为空，否则失败（拒绝提前放行）；`gate.status` 与按证据计算的门禁状态不一致也失败。
+- **接入既有本地证据包** `docs/evidence/l0-2026-09-21/`：清单逐项登记该包为 `non_closing` 本地证据（已交付什么、尚不能关闭什么），校验器机械保证 ① 快照登记的 6 个 artifact 摘要与磁盘一致、② 合成样例持续声明 `production=false`（**禁止复核时改标签把本地样例变成生产证据**）、③ 清单引用的 artifact 确实存在。中央包 manifest 摘要漂移时**告警**并要求在快照中显式刷新，而不是静默改写他人证据。
+- **修掉一处真实的跨引用失效**：本地证据包快照记录的 `profile_manifest_sha256` 因规范包升级而失效。已在该快照中**显式**新增 `profile_manifest_refreshed`（保留旧值、写明包版本前后与原因）并刷新字段，同时在 `docs/evidence/l0-2026-09-21/README.md` 留痕——不静默改写证据。
+- **负例验证**（证明校验器不为空转）：`tests/test_code_review_evidence_checklist.py`（28 tests）覆盖摘要填错、长度填错、残留 `__TODO__`、缺必需字段、缺用例覆盖、声明 closed 无证据、声明 open 却有证据、语义检查失败、`operative_allowlist` 提前放行、门禁提前开启、模板缺 record key、未登记检查名、items 不完整、本地证据包缺失/生产标签被改/artifact 漂移/引用不存在/未标 `non_closing`，均在正确原因上失败；证据完整时关闭被接受。
+- 文档同步：`l0-agentnexus-http.md` §7 声明「关闭状态的唯一追踪器」；`l0-service-contract.md` §8 说明为何另立追踪器；`external-confirmations-2026-09-20.md` 补「交付方式」；包 `README.md` 更新目录与自检范围。
+- 规范包升级 `1.0-draft.2+semantic.10`（61 文件，自检 `[PASS]`：契约 24 码、正例 9/9、反例 14/14、CP 矩阵 26、收口清单自洽）。
+- **结论不变**：T1–T6 **全部开放**，**BINDING-GATE-1 维持关闭**，`compatibility.json` 保持默认拒绝，不声明 wire conformance。本批交付的是关闭的**入口与裁判**，不是关闭本身——真正的关闭仍需 Nexus/HCZJ 的生产样例与部署版本证据。
+
+### 评审方适配器泛化：HCZJ 降为一个 provider（2026-09-20）
+
+- **新增厂商无关管线** `agent_net/code_review/provider_adapter.py`：`ReviewProviderAdapter` 基类 + provider 注册表（`register_provider` / `get_provider` / `list_providers` / `detect_provider`）+ 厂商无关入口 `build_profile_report(provider_id=..., native_report=..., native_coverage=...)`（省略 `provider_id` 时按 `schema_version` 自动识别）。
+- **厂商无关规则由基类统一收敛，provider 无法绕过**：§6.3 outcome 推导、覆盖**不得提升**（`_finalize_coverage`）、finding 必填与证据非空（`_finalize_findings`）、溯源写入 `extensions`、结构校验。子类只能提供映射钩子 `_map_findings` / `_map_coverage`，并声明原生词表（`source_report_schemas` / `source_outcomes` / `coverage_complete_token` / `native_outcome_key` / `native_status_key` / `severity_map` / `provenance_key`）。
+- **HCZJ 降为一个 provider**：`hczj_adapter.py` 现在只声明 `HczjReviewProvider`（`provider_id="hczj"`）并注册；`build_profile_report(...)` 与 `HCZJ_OUTCOMES` 保留为兼容入口。
+- **严重度映射不再归属单一厂商**（原 `NEXUS_SEVERITY_MAP` / `nexus_severity_to_profile` 已移除）：改为 `DEFAULT_PRIORITY_SEVERITY_MAP` + `priority_to_severity(priority, mapping=...)`，未知词元仍拒绝、不降级；provider 可用 `severity_map` 覆盖为自家词表（如 S1–S4）。
+- **呈现规则独立**为 `agent_net/code_review/presentation.py`（`render_review_summary` / `validate_publish_body` / `presentation_requirements`），与 provider 无关；`hczj_adapter` 仅做兼容性再导出。
+- **可插拔性证明**：新增 `tests/test_code_review_provider_adapter.py`（7 tests）用一个词表与字段形状**完全不同**的评审方（ACME：`acme.review.v2`、outcome `defects|clean|unknown`、severity `S1–S4`、finding 字段 `id/level/summary/repro/consequence/span/proof`、覆盖 `verdict/scanned/skipped/inherited`）走完整管线，验证：注册与自动识别、未知 provider/schema → `unsupported_contract`（不静默降级）、厂商无关不变式不可绕过、HCZJ 便捷入口与通用入口语义一致、呈现与发布前校验与 provider 无关。
+- 重构期自查修掉两个**泛化漏洞**（都是真实缺陷，非测试问题）：① 子类覆写 `normalize_coverage` 即可绕过"覆盖不得提升"——改为基类最终收敛；② `provenance()` 假设原生键名为 `status`，导致 ACME 的 `source_coverage_status` 为 None——改为 provider 声明 `native_status_key`/`native_outcome_key`。
+- 文档：`docs/api-reference.md` 增加"评审方可插拔"一节（含最小接入示例）；`tests/CLAUDE.md` 登记新测试文件与实测用例数。
+- 规范包升级 `1.0-draft.2+semantic.9`（q3 执行记录随模块布局重新生成；自检通过）。
+- 全量门禁：**626 passed / 9 skipped / 13 failed / 19 errors**，失败集合与基线逐条一致 → `[PASS]` exit 0。
+
+### RC2 残留建议 R2-1～R2-4 收口（2026-09-20）
+
+- **R2-1**（413 未入错误表）：契约 §7 补 413 行（`data_policy_denied` + `scope=read_limit`），并声明本表覆盖契约使用的全部状态码；`specs/profiles/code-review/v1/tools/validate.py` 新增 `check_contract_error_table()`——契约 §7 的每个 code 必须在本包 `error.schema.json` 枚举内，且枚举中的每个码都必须出现在表中。
+- **R2-2**（同码多成因）：契约 §7 固定 `data_policy_denied` 三类 `scope`——`read_limit`(413 超限) / `retention`(422 保留期) / `policy`(403 披露策略)，并明文禁止"仅凭 code 判断原因"；实现侧 `agent_net/code_review/errors.py` 落同一分类学，新增测试锁定三种 (scope, HTTP) 组合。
+- **R2-3**（残留修订标签）：契约 §8 改为"本契约定版后…"，不再自指修订号（从根上消除该类过时）；`l0-agentnexus-http.md` §9 去掉 RC1 硬编码并补现状；§7 的 T1–T7 表新增"状态"列，T7 标注"设计范围已确认、部署验证仍待做"。
+- **R2-4**（机器校验边界）：契约 §8 新增"机器校验边界"段——`validate.py` 强制范围仅限 `fixtures/valid/` 与 `fixtures/invalid/`；`fixtures/binding/` 的 Markdown 不经 schema 校验、仅由 `manifest.json` 固定摘要；须登记 harness 命令与实际结果，未登记前不得标为已通过。
+- **新门禁经负例验证**（证明不为空转）：注入未登记码 `payload_too_large`、删除 `scope=read_limit` 标注、删去一条已登记码的表行 —— 三种情形自检均正确报错。
+- 规范包升级 `1.0-draft.2+semantic.8`（自检：契约 24 码与枚举一致、正例 9/9、反例 14/14、manifest 51/51）。记录见契约 §12 与 Profile §14.14。
+- **结论不变**：R2 收口属文本级修订，**BINDING-GATE-1 维持关闭**，binding 仍不得定版；剩余条件为 T1–T6 关闭、兼容清单三方冻结、CP-01～26 运行记录。
+- 全量门禁：**619 passed / 9 skipped / 13 failed / 19 errors**，失败集合与基线逐条一致 → `[PASS]` exit 0。
+
+### q3 行为用例 harness（2026-09-20）
+
+- 新增 `agent_net/code_review/hczj_adapter.py`：把 HCZJ `hczj.review_report.v1` + `hczj.review_coverage.v1` 转换为 Profile 报告，并实现呈现与发布前校验。
+  - outcome 按 §6.3 重新推导（非空 findings ⇒ `issues_found`；空 findings + partial ⇒ `inconclusive`），**不沿用** HCZJ 原 outcome，也不得因原 outcome=inconclusive 丢弃 findings；
+  - coverage 在任一缺口信号（遗漏文件/缺口原因/继承缺口/原状态非 complete）存在时**上限为 partial**，绝不提升为 complete；
+  - 原始 outcome、来源 schema、来源 report_id 与推导结果一并保留在 `extensions["hczj.provenance"]` 作为溯源；
+  - severity 按 RC2 §6 映射（P0→critical…），未知值拒绝而非降级。
+- 新增 `render_review_summary()` 与 `validate_publish_body()`：摘要必须**同时**呈现 outcome 与 coverage；覆盖非 complete 时须带缺口警示、遗漏范围与继承缺口，且禁止"评审充分/全部评审完成/无问题/全部评审"表述；发布前校验失败返回 **422 `invalid_output`** 并一次列出全部问题。
+- 新增 `tests/test_code_review_q3_harness.py`（12 passed + 1 skip）：覆盖 q3 四组用例（正常转换、重复交付、错误转换与呈现、空发现不等于无问题），并与冻结 fixture `valid/09` 交叉校验关键不变式。发布重放半场属 HCZJ 边界（RC2 §5），以 **skip 显式标记，不视为通过**。
+- 新增 `scripts/run_q3_harness.py`：执行用例并生成执行记录 `specs/profiles/code-review/v1/fixtures/binding/q3-execution-record-2026-09-20.md`（真实摘要、实际渲染文本、重放前后计数、A–D 拒绝阶段、未验证项）。规范包升级 `1.0-draft.2+semantic.7`（51 文件，自检通过）。
+- 实现期自查修掉两处自身缺陷：渲染的缺口警示文案含"无问题"（会被自身校验器判违规），以及 `run_q3_harness.py` 攒了输出却忘记打印（退出码 0 但记录 0 字节）。
+- 全量门禁：**618 passed / 9 skipped / 13 failed / 19 errors**，失败集合与基线逐条一致 → `[PASS]` exit 0。
+
+### 全量回归门禁固化为硬规则（2026-09-20）
+
+- 新增 `scripts/check_full_suite.py`：解析全量 pytest 输出并与 `tests/full_suite_baseline.json` 比对。退出码语义：**0=通过 / 1=回归（出现未登记失败或通过数下降）/ 2=基线需维护（登记项不再失败或存在未分类项）**。纯分析实现，不依赖子进程，受限环境与 CI 均可运行。
+- 新增 `tests/full_suite_baseline.json`：逐条登记 25 个**可归因于运行环境**的失败（受限沙箱禁止创建子进程、工作区外临时目录不可访问），每条写明原因；未分类失败拒绝写入基线（`--allow-unclassified` 会被标记待人工确认）。
+- 规则落位：`CLAUDE.md` 的 Workflow Rules、`tests/CLAUDE.md`（含受限沙箱已知失败清单与探针式 `tmp_path` 兜底说明）、`docs/agent-workflow.md` 代码评审检查清单第 7 项（评审必须附门禁退出码 0，出现未登记失败不得批准）。
+- 触发原因：本次实现中新增模块的 `store_message` 与既有 `messaging.store_message` 在星号导入链上同名互相覆盖，**新测试全绿而 22 个既有测试失败**——只跑局部测试无法发现此类跨模块覆盖型回归。
+- 已实测三种判定：与基线一致 → `0`；注入未登记失败 → `1`；登记项不再失败 → `2`。未修改生产代码行为。
+
+### AgentNexus 侧 L0 实现（第一批，2026-09-20）
+
+- 新增 `agent_net/code_review/`（纯逻辑层）：`digest.py` 落地 §15.3 字节口径（严格 UTF-8、拒绝 BOM/孤立 surrogate、LF 行区间不做换行归一）；`errors.py` 落地 `code_review.error.v1`（RC2 §7 的 24 个码、`retryable=false ⇒ retry_after_seconds=null`、429 必带退避、读取上限 413）；`validation.py` 落地信封解析（重复键/NaN/Infinity/关键扩展/消息登记表）与 ReviewReport 的 5 条不变式 + **§15.2 状态翻译责任层**；`authz.py` 收敛 §15.7 的角色判定与 kind→角色映射（唯一实现点）。
+- **§15.2 落到源头**：`local_cli` 输出适配器新增 `_apply_profile_translation()`，在 runner 通用重试分支**之前**翻译 Profile 报告——合法的 `changes_requested` 归一为 `completed`（不再被当作重跑信号，CP-09），普通文本包装的 `completed` 直接失败（CP-17）；仅对 `artifact_type=CodeReviewReport` 生效，其他 stage 行为不变。
+- **§15.6 交付入口（单事务 CAS）**：`commit_profile_delivery()` 在一个 `BEGIN IMMEDIATE` 事务内校验状态/租约/deadline/输入清单/摘要幂等，随后写入 artifact（含 §15.3 的 `content_hash`/`byte_length`/media_type/access_scope 元数据）、交付记录与 `received` 回执，并更新执行行；产物字节先入 Vault，**存储失败必须失败**（不再有 500 字符截断 fallback）。
+- `/coordination/executions/{id}/result` 对 **Profile 绑定执行**走专用路径：Daemon 二次校验（不信任客户端已校验）+ 上述 CAS，只签发 `received`（`validated`/`accepted`/`published` 分别属注册验证服务、Coordinator、Publisher，本入口不越权）；未绑定 Profile 的执行保持旧语义不变。
+- §15.7/CP-24：旧通用 `POST /coordination/receipts` 对 Profile Session 一律 403 并要求改走 A/messages；新入口按回执 kind → 角色硬校验；未登记任何角色时降级为部署约定并如实标注 `declared_only`。
+- §15.5 强制能力 fail-closed（端到端）：接单时按 `enforcement_requirements` 与本部署注册表比对，未标记 `enforced` 的必需约束一律返回 `422 enforcement_unavailable`（附 `unsatisfied` 列表）且不启动模型调用；拒绝事实先落库（消息 `state=rejected`），**重放同样复核**以保证同一消息结果一致（避免调用方从 202 误判接单成功）；能力补齐后重放可恢复为 `stored`。
+- 文档：`docs/api-reference.md` 增加 Code Review Profile v1 的 L0 端点、角色矩阵、错误信封与读取上限说明，并标注 Profile 绑定执行的专用交付语义。
+- 测试：`tests/test_code_review_profile.py`（39）、`tests/test_code_review_store.py`（17）、`tests/test_code_review_api.py`（12）、`tests/test_code_review_delivery.py`（10），共 **78 项**，并直接引用冻结规范包的 fixture/反例/摘要向量交叉校验。
+- **修复一处自身回归**：`code_review_store.store_message` 与既有 `messaging.store_message` 在 `agent_net.storage` 星号导入链上同名互相覆盖（22 个既有测试 `TypeError`）。已改为显式导入 + `store_profile_message`。
+- **测试环境修复**：`tests/conftest.py` 增加探针式 `tmp_path` 兜底（受限沙箱下 `os.mkdir(mode=0o700)` 建出的目录不可扫描，pytest tmpdir 会让所有用 `tmp_path` 的测试报 `WinError 5`）；仅当探针失败时覆盖，正常 CI 行为不变。
+- 尚未完成：`fixtures/binding/` 行为用例的可执行 harness；CP-01～26 的可复现运行记录（涉及真实 worker 子进程的用例需非沙箱环境）。未声明实现符合性或 wire conformance。
+
+### L0 RC2 复核与规范包 semantic.6（2026-09-20）
+
+- 完成 `bindings/l0-service-contract.md`（RC2）复核：**修订核实通过；RC1 的 Q1–Q3 与 S1–S7 全部关闭，契约文本层面已无阻塞项**，但 **BINDING-GATE-1 维持关闭**（T1–T6 未关闭、§15.2–15.7 未实现、兼容清单未三方冻结、CP-01～26 未执行）。记录写入契约 §11、Profile §14.13。
+- 独立复核（不依赖自述）：Q1 三级关联键与 epoch 围栏、Q2 §3.1 七标签到 Profile 可观察事实的映射（`expired` 正确分流为 deadline / 仅租约失效 / 目标已更新）、Q3 §6 联合呈现 + `fixtures/binding/q3-outcome-coverage.md` 四组行为用例，均已核实；RC2 §7 错误表仍 **24 码零偏差**。
+- 复核者复算外部证据：`source-evidence.json` 12 个文件摘要在 RC2 **复算 12/12 相符**；其 `repository_states` 的 `unavailable` 记录经实测确认**准确**（`Nexus_Agent` 无 `.git`，`Hczj_Assistant_Agent\.git` 为空目录、无 HEAD）——未以推测值填充。
+- RC2 新增建议（不阻塞）：R2-1 §10.1 的 HTTP 413 未进入 §7 错误表；R2-2 `data_policy_denied` 同时承载超限与保留期拒绝，建议以 `scope` 区分；R2-3 残留 "RC1" 标签与 T7 行未标注已确认；R2-4 `fixtures/binding/` 的机器校验边界宜在 §8 点明。
+- 规范包升级 `1.0-draft.2+semantic.6`（manifest 50 个文件）：`fixtures/index.json` 与 README 标明机器校验范围仅限 `valid/`+`invalid/`（`fixtures/binding/` 为行为规范、不经 schema 校验）；cp-matrix 的 CP-08/CP-09 增加 `#anchor` 指向 q3 行为用例；`compatibility.json` 登记 RC2 端点为未实现项、binding 状态改为 `rc2_reviewed_not_frozen`；`tools/validate.py` 支持 `#anchor` 引用。自检 正例 9/9、反例 14/14、manifest 50/50。
+- 未修改生产代码；未声明 wire conformance 或实现符合性。
+
+### L0 RC2 评审修订（2026-09-20）
+
+- 修订 Q1–Q3：补齐 Coordinator/Run/Attempt/epoch 关联，明确 Attempt 内部标签映射，补 outcome/coverage 联合呈现与行为验收用例。
+- 处理 S1–S7：统一候选词表、加严说明、重试/幂等规则、证据 Git 状态、fixture 宿主及读取上限；保留评审新增 valid/09。
+- 包升级 semantic.5，双方引用摘要同步；新增接口及行为验收未实现，修订待复核。
+
+### L0 RC1 契约评审与规范包修订（2026-09-20）
+
+- 完成 `bindings/l0-service-contract.md`（RC1）评审：**有条件通过，binding 仍不得定版**；评审记录写入该契约 §9，Profile 同步 §14.12。
+- 独立复核（不依赖自述）：契约 §7 的 **24 个错误码与冻结 `error.schema.json` 枚举逐一相符**（无未登记、无遗漏）；`source-evidence.json` 的 **12 个外部文件摘要在本机 Nexus_Agent / Hczj_Assistant_Agent 上重算 12/12 相符**；RC1 的 outcome/coverage 适配规则与冻结 `review_report.schema.json` 的 5 条不变式一致；摘要口径与 §15.3/CP-23 一致。
+- 阻塞项（定版前必须补）：**Q1** RC1 §1 遗漏 `external_coordinator_id`/`assignment_epoch`（与 Profile §15.6 不一致）；**Q2** AttemptView 引入 Profile 未定义的新状态机，需声明为内部细节并给映射或走设计变更；**Q3** "有发现且覆盖不足"缺契约用例与呈现规则。
+- 建议项 7 条（S1–S7）：`access_scope` 候选词表表述统一、binding 加严需标注、`retry_after_seconds` 不变式引用、幂等 key 与投影措辞统一、`source-evidence.json` 补 commit/dirty、fixture 宿主统一、`/raw` 与 `/source-bytes` 补大小上限。
+- 规范包升级 `1.0-draft.2+semantic.4`（manifest 49 个文件）：收紧 `publication_request.outbox_state`（客户端只能缺省或 null），新增正例 `valid/09`（findings + inherited_gap ⇒ issues_found + coverage=partial）与反例 `invalid/publication_request_client_set_outbox_state.json`，`compatibility.json` 记录 `access_scope` 候选但 `operative_allowlist=false`；自检 正例 9/9、反例 14/14、manifest 49/49。
+- 门禁：BINDING-GATE-1（§14.10 门禁 1）维持关闭；不得启动"符合本 Profile"的集成运行，不得声明 wire conformance。未修改生产代码。
+
+### L0 服务接口契约 RC1（2026-09-20）
+
+- 补齐 Nexus 原始证据、HCZJ 状态与协作、AgentNexus 产物、Publisher 的服务端点和认证/幂等/ACK/CAS/错误/超时契约；同步双方实施登记。
+- 包升级 semantic.3；新增接口待评审、未实现，兼容允许清单保持空。
+
+### L0 binding 跨项目确认（2026-09-20）
+
+- 在 Nexus/HCZJ 分别登记确认记录，中央汇总 T1–T7 源码证据和剩余条件；T7 设计范围确认，T1–T6 保留开放项，binding 未定版。
+- 核实 Nexus 持久化字节与 HTTP JSON 差异、HCZJ outcome/coverage 差异及缺少外部协作/发布接口；运行兼容允许清单继续为空。
+- Nexus 定向测试 17 项、HCZJ 定向测试 132 项通过；不代表三方 wire 或 CP 验收。规范包升级为 `1.0-draft.2+semantic.2`，未修改生产代码。
+
+### Code Review Profile v1 规范包与 L0 binding 草案（2026-09-18）
+
+- 新增 `specs/profiles/code-review/v1/` 语义规范包（包版本 `1.0-draft.2+semantic.1`）：15 个 JSON Schema、8 个正例、13 个结构反例（各自绑定一条 Profile MUST）、CP-01～26 矩阵、`compatibility.json`（默认空列表拒绝全部）、`manifest.json`（44 个文件摘要 + Git revision）、README。
+- 摘要口径按 §15.3 用真实 SHA256 冻结为 `fixtures/digest_vectors.json`（CP-23/CP-26），并给出"重序列化会改变摘要"的反例向量；明确旧 `result_hash` 不兼容且不得补造 `report_digest`。
+- 新增自检工具 `tools/validate.py` 与 `tools/make_manifest.py`；当前自检结果：正例 8/8 通过、反例 13/13 被拒、无孤儿 fixture、摘要向量一致、manifest 44/44 一致。
+- 新增 L0 binding 草案 `bindings/l0-agentnexus-http.md`：把 Profile 消息映射到现有 26 条 `/coordination/*` 路由，逐条列出与 §15.2–15.7 的差距（缺 `delivery_id`/`assignment_epoch`/`output_schema` 校验/结构化错误信封、自动签发 `approved` receipt、无角色级写授权），并列出外部 TBD（Nexus 事件与证据查询、HCZJ Run/Attempt/activation、发布适配器归属、`access_scope` 词表）。
+- 补正 R3 收尾：`docs/design/design-code-review-v1.md` 第 5、14 行的"待评审/ADR-015 提议"措辞已改为"已由 ADR-015 采纳"。
+- 边界：**未声明 wire conformance，未声明实现符合性**；AgentNexus 侧改造（§15.2–15.7）与 wire fixture 尚未实现，本轮未修改生产代码。
+
+### Profile 非阻塞建议收口（2026-09-18）
+
+- 落实 R1～R3：澄清摘要解析顺序，补充 coordinator_unavailable 错误语义，显式标记上位设计旧架构与数据模型已被取代。
+- 保留设计通过结论及实施门禁，未修改生产代码。
+
+### Code Review Collaboration Profile v1 设计评审通过（2026-09-18）
+
+- `docs/design/code-review-collaboration-profile-v1.md`（1.0-draft.2）完成第二轮复核：**设计评审通过（批准）**，复核确认写入文档 §14.10。
+- 结论：P1–P7 全部关闭、S1–S14 全部采纳；[ADR-015：代码评审双层状态权威](docs/adr/015-code-review-state-authority.md) 批准为"已采纳"；三方契约登记同步更新。
+- 独立复核要点：§15.2 状态翻译责任层 + 禁用 `coding.v1`/`on_reject` + 未知 status 硬拒绝；§15.3 摘要口径（解码后 `artifact_body` 的严格 UTF-8 字节）**与既有 `POST /coordination/artifacts` 的 `content_hash` 计算一致**（`agent_net/node/routers/coordination_records.py:159`），可无冲突实施；§15.4 词表命名空间与双向映射；§15.5 强制点与 `enforcement_unavailable` fail-closed；§15.1 语义/绑定边界与 L0 binding 评审门禁；§15.6 external ID 与 epoch 围栏；§15.7 角色级写入授权。`specs/profiles/` 尚未生成，与文档"计划路径"声明一致。
+- 残余建议复核：R1（§3 字节口径与处理顺序）已落实、R2（`coordinator_unavailable` 入 `code_review.error.v1`）已落实、R3 部分落实——`design-code-review-v1.md` 两个旧模型章节已标为"历史方案，已被取代"，但该文件第 5、14 行仍有 2 处"待评审/提议"措辞与 ADR-015 已采纳冲突，待补正（不影响设计批准结论）。
+- 实施门禁：L0 binding 单独评审 + `specs/profiles/code-review/v1/` schema/兼容清单/fixtures 冻结 + CP-01～26 验收前，不得声明实现符合性或 wire conformance。本轮仅文档评审，未修改生产代码。
+
+### Profile 评审修订（2026-09-18）
+
+- 升级到 1.0-draft.2，逐项回应 P1–P7/S1–S14，保留原评审并标注待复核。
+- 补齐状态/摘要/收据/外部 ID 映射、授权强制点、语义与 wire binding 边界，以及 CP-19～26。
+- 新增 ADR-015 提议及三方契约登记，同步上位需求和 quickstart；未修改生产代码。
+
+### Code Review Collaboration Profile v1 首轮设计评审（2026-09-18）
+
+- `docs/design/code-review-collaboration-profile-v1.md`（1.0-draft.1）完成首轮设计评审：**有条件通过**，评审记录写入文档 §14。
+- 结论：7 个阻塞项（P1–P7）、14 个建议项（S1–S14）、4 条信息性备注（I1–I4）；阻塞项决议写入文档前不进入开发，也不得声明 wire conformance。
+- 阻塞项集中在"规范语义与现有实现冲突或无强制落点"：P1 review 的 `changes_requested` 会被 `runner_loop` 重跑并按 `on_reject` 退回 implement（与 §6.4 / CP-09 冲突）；P2 `sha256-bytes-v1` 无落点且既有 `result_hash` 为重新序列化摘要；P3 Receipt/ArtifactRef 词表与既有 `ReviewReceipt`/artifact 字段撞车；P4 provider 与数据策略无强制点（CP-16 不可验证）；P5 缺 transport binding 且发起方未定；P6 `run_id` 命名空间与 `assignment_epoch` 围栏缺失（CP-05/CP-14 无机制）；P7 `POST /coordination/receipts` 无角色校验，Reviewer 可自签 `approved`。
+- 同步 `docs/wip.md`；本轮仅文档评审，未修改代码、未实现 Profile。
+
+### Code Review Collaboration Profile v1 草案（2026-09-18）
+
+- 新增 1.0-draft.1 场景契约：任务接受、不可变输入、四元 Run 身份、Attempt/epoch、分层 Receipt、证据覆盖与发布结果未知处理。
+- 对齐 Nexus/HCZJ RUN-ID-2026-09-14，提议 HCZJ 保持评审状态权威、AgentNexus 适配接入；标注早期设计的职责差异待评审。
+- 补充 CP-01～18 一致性验收矩阵，同步文档入口。纯设计文档变更，未声明实现符合性。
+
+### Code Review V1 规划（2026-09-07）
+
+- 新增跨项目自动代码评审需求与设计草案，明确 Nexus_Agent、HCZJ 和 AgentNexus 职责。
+- 定义版本绑定、过期任务、证据契约、GitLab 发布恢复及 CR-01～CR-08 验收要求；同步需求、设计索引和 WIP。本轮未实现 AgentNexus 生产代码。
 
 ### ACF RFC-003 Capability Negotiation, Authority Grants, and Delegation（2026-07-29）
 

@@ -11,6 +11,7 @@ import json
 import os
 import re
 import uuid
+from dataclasses import replace
 
 from agent_net.node.execution_backends.base import (
     ExecutionHandle,
@@ -31,6 +32,54 @@ _DESTRUCTIVE_PATTERNS = [
 # Max bytes to scan for JSON extraction
 _JSON_SCAN_LIMIT = 500_000
 _CONTRACT = "agentnexus_json_v1"
+
+#: Profile 专用产物类型：命中它才做 §15.2 翻译，其他场景行为不变
+_CODE_REVIEW_ARTIFACT_TYPE = "CodeReviewReport"
+
+
+def _apply_profile_translation(result: ExecutionResult) -> ExecutionResult:
+    """§15.2 状态翻译责任层：必须在 runner 的通用重试分支之前生效。
+
+    仅对 ``artifact_type=CodeReviewReport``（Profile 专用）生效，因此不影响
+    其他 stage/worker 的既有语义：
+
+    - 合法域报告：``completed``/``changes_requested`` 一律归一为 ``completed``，
+      附带 outcome 由报告本体承载 —— **绝不**把"发现问题"当成重跑信号（CP-09）；
+    - 未知 status、缺少报告体、或普通文本包装的 completed：硬拒绝为 ``failed``
+      并在 summary 中给出错误码，不进入重试分支（CP-17）。
+    """
+    if result.artifact_type != _CODE_REVIEW_ARTIFACT_TYPE:
+        return result
+    if result.status not in ("completed", "changes_requested"):
+        return result  # failed / blocked 原样透传，由上层按既有语义处理
+
+    from agent_net.code_review import ProfileError, translate_agentnexus_result
+
+    report = None
+    if result.artifact_body:
+        try:
+            parsed = json.loads(result.artifact_body)
+            report = parsed if isinstance(parsed, dict) else None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            report = None
+
+    try:
+        translation = translate_agentnexus_result(
+            result.status,
+            artifact_type=result.artifact_type,
+            artifact_body=result.artifact_body,
+            report=report,
+            scope="adapter_translation",
+        )
+    except ProfileError as exc:
+        return replace(
+            result,
+            status="failed",
+            summary=f"{exc.code}: {exc.safe_message}",
+            human_decision_request=None,
+        )
+
+    return replace(result, status=translation.profile_run_state)
 
 
 def _short_summary(text: str, limit: int = 200) -> str:
@@ -400,7 +449,7 @@ class LocalCLIBackend:
                     f"Worker {current.worker_did} output missing {_CONTRACT} "
                     f"contract (got: {contract or 'none'}). This is required for L0-Ready."
                 )
-            return ExecutionResult(
+            return _apply_profile_translation(ExecutionResult(
                 execution_id=eid,
                 status=parsed.get("status", "completed"),
                 artifact_type=parsed.get("artifact_type", ""),
@@ -409,7 +458,7 @@ class LocalCLIBackend:
                 evidence_refs=parsed.get("evidence_refs", []),
                 human_decision_request=parsed.get("human_decision_request"),
                 raw_output_ref=stdout,
-            )
+            ))
 
         # Parse failed — retry once: re-execute the same command to get fresh output
         if self._retry_count.get(eid, 0) == 0:
@@ -455,7 +504,7 @@ class LocalCLIBackend:
                                 f"Worker {current.worker_did} output missing {_CONTRACT} "
                                 f"contract (got: {contract or 'none'}). This is required for L0-Ready."
                             )
-                        return ExecutionResult(
+                        return _apply_profile_translation(ExecutionResult(
                             execution_id=eid,
                             status=parsed.get("status", "completed"),
                             artifact_type=parsed.get("artifact_type", ""),
@@ -464,7 +513,7 @@ class LocalCLIBackend:
                             evidence_refs=parsed.get("evidence_refs", []),
                             human_decision_request=parsed.get("human_decision_request"),
                             raw_output_ref=retry_stdout_str,
-                        )
+                        ))
             except Exception as _retry_err:
                 import logging
                 logging.getLogger("agentnexus").warning(f"JSON retry failed: {_retry_err}")

@@ -1,0 +1,61 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "rule": "Profile §15.3：artifact_body 必须是字符串；摘要输入 B = 解析外层 JSON 后得到的 artifact_body 字符串的严格 UTF-8 编码（无 BOM、不加尾换行、禁止孤立 surrogate）；report_digest = SHA256(B)；byte_length = len(B)。外层 JSON 的转义方式与空白不参与摘要；内层报告原有空白、顺序、换行均参与；禁止解析内层 JSON 后再序列化来计算原报告摘要。",
+  "canonical_artifact_body": "valid/05_review_report_partial_inconclusive.artifact_body.json",
+  "vectors": [
+    {
+      "id": "CP-23-a",
+      "kind": "canonical",
+      "artifact_body_file": "valid/05_review_report_partial_inconclusive.artifact_body.json",
+      "note": "文件字节即 artifact_body（该文件本身是 US-ASCII 安全 JSON，UTF-8 编码后与文件字节一致）",
+      "expected": {
+        "digest": "sha256:6395a6edac10db12b303cccaa6cbedcb4a99e0f3721195de0312cf0d15766316",
+        "byte_length": 2704
+      }
+    },
+    {
+      "id": "CP-23-b",
+      "kind": "same_body_different_outer_encoding",
+      "note": "同一 artifact_body 字符串在外层 JSON 中用不同转义/空白承载（例如把 / 写成 \\/、加入多余空格或换行）；B 不变，摘要必须与 CP-23-a 相同。实现必须先解析外层 JSON 取得字符串，再对其编码求摘要。",
+      "expected_same_as": "CP-23-a"
+    },
+    {
+      "id": "CP-23-c",
+      "kind": "inner_bytes_changed",
+      "transform_id": "append_newline",
+      "transform": "在 artifact_body 末尾追加一个换行符",
+      "expected": {
+        "digest": "sha256:f0628d61de895d745ea21a6ef175e38d348736c6f3120b6b3c1c080a12e13408",
+        "byte_length": 2705
+      },
+      "note": "内层字节改变必须产生新摘要与新 artifact；不得覆盖原字节（§6.1）"
+    },
+    {
+      "id": "CP-23-d",
+      "kind": "forbidden_reserialization",
+      "transform_id": "compact_reserialize",
+      "transform": "解析内层报告后以紧凑分隔符重新序列化（ensure_ascii=false, separators=(',:')）",
+      "expected": {
+        "digest": "sha256:7bacb98512eae5c252eade2e260427a8843d51caf9826e9c4e5ac0247e692e2e",
+        "byte_length": 2339
+      },
+      "note": "反例向量：重序列化会得到不同摘要，证明「不得重新序列化计算原摘要」。接收方必须拒绝以 result_hash 或重序列化摘要冒充 report_digest（§15.3）。"
+    },
+    {
+      "id": "CP-23-e",
+      "kind": "forbidden_reserialization",
+      "transform_id": "indent2_reserialize",
+      "transform": "解析内层报告后以 indent=2 重新序列化",
+      "expected": {
+        "digest": "sha256:6014fa26b0ca9601f2445e7ed195a9fd1d6e9ffb92bd66b12a2a49ac4ba4bf84",
+        "byte_length": 2810
+      },
+      "note": "同 CP-23-d；空白参与内层字节，因此美化输出同样改变摘要"
+    }
+  ],
+  "legacy_incompatible": {
+    "field": "result_hash",
+    "implementation": "agent_net/node/routers/coordination_executions.py:171-178",
+    "reason": "该值是 sha256(json.dumps({execution_id,status,artifact_type,artifact_body,summary}, sort_keys=True))，属于重序列化摘要且混入传输身份 execution_id；保留为旧内部幂等键，不得用于 Profile delivery 冲突判断，也不得用来补造 report_digest（§15.3）"
+  }
+}

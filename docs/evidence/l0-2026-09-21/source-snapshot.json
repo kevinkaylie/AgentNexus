@@ -1,0 +1,204 @@
+{
+  "captured_at": "2026-09-21T02:12:26.832672+00:00",
+  "evidence_kind": "isolated_local_implementation",
+  "production": false,
+  "repositories": [
+    {
+      "repository": "Nexus_Agent",
+      "git_head": null,
+      "worktree_dirty": null,
+      "git_available": false
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "git_head": null,
+      "worktree_dirty": null,
+      "git_available": false
+    }
+  ],
+  "source_files": [
+    {
+      "repository": "Nexus_Agent",
+      "path": "api/server.py",
+      "sha256": "714d6ddc026f81ee8ea4bcfe9fbb958c0436ad033b37b501935fd067b0fad043",
+      "bytes": 3265
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "api/routes/v3_review_binding.py",
+      "sha256": "dfb9d2fedc80c82708d2b98c910075cdd0701fc6219181a97841c2e894800d6b",
+      "bytes": 9898
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "tests/test_review_binding.py",
+      "sha256": "9ec6e7dbed1064c91100c02d62f8b139fb93751bbaaa6b34be9e0505c8c3f958",
+      "bytes": 4913
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "tools/capture_l0_samples.py",
+      "sha256": "ab51eb0c571e035021b722502ce41b9320d8d644ec283df43415d8ab4d382853",
+      "bytes": 4217
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "api/routes/v3_review_jobs.py",
+      "sha256": "f50a391d40b0d1a2ea40da8953ad845b5ad04991f5267685c93dc8fd08bd5f4f",
+      "bytes": 10174
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "impact/review.py",
+      "sha256": "aa9852f8fff273617238811b3e86680b2e0d9f9ac09cdc37883c958682243f28",
+      "bytes": 32124
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "impact/review_queries.py",
+      "sha256": "2fecc51361b8f838728a0c54530154a55f2a8b2630870300dbb64fa29ad8c8d9",
+      "bytes": 10570
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "impact/review_artifacts.py",
+      "sha256": "ca74d1028ad82c864dc987b1fb4ec321c4889cbf673062dde127ff1b450e6b77",
+      "bytes": 7360
+    },
+    {
+      "repository": "Nexus_Agent",
+      "path": "docs/l0-binding-implementation.md",
+      "sha256": "70fc609e91d286ebf0fb1320b7fb2ceafcc39a6160781f28bf563c6f644219db",
+      "bytes": 2633
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/service.py",
+      "sha256": "2c82698617aef28dbae9dcc9a69145e73287e742ad6accb6453f1da9a60cdc3e",
+      "bytes": 19460
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/service_protocol.py",
+      "sha256": "38c3f83acf9eee3fe6d97c26e88b4deef13d6cbe00a910231c1c9f7376820d1d",
+      "bytes": 5800
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/service_http.py",
+      "sha256": "bafb2f52b3c2c90ad688064cb24e01131eae540979e6f5e42cb936977e2673e3",
+      "bytes": 4899
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/service_messages.py",
+      "sha256": "9b20f752bf1c3dd744e0a7658aaeca2600d28c4997693b3f20a77ede614426e1",
+      "bytes": 14282
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/service_publications.py",
+      "sha256": "23c1e53e77a090cd1c09eb101688e2b7ebf76828ff8898835eb5c5819aeac829",
+      "bytes": 13572
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/service_clients.py",
+      "sha256": "5c8b481a9db49a7cb09b22012ee17daf33c738439f2758a739b9e02c96bc8d6b",
+      "bytes": 8358
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/service_runtime.py",
+      "sha256": "eee9599b82ab67c98fa1f2fba07b1678738e987d4254b6a2beac9b427e841362",
+      "bytes": 2538
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "skills/code_review/storage/service_schema.py",
+      "sha256": "dc0f129f3023d6ad492619ff3920614dfc3ae1d12aace33a0fe3be69083a140b",
+      "bytes": 2646
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "tests/unit/test_code_review_service.py",
+      "sha256": "68c448b63c18702dd3a4028c4bb1cc9ad03639a7fe4c82e94b7f2577cb52e668",
+      "bytes": 15235
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "tools/capture_l0_samples.py",
+      "sha256": "a72b3c692a0c0baab5f974d886fed9f4449cb8e56c63c67e31753f8ba00f3253",
+      "bytes": 2996
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "requirements.txt",
+      "sha256": "a6ca49151da4218f84faee7e9a116e9bd13b727fe6fc158e8ae7e53a48737318",
+      "bytes": 757
+    },
+    {
+      "repository": "Hczj_Assistant_Agent",
+      "path": "docs/specs/2026-09-21-l0-service-implementation.md",
+      "sha256": "79a7cf2a1cbc294bdac6d2bb48d0960d4da9f637cdff0156461d7760fd8e88af",
+      "bytes": 5544
+    }
+  ],
+  "profile_manifest_sha256": "69d3748a6cbc58f816ae46fb0ad9a7443ae5a13c6c3a5a999388218ca45f367f",
+  "capture_package_version": "1.0-draft.2+semantic.9",
+  "artifacts": [
+    {
+      "path": "hczj-http-samples.json",
+      "sha256": "51fcb98ac962d1d40447de0b16c1a988a179e8b2ebbf48eea6ba5fc7f138ea4c"
+    },
+    {
+      "path": "hczj-service-results.xml",
+      "sha256": "8799edae86ba6ee1f63f1fb5f5339860124c6c4986bfa765cbfd4f8daf5420a5"
+    },
+    {
+      "path": "hczj-unit-results.xml",
+      "sha256": "bfca859c5dfe2ec0c4424b9a41710df01c1a536f94c303baa29b6e88a80bb96c"
+    },
+    {
+      "path": "nexus-http-samples.json",
+      "sha256": "38a13199512226a0f4a6203ddb55f346bf2824fa9d5803afd133e822097e8597"
+    },
+    {
+      "path": "nexus-test-results.xml",
+      "sha256": "b7e774b6fc32f56d418f679b19ec5f42aa825f0fcb637b0da803b26077334d2c"
+    },
+    {
+      "path": "README.md",
+      "sha256": "89344914547616373d8678e04a2f232f22f8e271f057d51932f7bfc5256173d8"
+    }
+  ],
+  "profile_manifest_rechecks": [
+    {
+      "checked_at": "2026-09-21T16:30:00Z",
+      "checked_against_sha256": "4310e6c58f43b0ebfb31ebbffe356640b2f21cd39d43205c813a036d46267e7a",
+      "command": "python specs/profiles/code-review/v1/tools/validate.py",
+      "scope": "中央规范包结构与摘要自检（schemas/fixtures/契约错误表/收口裁判/manifest），以及 tools/check_evidence.py 的宿主审计",
+      "result": "exit 0（semantic.11；61/61 manifest；契约 24 码；正例 9/9；反例 14/14；T1-T6 全开放）",
+      "reexecuted": false,
+      "note": "仅复核包自身自洽，**未**在 semantic.11/12 下重跑本包的 HTTP/JUnit 样例；那些样例仍是 semantic.9 时期的产物，不得据此推断新版兼容"
+    },
+    {
+      "checked_at": "2026-09-22T07:00:00Z",
+      "checked_against_sha256": "5b4e6aa2b88bfc8ce3c40d15c28bb356cb12ba8a023a8a78e83ecb4dc23de919",
+      "command": "python specs/profiles/code-review/v1/tools/validate.py && python specs/profiles/code-review/v1/tools/check_evidence.py --require-host-audit",
+      "scope": "semantic.12：复审 R2-6 收紧后的拒绝事实校验（真正运行 error.schema.json）与包结构自检",
+      "result": "exit 0（semantic.12）",
+      "reexecuted": false,
+      "note": "同上：未重跑旧样例；采集 pin 仍为 semantic.9 原值，不得改写"
+    },
+    {
+      "checked_at": "2026-09-22T09:30:00Z",
+      "checked_against_sha256": "69584c82bae22bcfa265fb7d6755fc246253dec60cdcf57928b7da346d3f669e",
+      "command": "python specs/profiles/code-review/v1/tools/validate.py && python specs/profiles/code-review/v1/tools/check_evidence.py --require-host-audit",
+      "scope": "semantic.14：§4 新增入站资源授权与上传分配围栏澄清（复审 R3-1/R3-2/R3-3）后的包自检",
+      "result": "exit 0（semantic.14）",
+      "reexecuted": false,
+      "note": "仍为包自身自洽；未重跑本包 HTTP/JUnit 样例（semantic.9 时期产物），采集 pin 不得改写"
+    }
+  ]
+}

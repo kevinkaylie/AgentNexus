@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/assignment.schema.json",
+  "title": "code_review.assignment.v1",
+  "description": "Profile §5.1 + §15.5。信封 type=assignment 时作为 payload。接收 ACK 不等于接受执行；见 assignment_acceptance。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "attempt_id",
+    "assignment_epoch",
+    "coordinator_id",
+    "input_manifest_digest",
+    "output_schema",
+    "policy_ref",
+    "authority_ref",
+    "deadline",
+    "limits",
+    "required_capabilities",
+    "enforcement_requirements"
+  ],
+  "properties": {
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "attempt_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "assignment_epoch": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int",
+      "description": "由唯一 Coordinator 单调分配；AgentNexus 只存镜像，不另分配竞争值（§15.6）"
+    },
+    "coordinator_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "input_manifest_digest": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256" },
+    "output_schema": {
+      "type": "string",
+      "minLength": 1,
+      "description": "期望产物 schema（本 Profile 为 code_review.report.v1）；不匹配时不得接受交付"
+    },
+    "policy_ref": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "authority_ref": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/authority_ref" },
+    "deadline": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "不可计量项必须显式 null，并以本地策略禁止或限制；不得以 0 代表未知（§5.1）",
+      "required": ["max_tool_rounds", "max_input_tokens", "max_output_tokens", "max_wall_clock_sec", "max_cost"],
+      "properties": {
+        "max_tool_rounds": { "type": ["integer", "null"], "minimum": 1 },
+        "max_input_tokens": { "type": ["integer", "null"], "minimum": 1 },
+        "max_output_tokens": { "type": ["integer", "null"], "minimum": 1 },
+        "max_wall_clock_sec": { "type": ["integer", "null"], "minimum": 1 },
+        "max_cost": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["amount", "currency"],
+              "properties": {
+                "amount": { "type": "number", "minimum": 0 },
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "required_capabilities": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "enforcement_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "description": "§15.5：必需项在接单时 fail-closed；Worker 自报不足以满足要求。受信任部署注册声明每项的 enforced/declared_only/unsupported 及执行组件",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["constraint", "level"],
+        "properties": {
+          "constraint": {
+            "type": "string",
+            "enum": [
+              "provider_outbound_data",
+              "token_cost_budget",
+              "tool_rounds_and_time",
+              "source_scope"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": ["enforced", "declared_only", "unsupported"]
+          },
+          "component": {
+            "type": "string",
+            "minLength": 1,
+            "description": "执行组件标识；enforced/declared_only 必须给出"
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "level": { "enum": ["enforced", "declared_only"] } }, "required": ["level"] },
+            "then": { "required": ["component"] }
+          }
+        ]
+      }
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  }
+}

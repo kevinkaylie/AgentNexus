@@ -1,0 +1,87 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "note": "本索引把每个 fixture 绑定到唯一 schema 与预期结果，供 tools/validate.py 机器校验。invalid 条目的 rule 说明该反例违反的 Profile 规则；这些规则大多数是 MUST。注意：fixtures/binding/ 下是**行为验收规范（Markdown）**，不经 schema 校验、也不由 validate.py 执行，仅由 manifest 固定其摘要；机器校验范围仅限本文件登记的 valid/ 与 invalid/ 两项。",
+  "valid": [
+    { "file": "valid/01_review_request.json", "schema": "envelope.schema.json", "profile_sections": ["3", "4.1"] },
+    { "file": "valid/02_assignment.json", "schema": "envelope.schema.json", "profile_sections": ["3", "5.1", "15.5"] },
+    { "file": "valid/03_assignment_acceptance.json", "schema": "envelope.schema.json", "profile_sections": ["5.1", "15.8"] },
+    { "file": "valid/04_delivery.json", "schema": "envelope.schema.json", "profile_sections": ["7", "15.3", "15.6"] },
+    { "file": "valid/05_review_report_partial_inconclusive.artifact_body.json", "schema": "review_report.schema.json", "profile_sections": ["6.3", "11"] },
+    { "file": "valid/06_receipt_accepted.json", "schema": "envelope.schema.json", "profile_sections": ["7", "15.4"] },
+    { "file": "valid/07_error_freshness_unknown.json", "schema": "envelope.schema.json", "profile_sections": ["8", "9"] },
+    { "file": "valid/08_review_report_issues_found.artifact_body.json", "schema": "review_report.schema.json", "profile_sections": ["6.1", "6.3"] },
+    { "file": "valid/09_review_report_issues_found_with_inherited_gap.artifact_body.json", "schema": "review_report.schema.json", "profile_sections": ["6.3", "15.8"], "note": "“有发现且覆盖不足”：findings 非空 ⇒ issues_found，同时 inherited_gaps 非空 ⇒ coverage=partial。用于锁住 HCZJ findings_present + coverage gap 的 Profile 侧目标形态（external-confirmations §语义差异）" }
+  ],
+  "invalid": [
+    {
+      "file": "invalid/publication_request_client_set_outbox_state.json",
+      "schema": "publication_request.schema.json",
+      "rule": "binding RC1 §5：客户端不得设置 outbox_state（只能缺省或 null），状态只经 PublicationView 暴露"
+    },
+    {
+      "file": "invalid/report_findings_without_issues_found.json",
+      "schema": "review_report.schema.json",
+      "rule": "§6.3：findings 非空必须 issues_found；no_findings 要求 findings 为空"
+    },
+    {
+      "file": "invalid/report_no_findings_with_partial_coverage.json",
+      "schema": "review_report.schema.json",
+      "rule": "§6.3：no_findings 要求 coverage 为 complete；无 findings 且 partial 必须 inconclusive"
+    },
+    {
+      "file": "invalid/report_inherited_gap_with_complete_coverage.json",
+      "schema": "review_report.schema.json",
+      "rule": "§15.8：任一 inherited_gap 非空强制 coverage 上限 partial"
+    },
+    {
+      "file": "invalid/report_usage_unknown_with_token_counts.json",
+      "schema": "review_report.schema.json",
+      "rule": "§6.3：usage 必须区分已知与 unknown，unknown 不得给出具体用量或成本"
+    },
+    {
+      "file": "invalid/evidence_relation_with_line_numbers.json",
+      "schema": "evidence_ref.schema.json",
+      "rule": "§6.1：无源码位置的图关系不得伪造行号"
+    },
+    {
+      "file": "invalid/evidence_source_location_missing_content_sha256.json",
+      "schema": "evidence_ref.schema.json",
+      "rule": "§6.1/§15.3：源码位置证据必须绑定行区间原始字节摘要"
+    },
+    {
+      "file": "invalid/artifact_ref_http_locator.json",
+      "schema": "artifact_ref.schema.json",
+      "rule": "§6.1：locator 是允许列表内的不透明引用，不是模型可指定的任意 URL"
+    },
+    {
+      "file": "invalid/assignment_zero_limit_for_unknown.json",
+      "schema": "assignment.schema.json",
+      "rule": "§5.1：不可计量项必须显式 null，不得以 0 代表未知；enforcement level=unsupported 时不得声明 component"
+    },
+    {
+      "file": "invalid/delivery_correction_without_replaces.json",
+      "schema": "delivery.schema.json",
+      "rule": "§15.8：格式纠正必须使用新 delivery_id 并携带 replaces_delivery_id"
+    },
+    {
+      "file": "invalid/acceptance_rejected_without_reason.json",
+      "schema": "assignment_acceptance.schema.json",
+      "rule": "§5.1：拒绝必须明确给出 reason_code，不能悄悄减少范围"
+    },
+    {
+      "file": "invalid/receipt_rejected_without_reason.json",
+      "schema": "receipt.schema.json",
+      "rule": "§7：decision=rejected 必须给出错误码"
+    },
+    {
+      "file": "invalid/error_not_retryable_with_retry_after.json",
+      "schema": "error.schema.json",
+      "rule": "§9：不可重试错误不得携带 retry_after_seconds"
+    },
+    {
+      "file": "invalid/envelope_unregistered_message_type.json",
+      "schema": "envelope.schema.json",
+      "rule": "§3：消息类型为登记表；未登记类型必须拒绝且不得静默降级"
+    }
+  ]
+}

@@ -1,5 +1,41 @@
 # 项目现状速览
 
+> 2026-09-23 [第六轮复审](reviews/2026-09-23-l0-r6-review.md)：空 Coordinator 绑定在写入、旧记录上传和提交事务三个入口均被拒绝；R5-1 **代码缺陷已关闭**，本次修复通过评审。以下第五轮结论为历史状态。T1–T6 全开放、BINDING-GATE-1 继续关闭。
+
+> 2026-09-23 [第五轮复审](reviews/2026-09-23-l0-r5-review.md) R5-1 已修复，**待复审**（[修复记录](reviews/2026-09-22-l0-r3-fix-confirmation.md) §3.2）：空值围栏缺口的三条建议逐条落实——绑定入口拒绝空身份字段（422）、既有空绑定在入口 fail-closed（409）、事务内 Attempt/Coordinator/worker 比较**去掉全部真值守卫**（`(actual or "") != (expected or "")`）。负例证据：改回旧守卫报 `DID NOT RAISE`。**契约未改**（§1 已要求 ID 非空、§4 已要求在事务内校验 Coordinator，本次属实现未落实），规范包维持 `1.0-draft.2+semantic.14`；全量 **762 passed, 57 skipped, 0 failed, 0 errors**，门禁 exit 0。以下第三至五轮复审条目为历史结论，R4-2 已关闭。**未修**：H/messages 错误映射对齐属外部仓库（HCZJ 侧）；原 S1 仍开放。T1–T6 全开放，BINDING-GATE-1 关闭，未声明 wire conformance。
+
+> 2026-09-23 [第五轮复审](reviews/2026-09-23-l0-r5-review.md)：R4-2 已关闭，R4-1 的正常非空改绑已修复；但空 Coordinator 绑定可写库，事务复检跳过空预期值，独立复现改绑后旧请求错误返回 201 并登记产物（R5-1/P2）。**仍需修改后复审**。以下第四轮状态为历史结论；T1–T6 全开放，BINDING-GATE-1 关闭。
+
+> 2026-09-23 [第四轮复审](reviews/2026-09-23-l0-r4-review.md)：**需修改后复审**。R3-1/R3-3/R3-4 原问题关闭；R3-2 尚有 R4-1（提交事务遗漏 Attempt/Coordinator 比较）、R4-2（等待写锁后仍使用旧时间）两处缺口，独立复现均错误返回 201 并登记产物。以下“已修复、待复审”为历史提交方状态，以本条为准。T1–T6 与 BINDING-GATE-1 状态不变。
+
+> 2026-09-22 第三轮复审 R3-1～R3-4 已修复，**待复审**（[修复记录](reviews/2026-09-22-l0-r3-fix-confirmation.md)）：消息入口未知/歧义 session 一律拒绝并核对受信任关联；分配有效性（含租约）在**提交事务内**复检；并发同 key 提交阶段直接 replay（不再 500）；新增 `projection.py` 按 §7 做业务投影比较。规范包 `1.0-draft.2+semantic.14`；全量 **761 passed, 57 skipped, 0 failed, 0 errors**，门禁 exit 0。**未修**：H/messages 错误映射对齐属外部仓库；原 S1 仍开放。
+
+> 2026-09-22 消息幂等键裁决落地：**POST A/messages 必须携带 `Idempotency-Key` 且取值等于信封 `message_id`**（§1 管传输位置、§4 管取值，同一个逻辑幂等键）；四条执行规则已实现并有专项用例。`POST H/messages` 同理但 delivery 例外（`delivery_id`）。
+
+> 2026-09-22 HTTP 契约矩阵：新增 `tests/test_code_review_http_contract.py`（行是数据 + 真实 HTTP + 冻结 schema 校验），**首次运行红 27 项**并一次抓出前三轮"字段存在但 wire 不一致"的同类问题，均已修复。见 [矩阵说明](reviews/2026-09-22-http-contract-matrix.md)。
+
+> 2026-09-22 L0 复审修复：R2-1～R2-6 已修复，**待复审**（[修复记录](reviews/2026-09-22-l0-rereview-fix-confirmation.md)）。复审已关闭 B8/B10 的代码缺陷。**原 S1（HCZJ reviewer 归属）仍开放**，属外部仓库。
+
+> 2026-09-21 L0 评审修复：B1–B7、B9、B10 与 S3/S4 已修复（[修复记录](reviews/2026-09-21-l0-review-fix-confirmation.md)）。测试基线按评审 S4 收窄：环境依赖用例改由能力探针显式跳过，`environmental_failures` 为空。
+
+> 2026-09-21 L0 三方代码评审：结论为**需修改后复审，不批准**（[评审记录](reviews/2026-09-21-l0-overall-code-review.md)）；B1–B10 阻塞项，独立复现脚本与输出见 `docs/reviews/`。评审在不受限环境实测 **679 passed / 9 skipped / 0 failed**。
+
+> 2026-09-21 T1–T6 收口准备：新增唯一收口追踪器 [closure-checklist.json](../specs/profiles/code-review/v1/bindings/evidence/closure-checklist.json)（25 条逐项证据要求，Nexus 9 / HCZJ 13 / 三方 3）与采集模板，配机械裁判 `tools/check_evidence.py`（重算原始字节摘要、拒绝虚假关闭、拒绝提前放行 `compatibility.json`，已接入 `tools/validate.py`）。本地证据包 `docs/evidence/l0-2026-09-21/` 在清单中登记为 `non_closing`，采集 pin 不再改写。**T1–T6 仍全部开放，BINDING-GATE-1 维持关闭**。
+
+> 2026-09-21 L0 外部实现：Nexus/HCZJ 服务接口与隔离证据已提交，待代码评审。Nexus 29 通过；HCZJ 全量 4229 通过/2 跳过，最终服务测试 14 通过。生产样例、后台调度及强制能力装配仍待完成，BINDING-GATE-1 不变。见 [证据包](evidence/l0-2026-09-21/README.md)。
+
+> L0 最新：RC2 已回应 Q1–Q3/S1–S7 并通过复核，binding 未定版、CP-01～26 行为用例未执行；T1–T6 关闭进度以收口追踪器为准。
+
+> 2026-09-20 RC1 更新：接口契约已补齐，见 [服务契约](../specs/profiles/code-review/v1/bindings/l0-service-contract.md)，待单独评审；实施与生产证据门禁不变。
+
+> 2026-09-20 Code Review L0：已完成 Nexus/HCZJ 源码与隔离测试确认（17/132 项通过）。T7 设计范围确认；T1–T6 尚有开放项，binding 未定版，兼容允许清单为空。详见 [跨项目确认记录](../specs/profiles/code-review/v1/bindings/external-confirmations-2026-09-20.md)。
+
+> 2026-09-18 评审结论：Profile 1.0-draft.2 的 7 个阻塞项（P1–P7）**已全部关闭**、14 个建议项（S1–S14）已采纳，**设计评审通过**（记录见 Profile §14.10），ADR-015 已采纳。HCZJ 管业务评审、AgentNexus 管本地适配的双层权威**尚未宣告实施**；L0 wire binding 仍需单独评审，未评审前不得启动"符合本 Profile"的集成运行。
+
+> 2026-09-18 专题增补：[Code Review Collaboration Profile v1](design/code-review-collaboration-profile-v1.md) 已编写为 1.0-draft.2，设计评审通过，实施门禁见 Profile §15.1/§15.9。对齐两侧已确认 Run 身份，提议 HCZJ 负责评审状态、AgentNexus 负责适配；本轮仅修改文档，未实现 Profile 或重新验证外部测试。
+
+> 2026-09-07 专题增补：Code Review V1 已形成[需求与设计草案](design/design-code-review-v1.md)，待评审，AgentNexus 尚未实现自动评审流程。以下历史版本与测试数字未在本轮重新验证。
+
 > **唯一状态源**：本文档是 AgentNexus 项目版本、功能状态、关键数字的唯一权威来源。
 > 其他文档（CLAUDE.md、architecture.md、AGENTS.md 等）引用本文档，不重复维护状态。
 > 最后更新：2026-06-29

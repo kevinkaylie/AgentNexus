@@ -1,0 +1,78 @@
+{
+  "schema_version": "code_review.report.v1",
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A1",
+  "input_manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "impact_artifact": {
+    "artifact_id": "art_impact_R1",
+    "producer_id": "nexus-scanner",
+    "media_type": "application/json",
+    "schema_version": "nexus.review_impact.v1",
+    "digest_algorithm": "sha256-bytes-v1",
+    "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "byte_length": 10,
+    "locator": "nexus://reports/R1/impact.json",
+    "access_scope": "maintenance_domain_read",
+    "retention_until": null
+  },
+  "review_policy_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "review_revision": 1,
+  "base_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  "head_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+  "target_sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+  "generation": 3,
+  "execution_revision": 1,
+  "reviewer_id": "reviewer-1",
+  "coverage": {
+    "status": "partial",
+    "planned_files": ["a.java"],
+    "reviewed_files": ["a.java"],
+    "omitted_files": [],
+    "gap_reasons": [],
+    "inherited_gaps": []
+  },
+  "outcome": "no_findings",
+  "findings": [
+    {
+      "finding_id": "F1",
+      "severity": "high",
+      "title": "存在缺陷却声明无发现",
+      "trigger": "任何触发路径",
+      "impact": "结论与 findings 不一致",
+      "location": {
+        "side": "after",
+        "commit_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+        "path": "a.java",
+        "start_line": 1,
+        "end_line": 2
+      },
+      "evidence_refs": [
+        {
+          "provider_id": "nexus-scanner",
+          "report_id": "R1",
+          "side": "after",
+          "snapshot_id": "snap_after_g3",
+          "project": "proj_7788",
+          "commit_sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+          "path": "a.java",
+          "blob_sha": "b1",
+          "start_line": 1,
+          "end_line": 2,
+          "content_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "suggested_validation": "增加断言"
+    }
+  ],
+  "limitations": [],
+  "execution_metadata": {
+    "provider": "p",
+    "model": "m",
+    "model_version": null,
+    "skill_version": null,
+    "tool_versions": [],
+    "started_at": "2026-09-18T00:00:00Z",
+    "completed_at": "2026-09-18T00:01:00Z"
+  },
+  "usage": { "measurement": "known", "input_tokens": 1, "output_tokens": 1, "cost": null, "note": null }
+}

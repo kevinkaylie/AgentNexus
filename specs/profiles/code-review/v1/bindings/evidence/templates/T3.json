@@ -1,0 +1,271 @@
+{
+  "_template": "T3",
+  "_instructions": "复制到 bindings/evidence/received/T3.json 后回填。关键点：服务间接口必须使用独立 Bearer 凭据，不得用运营 BFF 的 Admin session/CSRF；未配置凭据必须拒绝，不得沿用『未配置则放行』。所有样例以原始字节 base64 承载并重算摘要。",
+  "t_item": "T3",
+  "owner": "Hczj_Assistant_Agent",
+  "item_status": "open",
+  "item_status_reason": "__TODO__",
+  "records": {
+    "deployment_version": {
+      "status": "open",
+      "source_revision": "__TODO__：部署对应的提交/镜像/包版本",
+      "artifact_identifier": "__TODO__",
+      "endpoint_base_url": "__TODO__：loopback base URL",
+      "captured_at": "__TODO__：RFC3339 Z",
+      "captured_by": "__TODO__",
+      "capture_method": "__TODO__",
+      "notes": "__TODO__：与运营 BFF 部署实例的关系（同实例还是独立进程）"
+    },
+    "service_auth_contract": {
+      "status": "open",
+      "credential_kind": "__TODO__：服务间凭据类别（独立 Bearer / mTLS 等），必须写明与 Admin Cookie 不同",
+      "principal_role_mapping": "__TODO__：principal_id → 角色集合（requester/coordinator/worker/validator/publisher/policy_admin/evidence_reader）",
+      "resource_scope_rules": "__TODO__：凭据绑定的 instance/project/session 授权规则",
+      "unconfigured_behavior": "__TODO__：说明未配置凭据时的拒绝行为（说明性字段；**判据是下面的 unconfigured_refused 样例**）",
+      "admin_session_separation": "__TODO__：证明 Admin Cookie/CSRF 无法调用服务接口的实测结果",
+      "attested_by": "__TODO__",
+      "refusal_samples": [
+        {
+          "case": "unconfigured_refused",
+          "subject": "__TODO__：未配置凭据时的调用主体",
+          "endpoint": "__TODO__：被拒绝的端点",
+          "response_status": 401,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__：拒绝响应原始字节 base64（必须能解码为冻结 error 信封）",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "expected_error_code": "authority_denied",
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "role_violation_refused",
+          "subject": "__TODO__：越权主体（如 worker 尝试 accepted/published 写权限）",
+          "endpoint": "__TODO__",
+          "response_status": 403,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "expected_error_code": "authority_denied",
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "admin_session_refused",
+          "subject": "__TODO__：持 Admin Cookie/CSRF 的浏览器会话",
+          "endpoint": "__TODO__",
+          "response_status": 403,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "expected_error_code": "authority_denied",
+          "redaction_note": "__TODO__"
+        }
+      ],
+      "samples": [
+        {
+          "case": "auth_success",
+          "endpoint": "__TODO__",
+          "request_headers": "__TODO__：仅保留方案名与 correlation id",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        }
+      ]
+    },
+    "run_attempt_cas_samples": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "samples": [
+        {
+          "case": "create_request",
+          "endpoint": "POST H/requests",
+          "method": "POST",
+          "request_headers": "__TODO__：含 Idempotency-Key",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "get_request",
+          "endpoint": "GET H/requests/{request_id}",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "get_run",
+          "endpoint": "GET H/runs/{run_id}",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "lease_secret_absent": "__TODO__：确认响应未返回 lease secret"
+        },
+        {
+          "case": "get_attempt",
+          "endpoint": "GET H/runs/{run_id}/attempts/{attempt_id}",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "lease_secret_absent": "__TODO__"
+        },
+        {
+          "case": "get_target",
+          "endpoint": "GET H/targets/{instance_id}/{project_id}/{mr_iid}",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "activation_success",
+          "endpoint": "POST H/targets/{instance_id}/{project_id}/{mr_iid}/activation",
+          "method": "POST",
+          "request_headers": "__TODO__：含 Idempotency-Key",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "activation_revision_conflict",
+          "endpoint": "POST H/targets/{instance_id}/{project_id}/{mr_iid}/activation",
+          "method": "POST",
+          "request_headers": "__TODO__",
+          "response_status": "__TODO__：期望 409",
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "expected_error_code": "__TODO__"
+        },
+        {
+          "case": "renew_success",
+          "endpoint": "POST H/runs/{run_id}/attempts/{attempt_id}/renew",
+          "method": "POST",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "renew_epoch_conflict",
+          "endpoint": "POST H/runs/{run_id}/attempts/{attempt_id}/renew",
+          "method": "POST",
+          "request_headers": "__TODO__",
+          "response_status": "__TODO__：期望 409",
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "expected_error_code": "stale_assignment"
+        },
+        {
+          "case": "idempotent_replay",
+          "endpoint": "__TODO__：被重放的端点与幂等键",
+          "method": "__TODO__",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__：期望与首次调用返回同一投影",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "same_projection_as_first_call": "__TODO__"
+        }
+      ]
+    },
+    "attempt_label_mapping_fixtures": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "fixtures": [
+        {
+          "label": "offered",
+          "profile_observable": "__TODO__：Assignment 已持久化、等待 Acceptance；Run queued；不声称执行中",
+          "run_state_expected": "queued",
+          "case": "__TODO__：正例或反例"
+        },
+        {
+          "label": "accepted",
+          "profile_observable": "__TODO__",
+          "run_state_expected": "running",
+          "case": "__TODO__"
+        },
+        {
+          "label": "running",
+          "profile_observable": "__TODO__",
+          "run_state_expected": "running",
+          "case": "__TODO__"
+        },
+        {
+          "label": "completed",
+          "profile_observable": "__TODO__：只有 Delivery CAS 保存有效产物后 Run 才可 completed",
+          "run_state_expected": "__TODO__",
+          "case": "__TODO__"
+        },
+        {
+          "label": "rejected",
+          "profile_observable": "__TODO__：保留 reason_code，不得从标签猜测错误码",
+          "run_state_expected": "__TODO__",
+          "case": "rejected_internal"
+        },
+        {
+          "label": "expired_deadline",
+          "profile_observable": "__TODO__：超出 Run deadline → deadline_exceeded/failed",
+          "run_state_expected": "failed",
+          "case": "expired_deadline"
+        },
+        {
+          "label": "expired_lease_only",
+          "profile_observable": "__TODO__：仅租约失效 → stale_assignment，按预算 retry_wait 或 failed",
+          "run_state_expected": "__TODO__",
+          "case": "expired_lease_only"
+        },
+        {
+          "label": "expired_superseded",
+          "profile_observable": "__TODO__：目标已更新 → superseded，不得一概归 deadline_exceeded",
+          "run_state_expected": "superseded",
+          "case": "expired_superseded"
+        },
+        {
+          "label": "cancelled",
+          "profile_observable": "__TODO__：保留 CancelRequest/ACK 事实；人工停止 → failed + cancelled_by_owner 审计原因",
+          "run_state_expected": "__TODO__",
+          "case": "cancelled_mapping"
+        }
+      ]
+    }
+  }
+}

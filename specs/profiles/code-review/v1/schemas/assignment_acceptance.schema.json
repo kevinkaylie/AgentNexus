@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/assignment_acceptance.schema.json",
+  "title": "code_review.assignment_acceptance.v1",
+  "description": "Profile §5.1 + §15.8。与 RFC-003 的 Grant Acceptance / acceptance_pending 无关（命名空间分离）。accepted 必须原样绑定约定；不支持语言/格式/权限时必须明确拒绝，不得悄悄减少范围。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "attempt_id",
+    "assignment_epoch",
+    "accepted",
+    "input_manifest_digest",
+    "output_schema",
+    "acceptance_mode",
+    "issuer_id"
+  ],
+  "properties": {
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "attempt_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "assignment_epoch": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int" },
+    "accepted": { "type": "boolean" },
+    "input_manifest_digest": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256",
+      "description": "必须与 Assignment 原样一致；不一致按 input_mismatch 处理"
+    },
+    "output_schema": { "type": "string", "minLength": 1 },
+    "reason_code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "拒绝时必须给出；见 code_review.error.v1 词表"
+    },
+    "acceptance_mode": {
+      "type": "string",
+      "enum": ["worker_confirmed", "adapter_attested"],
+      "description": "adapter_attested 表示受信任 adapter 在本地代签，不得伪称远端 Worker 已签署同意（§5.1/§15.8）"
+    },
+    "issuer_id": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "必须绑定已认证身份；acceptance_mode 不能自证"
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["reason_code"] }
+    },
+    {
+      "if": { "properties": { "acceptance_mode": { "const": "adapter_attested" } }, "required": ["acceptance_mode"] },
+      "then": { "required": ["issuer_id"] }
+    }
+  ]
+}

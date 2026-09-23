@@ -1,0 +1,104 @@
+{
+  "_template": "T2",
+  "_instructions": "复制到 bindings/evidence/received/T2.json 后回填。重点：持久化报告字节必须以 base64 原样承载，校验脚本会重算 sha256 与 byte_length；HTTP GET 响应字节只能用于『重序列化会改变字节』的对比，不得替代持久化字节。行边界向量必须按 LF 0x0A 分行并保留 CRLF 与末行无 LF。",
+  "t_item": "T2",
+  "owner": "Nexus_Agent",
+  "item_status": "open",
+  "item_status_reason": "__TODO__",
+  "records": {
+    "persisted_report_bytes": {
+      "status": "open",
+      "report_id": "__TODO__",
+      "provider_id": "__TODO__：ArtifactRef.locator 里的 provider_id",
+      "media_type": "application/json",
+      "raw_bytes_b64": "__TODO__：report.json 的持久化原始字节 base64",
+      "sha256": "__TODO__：sha256:<hex>",
+      "byte_length": 0,
+      "manifest_report_sha256": "__TODO__：manifest 中 report_sha256 的观测值",
+      "manifest_field_path": "__TODO__：该值在 manifest 中的字段路径",
+      "manifest_sample_bytes_b64": "__TODO__：包含 report_sha256 的 manifest 片段原始字节 base64（用于证明相等）",
+      "manifest_sample_sha256": "__TODO__",
+      "encoding_observation": "__TODO__：确认 ensure_ascii=False / sort_keys=True / indent=2 / 无尾换行（逐项写是/否）",
+      "redaction_note": "__TODO__",
+      "attested_by": "__TODO__"
+    },
+    "get_vs_persisted_divergence": {
+      "status": "open",
+      "report_id": "__TODO__",
+      "persisted_sha256": "__TODO__",
+      "get_response_bytes_b64": "__TODO__：GET /v3/review/reports/{report_id} 的响应体原始字节 base64",
+      "get_response_sha256": "__TODO__",
+      "same_caliber": "__TODO__：true 表示两者字节相同，false 表示不同",
+      "explanation": "__TODO__：相同则说明为何 CP-23 的口径下仍需原始字节端点；不同则给出差异（分隔符/缩进/键序/尾换行）",
+      "attested_by": "__TODO__"
+    },
+    "line_boundary_vectors": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "vectors": [
+        {
+          "case": "crlf_preserved",
+          "report_id": "__TODO__",
+          "side": "new",
+          "snapshot_id": "__TODO__",
+          "path": "__TODO__",
+          "start_line": 1,
+          "end_line": 1,
+          "expected_bytes_b64": "__TODO__：含 CRLF 的原字节 base64（不得被规范化为 LF）",
+          "expected_sha256": "__TODO__",
+          "expected_byte_length": 0
+        },
+        {
+          "case": "no_trailing_lf",
+          "report_id": "__TODO__",
+          "side": "new",
+          "snapshot_id": "__TODO__",
+          "path": "__TODO__",
+          "start_line": 2,
+          "end_line": 3,
+          "expected_bytes_b64": "__TODO__",
+          "expected_sha256": "__TODO__",
+          "expected_byte_length": 0
+        },
+        {
+          "case": "empty_file",
+          "report_id": "__TODO__",
+          "side": "new",
+          "snapshot_id": "__TODO__",
+          "path": "__TODO__",
+          "start_line": 1,
+          "end_line": 1,
+          "expected_bytes_b64": "",
+          "expected_sha256": "__TODO__",
+          "expected_byte_length": 0,
+          "expected_status": "__TODO__：空文件无第 1 行时返回的 422 input_mismatch"
+        },
+        {
+          "case": "out_of_range",
+          "report_id": "__TODO__",
+          "side": "new",
+          "snapshot_id": "__TODO__",
+          "path": "__TODO__",
+          "start_line": "__TODO__：越界或 start>end 的取值",
+          "end_line": "__TODO__",
+          "expected_status": 422,
+          "expected_error_code": "input_mismatch",
+          "response_bytes_b64": "__TODO__：错误响应原始字节 base64",
+          "response_sha256": "__TODO__"
+        }
+      ]
+    },
+    "locator_and_retention": {
+      "status": "open",
+      "locator_template": "__TODO__：nexus-report:<provider_id>:<report_id>（确认百分号编码规则）",
+      "media_type": "application/json",
+      "access_scope": "service_private",
+      "retention_source": "__TODO__：retention_until 由哪个存储承诺给出，粒度是多少",
+      "refuses_when_unable_to_promise": "__TODO__：不能承诺覆盖 Run deadline 时如何拒绝（true/false + 证据）",
+      "refusal_sample_bytes_b64": "__TODO__：拒绝样例的原始字节 base64（若为 true）",
+      "refusal_sample_sha256": "__TODO__",
+      "decided_by": "__TODO__",
+      "decided_at": "__TODO__"
+    }
+  }
+}

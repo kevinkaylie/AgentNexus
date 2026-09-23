@@ -1,5 +1,46 @@
 # tests - CLAUDE.md
 
+## 全量回归硬规则（改动后必须执行）
+
+**任何**对 `agent_net/` 或 `tests/` 的改动，都必须跑**全量**测试并通过基线门禁；只跑"改动相关的测试"会漏掉跨模块覆盖型回归——例如新增模块中的函数与既有函数在 `agent_net.storage` 星号导入链上**同名互相覆盖**时，新增测试全绿而既有测试成批失败（2026-09-20 的 `store_message` 冲突造成 22 个既有测试 `TypeError`）。
+
+```bash
+python -m pytest tests/ -q -p no:cacheprovider --tb=no -rs > .pytest_full_report.txt 2>&1
+python scripts/check_full_suite.py --input .pytest_full_report.txt
+# 退出码：0=通过（无未登记失败/跳过）1=回归 2=基线需维护
+```
+
+纪律：
+
+- 失败集合必须与 `tests/full_suite_baseline.json` **逐条一致**；出现未登记失败即按**回归**处理，**先修复**，不得直接刷新基线。
+- 基线只登记**可归因于运行环境**的失败并写明原因；**当前环境性失败为空**。
+- 提交与评审请求必须附上汇总行（`N passed, M failed …`）。
+
+### 环境依赖用例：能力探针 + 显式跳过（2026-09-21 评审 S4 收窄后）
+
+此前把受限沙箱下必然失败的 25 个用例登记进基线当作"环境性失败"。评审在**不受限**环境跑出
+679 passed / 0 failed，证明这些用例本身是好的——登记成失败等于让基线长期携带一批实际能过的
+条目，也会掩盖真实回归。现已改为**能力探针**：
+
+`tests/conftest.py` 的 `pytest_collection_modifyitems` 会探测两项能力，缺失时把相关文件整体
+**显式 skip**（原因写在 skip reason 里）：
+
+| 探针 | 覆盖文件 | 缺失原因 |
+|---|---|---|
+| `asyncio.create_subprocess_exec` 可用 | `test_local_cli_backend.py`、`test_local_runner.py`、`test_runner_loop.py`、`test_vault_git.py` | 受限环境禁止创建子进程 |
+| 工作区外临时目录/家目录可读写 | `test_relay_did_web.py` | 受限环境不可读写 |
+
+`scripts/check_full_suite.py` 相应按**原因逐字匹配**区分"环境跳过"与"无理由跳过"：
+环境跳过必须与 `ENVIRONMENT_DEPENDENT_FILES` 的原因字符串一致，其余跳过必须落在基线
+`counts.skipped` 以内；通过数下限 = 基线通过数 − 环境跳过数。于是正常环境与受限环境**都应 exit 0**。
+
+> 探针必须用被测代码**实际使用**的 API：沙箱下 `asyncio.create_subprocess_exec` 抛
+> `PermissionError`，而同步 `subprocess.run` 可能仍可用——只探后者会漏判（实测过一次）。
+
+另：pytest 的 tmpdir 以 `mode 0o700` 建目录，在受限沙箱下建完即不可扫描，会让**所有**使用
+`tmp_path` 的测试报 `WinError 5`。`tests/conftest.py` 因此加入**探针式** `tmp_path` 兜底
+（仅当探针失败时覆盖，正常 CI 行为不变）。该兜底**不覆盖** `tempfile`。
+
 ## 测试用例说明
 对应规格书中的5个验收测试用例，使用 pytest + asyncio。
 
@@ -136,10 +177,46 @@ python tests/test_cases.py
 | test_obj_gateway_handle_decision_gate_max_retry | max_retry gate | 创建 pending decision |
 | test_obj_gateway_handle_decision_gate_low_confidence | low_confidence gate | 创建 pending decision, stage 正确 |
 
+## Code Review Profile v1 测试（2026-09-23，257 tests + 1 skip = 258 collected）
+
+| 文件 | 用例数 | 覆盖 |
+|------|--------|------|
+| `test_code_review_profile.py` | 40 | §15.3 字节口径与摘要（含 CP-23 冻结向量）、`code_review.error.v1` 与 `data_policy_denied` 的 scope 分类学、信封解析、ReviewReport 5 条不变式、§15.2 翻译层、严重度映射可配置 |
+| `test_code_review_store.py` | 17 | Profile 会话唯一键（含 coordinator_id）、epoch 单调、执行绑定、交付幂等/冲突/纠正、Profile 回执、消息 inbox、角色授权、强制能力注册 |
+| `test_code_review_http_contract.py` | 69 | **HTTP 契约矩阵 + R3/R4/R5 回归**（复审建议）：**行是数据**，执行器发真实 HTTP 请求并对**实际响应**校验状态码、`code`/`scope`、**真正通过冻结 schema**。矩阵覆盖缺头/重复键/NaN/BOM/超限/越权/412/`Range`/认证优先等；另含**消息幂等四条规则**、**R3-1 未知与歧义 session 无副作用**、**R3-2 租约过期 + "读取后提交前"取消/换 epoch/过 deadline/改绑 Attempt/改绑 Coordinator + 等待写锁期间过期 + 空值围栏（无真值守卫）与其对照组**（确定性注入）、**R3-3 两个真实并发同 key 请求**（同/不同投影）、**R3-4 排版与追踪字段变化按重放、业务变化 409**、`retention_until_text` 落库、`assignment_epoch` 严格整数；**R5-1 空 Coordinator/空 worker 在绑定入口即被拒（422）、既有空绑定在入口 409、事务内比较无真值守卫（负例回退报 `DID NOT RAISE`）** |
+| `test_code_review_api.py` | 41 | **B1–B6 + 复审 R2-1～R2-4**：凭据绑定（未登记/未知凭据/sender 冒充/issuer 自报/worker 伪造 accepted）；读取资源授权（跨 session、过期 410、当事人仍受 session 限制）；契约七字段 DTO、retention 严格解析与**原样回显**、ArtifactRef 过冻结 schema、TransportAck 三字段/MessageView 四字段；**R2-1 幂等失败可恢复**；**R2-2 分配绑定**；**R2-3 冲突无副作用**；**R2-4 validator/publisher 在真实 role_grant 下可用**；§15.5 fail-closed；CP-24 |
+| `test_code_review_delivery.py` | 10 | 输出适配器翻译（CP-09/CP-17）、§15.6 单事务 CAS（状态/租约/deadline/输入清单）、交付入口 Profile 路径 |
+| `test_code_review_q3_harness.py` | 12 (+1 skip) | q3 行为用例：HCZJ→Profile 转换（两种原 outcome 同语义、原义保留、溯源）、呈现规则与发布前拒绝（422）、交付重放幂等；发布重放半场属 HCZJ 边界，显式 skip |
+| `test_code_review_provider_adapter.py` | 15 | **可插拔性证明** + **B7/R2-5 回归**：注册表与 schema 自动识别、第二个 provider（ACME）走同一管线、未知 provider/schema → `unsupported_contract`、厂商无关不变式不可绕过；malformed finding/缺口条目 → `invalid_output`、未登记 schema → `unsupported_contract`；**显式 null 与字段缺失都不得当作空集合** |
+| `test_code_review_evidence_checklist.py` | 53 | **T1–T6 收口裁判的负例验证**：清单/模板自洽；摘要/长度/占位符/必填/覆盖/声明与实际不一致等按预期失败；**B9 + R2-6 拒绝事实样例级校验**（真正运行 `error.schema.json`；主体角色/方法+端点/错误码必须与场景匹配）；**B10 可移植性**；**S3 采集 pin**（改写 pin、复核记录缺失/时序错误/未声明重跑被拒） |
+
+> **写新测试的纪律**：Profile 接口的 wire 行为一律写进 `test_code_review_http_contract.py` 的
+> `MATRIX`（加一行），不要再写散落的 `assert resp.json()["field"]`——前三轮评审的同类缺陷
+> （B3/R2-2/R2-3 与遗留 P2）都是这么漏掉的。
+
+**q3 执行记录**（自动生成，可重跑）：
+
+```bash
+python -m pytest tests/test_code_review_q3_harness.py -q -p no:cacheprovider
+python scripts/run_q3_harness.py > specs/profiles/code-review/v1/fixtures/binding/q3-execution-record-<date>.md
+```
+
+当前记录：`specs/profiles/code-review/v1/fixtures/binding/q3-execution-record-2026-09-20.md`（真实摘要、实际渲染文本、重放前后计数、A–D 拒绝阶段）。
+
+**T1–T6 收口裁判**（改 `bindings/evidence/` 或 `tools/check_evidence.py` 时必须重跑）：
+
+```bash
+python specs/profiles/code-review/v1/tools/check_evidence.py   # 0=清单自洽 1=虚假关闭/不一致/提前放行 2=清单损坏
+python specs/profiles/code-review/v1/tools/validate.py         # 已内置上一步
+```
+
+纪律：T1–T6 全开放是**合法**状态，校验通过不代表任何 T 项已关闭。要关闭一项，必须回填 `bindings/evidence/received/T{n}.json` 并把清单中的 `items[].status` 改到与实际一致——**不得改声明迁就实际**。本地合成证据（`docs/evidence/l0-*`）在清单中一律登记为 `non_closing`，`production=false` 标签不得改写。
+
 ## 测试运行
 
 ```bash
 python main.py test          # 全部测试（80+ collected）
 python -m pytest tests/test_objective_*.py -v   # Objective Loop 系列
 python -m pytest tests/test_local_cli_backend.py -v   # Backend 系列
+python -m pytest tests/test_code_review_*.py -v       # Code Review Profile 系列
 ```

@@ -1,0 +1,31 @@
+[
+  {
+    "command": [
+      "C:\\Python314\\python.exe",
+      "docs/reviews/l0_review_repro.py"
+    ],
+    "exit_code": 0,
+    "stdout": "IDENTITY 403 202 enforced\nEMPTY_ASSIGNMENT_PAYLOAD 202 MESSAGE_VIEW 200 ['message', 'status']\nUPLOAD 403 201 retention None EXTRA True REPLAY_NEW_ID True\nIMMUTABILITY 201 500 409 evidence_digest_mismatch\nRAW_WITHOUT_RUN_SESSION_ACTOR 200\nRECEIPT_RECOVERY 500 202 stored []\nDROPPED_FINDING no_findings []\nREFUSAL_CHECKS_WITHOUT_REFUSAL []\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Python314\\python.exe",
+      "docs/reviews/l0_hczj_review_repro.py"
+    ],
+    "exit_code": 0,
+    "stdout": "REVIEWER_BINDING did:agentnexus:z6MkReviewerWorker00000000000000000000000000000 unassigned:reviewer processed accepted\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Python314\\python.exe",
+      "scripts/check_full_suite.py",
+      "--input",
+      ".pytest_review_full_report.txt"
+    ],
+    "exit_code": 2,
+    "stdout": "全量结果：679 passed, 9 skipped, 0 failed, 0 errors\n基线：654 passed, 25 条登记的环境性失败\n\n[FAIL] 基线过时：以下登记项本次**不再失败**，请收窄基线：\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_cancel\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_constraints_from_start_execution\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_invalid_json_retry\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_openclaw_wrapper_with_contract\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_openclaw_wrapper_with_plain_text\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_output_truncation\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_successful_run\n   - tests/test_local_cli_backend.py::test_obj_local_cli_backend_timeout\n   - tests/test_local_runner.py::test_obj_runner_execute_single_stage\n   - tests/test_relay_did_web.py::test_relay_did_document_format\n   - tests/test_relay_did_web.py::test_relay_did_document_key_agreement\n   - tests/test_relay_did_web.py::test_relay_did_json_endpoint\n   - tests/test_relay_did_web.py::test_relay_did_matches_host_env\n   - tests/test_relay_did_web.py::test_relay_health_includes_did\n   - tests/test_relay_did_web.py::test_relay_identity_consistent_after_reload\n   - tests/test_relay_did_web.py::test_relay_identity_persisted\n   - tests/test_runner_loop.py::test_obj_runner_process_action_executes_real_backend\n   - tests/test_vault_git.py::TestGitVaultBackend::test_delete\n   - tests/test_vault_git.py::TestGitVaultBackend::test_get_specific_version\n   - tests/test_vault_git.py::TestGitVaultBackend::test_history\n   - tests/test_vault_git.py::TestGitVaultBackend::test_invalid_key\n   - tests/test_vault_git.py::TestGitVaultBackend::test_list\n   - tests/test_vault_git.py::TestGitVaultBackend::test_nested_keys\n   - tests/test_vault_git.py::TestGitVaultBackend::test_put_and_get\n   - tests/test_vault_git.py::TestGitVaultBackend::test_update\n       刷新：python scripts/check_full_suite.py --input <report> --update-baseline\n",
+    "stderr": ""
+  }
+]

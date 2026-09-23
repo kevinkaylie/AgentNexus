@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/delivery.schema.json",
+  "title": "code_review.delivery.v1",
+  "description": "Profile §7 + §15.8。重复 delivery_id + 相同 digest 返回原 Receipt；不同 digest 返回 delivery_conflict。先保存候选，再校验身份/版本/范围/证据，最后按当前租约 CAS 提交不可变报告。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "delivery_id",
+    "run_id",
+    "attempt_id",
+    "assignment_epoch",
+    "input_manifest_digest",
+    "artifact_ref"
+  ],
+  "properties": {
+    "delivery_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "attempt_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "assignment_epoch": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/positive_int",
+      "description": "提交时必须在同一本地事务内校验认证角色、关联 ID、目标版本、epoch、未过期租约与允许状态（§15.6）"
+    },
+    "input_manifest_digest": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256" },
+    "artifact_ref": {
+      "allOf": [{ "$ref": "https://agentnexus.dev/spec/code-review/v1/artifact_ref.schema.json" }],
+      "description": "交付产物引用；schema_version 必须匹配 Assignment.output_schema"
+    },
+    "replaces_delivery_id": {
+      "type": ["string", "null"],
+      "description": "格式纠正时指向被替代的 delivery_id；原拒绝记录不得改写"
+    },
+    "correction_no": {
+      "type": ["integer", "null"],
+      "enum": [1, null],
+      "description": "§9/§15.8：仅可修复结构错误允许同 Attempt 一次纠正，correction_no=1 且保持相同 Attempt/epoch"
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "correction_no": { "const": 1 } }, "required": ["correction_no"] },
+      "then": {
+        "required": ["replaces_delivery_id"],
+        "properties": {
+          "replaces_delivery_id": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ]
+}

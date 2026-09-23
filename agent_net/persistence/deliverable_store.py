@@ -14,7 +14,9 @@ from .core import get_agent
 from .enclave import get_playbook_run, get_stage_executions_for_run, vault_put
 _ARTIFACT_SELECT = """
     SELECT artifact_id, coordination_session_id, run_id, stage, artifact_type,
-           producer_did, content_ref, content_hash, schema_version, created_at
+           producer_did, content_ref, content_hash, schema_version, created_at,
+           media_type, byte_length, access_scope, retention_until,
+           digest_algorithm, profile_session_id, retention_until_text
     FROM artifacts
 """
 _RECEIPT_SELECT = """
@@ -43,6 +45,15 @@ def _artifact_row_to_dict(row: tuple) -> dict:
         "content_hash": row[7] or "",
         "schema_version": row[8] or "1",
         "created_at": row[9],
+        # Code Review Profile v1（§15.4）：仅在 Profile 路径下非空
+        "media_type": (row[10] or "") if len(row) > 10 else "",
+        "byte_length": (row[11] or 0) if len(row) > 11 else 0,
+        "access_scope": (row[12] or "") if len(row) > 12 else "",
+        "retention_until": row[13] if len(row) > 13 else None,
+        "digest_algorithm": (row[14] or "") if len(row) > 14 else "",
+        "profile_session_id": (row[15] or "") if len(row) > 15 else "",
+        # 评审 R2「协议边界」：保留请求原文，回显时不得由 float 反格式化
+        "retention_until_text": (row[16] or "") if len(row) > 16 else "",
     }
 
 
@@ -56,16 +67,26 @@ async def create_artifact(
     content_ref: str,
     content_hash: str = "",
     schema_version: str = "1",
+    media_type: str = "",
+    byte_length: int = 0,
+    access_scope: str = "",
+    retention_until: Optional[float] = None,
+    digest_algorithm: str = "",
+    profile_session_id: str = "",
 ) -> dict:
     ts = time.time()
     async with connect() as db:
         await db.execute(
             """INSERT INTO artifacts
                (artifact_id, coordination_session_id, run_id, stage, artifact_type,
-                producer_did, content_ref, content_hash, schema_version, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                producer_did, content_ref, content_hash, schema_version, created_at,
+                media_type, byte_length, access_scope, retention_until,
+                digest_algorithm, profile_session_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (artifact_id, coordination_session_id, run_id, stage, artifact_type,
-             producer_did, content_ref, content_hash, schema_version, ts),
+             producer_did, content_ref, content_hash, schema_version, ts,
+             media_type, byte_length, access_scope, retention_until,
+             digest_algorithm, profile_session_id),
         )
         await db.commit()
     return {
@@ -79,6 +100,12 @@ async def create_artifact(
         "content_hash": content_hash,
         "schema_version": schema_version,
         "created_at": ts,
+        "media_type": media_type,
+        "byte_length": byte_length,
+        "access_scope": access_scope,
+        "retention_until": retention_until,
+        "digest_algorithm": digest_algorithm,
+        "profile_session_id": profile_session_id,
     }
 
 

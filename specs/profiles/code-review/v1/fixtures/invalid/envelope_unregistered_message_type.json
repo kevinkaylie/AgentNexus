@@ -1,0 +1,13 @@
+{
+  "profile": "agentnexus.code-review/1.0-draft.2",
+  "message_id": "msg_0009",
+  "type": "review_approval",
+  "sender_id": "did:agentnexus:z6MkHczjCoordinator0000000000000000000000000000",
+  "receiver_id": "did:agentnexus:z6MkPublisher0000000000000000000000000000000000",
+  "session_id": "sess_cr_0001",
+  "correlation_id": "corr_mr42_head_1a2b",
+  "causation_id": "msg_0004",
+  "created_at": "2026-09-18T06:00:00Z",
+  "run_id": "RUN-ID-2026-09-14",
+  "payload": {}
+}

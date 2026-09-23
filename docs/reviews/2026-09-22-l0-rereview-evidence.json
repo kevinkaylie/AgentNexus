@@ -1,0 +1,33 @@
+{
+  "captured_at": "2026-09-22T06:34:11.650877+00:00",
+  "production": false,
+  "records": [
+    {
+      "command": [
+        "C:\\Python314\\python.exe",
+        "docs/reviews/l0_rereview_repro.py"
+      ],
+      "exit_code": 0,
+      "stdout": "UPLOAD_RECOVERY 503 409 delivery_conflict\nUNBOUND_UPLOAD 201\nUNASSIGNED_EPOCH_UPLOAD 201\nREJECTED_MESSAGE_SIDE_EFFECT 409 receipt_persisted True\nLEGITIMATE_VALIDATOR 403 主体 validator:review 不具备所需角色 coordinator\nNULL_FINDINGS no_findings []\nINVALID_REFUSAL_SCHEMA True []\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Python314\\python.exe",
+        "scripts/check_full_suite.py",
+        "--input",
+        ".pytest_l0_rereview_report.txt"
+      ],
+      "exit_code": 0,
+      "stdout": "全量结果：722 passed, 9 skipped, 0 failed, 0 errors\n基线：679 passed, 9 skipped, 0 条登记的环境性失败\n\n[PASS] 全量结果与基线一致：无未登记失败，通过数未下降。\n",
+      "stderr": ""
+    }
+  ],
+  "source_sha256": {
+    "agent_net/node/routers/code_review.py": "fefb3418d0f75cae29a2b59f2d85014864cda9c075ac96755700de6e65191aca",
+    "agent_net/persistence/code_review_store.py": "d28c893b0990be12305a8f7401d10f3a781dd54d00faec13123c89c84cb7ef87",
+    "agent_net/code_review/service_auth.py": "1c673ddf0efcb36dcec8706f2d0b128217ccf30484d39434ff990b1b21f01504",
+    "agent_net/code_review/provider_adapter.py": "d4133a87bf4294c685149e8381daed19c24744ea3ff7d0bd57b1b5600832bdce",
+    "specs/profiles/code-review/v1/tools/check_evidence.py": "4fd4fce5481d129030f74f6b1b3de763dd0598d9152a1b3a967ed5d6135f27a8"
+  }
+}

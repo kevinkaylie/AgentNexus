@@ -51,6 +51,7 @@
 | ADR-012 | ACP 协议栈（Push Gateway + MCP 协作） | 已采纳 | [docs/adr/012-push-gateway-and-mcp-collaboration.md](docs/adr/012-push-gateway-and-mcp-collaboration.md) |
 | ADR-013 | Enclave 协作架构（项目组 + VaultBackend + Playbook） | 已采纳 | [docs/adr/013-enclave-collaboration-architecture.md](docs/adr/013-enclave-collaboration-architecture.md) |
 | ADR-014 | Governance Attestation + Trust Network | 已采纳 | [docs/adr/014-governance-trust-network.md](docs/adr/014-governance-trust-network.md) |
+| ADR-015 | 代码评审双层状态权威 | 已采纳 | [docs/adr/015-code-review-state-authority.md](docs/adr/015-code-review-state-authority.md) |
 
 ### 接口契约
 
@@ -59,8 +60,13 @@
 | CA 认证签发与验证 | Giskard | 草稿 | [docs/contracts/giskard-ca-certification.md](docs/contracts/giskard-ca-certification.md) |
 | JWT Attestation 验证 | OATR | 草稿 | [docs/contracts/oatr-jwt-attestation.md](docs/contracts/oatr-jwt-attestation.md) |
 | DID Resolution v1.0 | QNTM WG | 已对齐 | [docs/contracts/qntm-did-resolution.md](docs/contracts/qntm-did-resolution.md) |
+| 三方代码评审协作 | Nexus_Agent / HCZJ | draft.2，设计已评审通过，待定版 L0 binding；T1–T6 六项全开放 | [docs/contracts/code-review-collaboration.md](docs/contracts/code-review-collaboration.md) |
 
 ### 需求与设计
+
+- [Code Review Collaboration Profile v1](docs/design/code-review-collaboration-profile-v1.md) — 2026-09-18 协作契约草案 1.0-draft.2（**设计评审已通过**，P1–P7 关闭、S1–S14 采纳，见文档 §14.10；实施门禁见 §15.1/§15.9）；包含状态、交付、证据、发布及一致性用例。
+
+- [Code Review V1：合并前代码评审](docs/design/design-code-review-v1.md) — 2026-09-07 需求/设计草案，待评审，未实现。
 
 | 文档 | 路径 | 状态 |
 |------|------|------|
@@ -82,6 +88,7 @@
 |------|------|------|
 | 进行中变更 | [docs/wip.md](docs/wip.md) | 当前正在开发的功能和阻塞项 |
 | 变更记录 | [CHANGELOG.md](CHANGELOG.md) | 官方变更记录；发布、开发完成、重要评审结论统一写这里 |
+| 评审请求 | [docs/reviews/](docs/reviews/) | 提交评审的变更说明（范围、意图、验证证据、自查发现的缺陷、开放问题）；**评审结论由评审 Agent 填写，不由提交方出具** |
 
 ### 模板
 
@@ -109,6 +116,7 @@
 | MCP 集成 | [docs/integrations/mcp.md](docs/integrations/mcp.md) | 生效 |
 | 产品路线图 | [docs/roadmap.md](docs/roadmap.md) | 生效（仅本地） |
 | WG DID Resolution | [specs/working-group/did-resolution.md](specs/working-group/did-resolution.md) | 生效（v1.0 RATIFIED） |
+| Code Review Profile v1 规范包 | [specs/profiles/code-review/v1/](specs/profiles/code-review/v1/README.md) | 语义件冻结候选（自检通过，`semantic.10`）；L0 binding 待评审，未声明符合性；T1–T6 关闭进度以 [收口追踪器](specs/profiles/code-review/v1/bindings/evidence/closure-checklist.json) 为唯一来源（当前六项全开放） |
 
 ---
 

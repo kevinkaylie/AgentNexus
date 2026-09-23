@@ -1,0 +1,12 @@
+{
+  "provider_id": "nexus-scanner",
+  "report_id": "R1",
+  "side": "before",
+  "snapshot_id": "snap_before_g3",
+  "project": "proj_7788",
+  "commit_sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  "path": "a.java",
+  "blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+  "start_line": 10,
+  "end_line": 12
+}

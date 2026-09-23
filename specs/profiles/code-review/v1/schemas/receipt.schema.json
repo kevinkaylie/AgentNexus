@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentnexus.dev/spec/code-review/v1/receipt.schema.json",
+  "title": "code_review.receipt.v1",
+  "description": "Profile §7 + §15.4。kind 与 decision 为独立维度；与 AgentNexus 旧 ReviewReceipt（decision=approved/passed/...）不共用词表，映射见 Profile §15.4。无签名 Receipt 不是跨域可验证证明。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_id",
+    "kind",
+    "issuer_id",
+    "subject_ref",
+    "run_id",
+    "attempt_id",
+    "decision",
+    "created_at",
+    "authority_ref",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema": { "type": "string", "const": "code_review.receipt.v1" },
+    "receipt_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "kind": {
+      "type": "string",
+      "enum": ["received", "validated", "accepted", "published"],
+      "description": "received=字节已保存；validated=契约与证据引用检查通过；accepted=Coordinator 接受为该任务产物；published=Publisher 观察到外部写入。四者都不表示代码没有问题或允许合并"
+    },
+    "issuer_id": {
+      "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier",
+      "description": "必须绑定已认证角色：validated 由注册验证服务签发、received 由接收存储服务签发、published 仅 Publisher 在观察到实际写入后签发（§15.7）"
+    },
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["artifact", "delivery", "report", "publication"] },
+        "id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" }
+      }
+    },
+    "run_id": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/identifier" },
+    "attempt_id": {
+      "type": ["string", "null"],
+      "description": "published 可为 null（§7）"
+    },
+    "decision": { "type": "string", "enum": ["confirmed", "rejected"] },
+    "reason_code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "decision=rejected 时必须给出；见 code_review.error.v1"
+    },
+    "created_at": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/timestamp_utc" },
+    "authority_ref": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/authority_ref" },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "https://agentnexus.dev/spec/code-review/v1/evidence_ref.schema.json" },
+      "description": "权限拒绝时不得回显私有资源详情（§7）"
+    },
+    "report_digest": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/digest_sha256" }
+      ]
+    },
+    "extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/extensions" },
+    "critical_extensions": { "$ref": "https://agentnexus.dev/spec/code-review/v1/common.schema.json#/$defs/critical_extensions" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "decision": { "const": "rejected" } }, "required": ["decision"] },
+      "then": { "required": ["reason_code"] }
+    }
+  ]
+}

@@ -483,3 +483,232 @@ async def init_secretary_tables(db: aiosqlite.Connection):
         "coordination_session_id",
     )
     await db.commit()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Code Review Collaboration Profile v1 —— AgentNexus 侧存储
+# 依据：Profile §15.4（词表与持久化映射）、§15.6（external ID 与 epoch）、
+#       §15.7（角色授权）、binding RC2 §4/§5。
+# 说明：profile 数据独立成表，不改动既有非 Profile 路径的语义；
+#       artifact 的 profile 元数据按 §15.4 的映射表以**加列**方式扩展。
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def init_code_review_tables(db: aiosqlite.Connection):
+    """初始化 Code Review Profile 相关表与列（连接由调用者管理）"""
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS code_review_profile_sessions (
+            profile_session_id TEXT PRIMARY KEY,
+            coordination_session_id TEXT NOT NULL,
+            coordinator_id TEXT NOT NULL,
+            external_run_id TEXT NOT NULL,
+            review_revision INTEGER NOT NULL DEFAULT 1,
+            review_policy_sha256 TEXT NOT NULL DEFAULT '',
+            activation_revision INTEGER,
+            target_revision INTEGER,
+            target_json TEXT DEFAULT '{}',
+            adapter_version TEXT DEFAULT '',
+            role_enforcement TEXT NOT NULL DEFAULT 'unenforced',
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_cr_sessions_key
+            ON code_review_profile_sessions(coordinator_id, external_run_id);
+        CREATE INDEX IF NOT EXISTS idx_cr_sessions_coord
+            ON code_review_profile_sessions(coordination_session_id);
+
+        CREATE TABLE IF NOT EXISTS code_review_deliveries (
+            delivery_id TEXT PRIMARY KEY,
+            profile_session_id TEXT NOT NULL,
+            external_run_id TEXT NOT NULL,
+            external_attempt_id TEXT NOT NULL,
+            assignment_epoch INTEGER NOT NULL,
+            input_manifest_digest TEXT NOT NULL DEFAULT '',
+            artifact_id TEXT NOT NULL DEFAULT '',
+            artifact_digest TEXT NOT NULL DEFAULT '',
+            byte_length INTEGER NOT NULL DEFAULT 0,
+            schema_version TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'received',
+            reason_code TEXT DEFAULT '',
+            replaces_delivery_id TEXT,
+            correction_no INTEGER,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cr_deliveries_attempt
+            ON code_review_deliveries(profile_session_id, external_run_id, external_attempt_id);
+
+        CREATE TABLE IF NOT EXISTS code_review_receipts (
+            receipt_id TEXT PRIMARY KEY,
+            profile_session_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            issuer_id TEXT NOT NULL,
+            subject_kind TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            external_run_id TEXT NOT NULL DEFAULT '',
+            external_attempt_id TEXT,
+            report_digest TEXT,
+            authority_ref TEXT DEFAULT '',
+            reason_code TEXT DEFAULT '',
+            evidence_refs TEXT DEFAULT '[]',
+            signature TEXT DEFAULT '',
+            enforcement TEXT DEFAULT '',
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cr_receipts_run
+            ON code_review_receipts(profile_session_id, external_run_id, kind);
+
+        CREATE TABLE IF NOT EXISTS code_review_messages (
+            message_id TEXT PRIMARY KEY,
+            profile_session_id TEXT NOT NULL DEFAULT '',
+            message_type TEXT NOT NULL,
+            direction TEXT NOT NULL DEFAULT 'inbound',
+            sender_id TEXT NOT NULL,
+            receiver_id TEXT NOT NULL,
+            correlation_id TEXT DEFAULT '',
+            causation_id TEXT,
+            external_run_id TEXT DEFAULT '',
+            external_attempt_id TEXT DEFAULT '',
+            assignment_epoch INTEGER,
+            payload_digest TEXT DEFAULT '',
+            envelope_json TEXT NOT NULL,
+            state TEXT NOT NULL DEFAULT 'stored',
+            receipts_json TEXT DEFAULT '[]',
+            error_json TEXT,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cr_messages_session
+            ON code_review_messages(profile_session_id, state);
+    """)
+
+    # 评审 R3-4：消息幂等按**业务投影**比较（§7），需要持久化投影摘要
+    await _safe_migrate(
+        db,
+        "ALTER TABLE code_review_messages ADD COLUMN projection_digest TEXT DEFAULT ''",
+        "code_review_messages",
+        "projection_digest",
+    )
+
+    await db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS code_review_role_grants (
+            principal_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            instance_id TEXT NOT NULL DEFAULT '',
+            project_id TEXT NOT NULL DEFAULT '',
+            profile_session_id TEXT NOT NULL DEFAULT '',
+            created_at REAL NOT NULL,
+            PRIMARY KEY (principal_id, role, instance_id, project_id, profile_session_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS code_review_enforcement (
+            constraint_name TEXT PRIMARY KEY,
+            level TEXT NOT NULL,
+            component TEXT DEFAULT '',
+            updated_at REAL NOT NULL
+        );
+
+        -- 评审 B1：服务接口的独立凭据登记（token 摘要 → principal）。
+        -- 既有 Daemon token 只证明"能访问本 Daemon"，不能证明主体身份与资源范围；
+        -- 这里显式登记 principal_id、角色、可代表的 DID 与允许的 instance/project/session。
+        CREATE TABLE IF NOT EXISTS code_review_service_principals (
+            token_sha256 TEXT PRIMARY KEY,
+            principal_id TEXT NOT NULL,
+            roles_json TEXT NOT NULL DEFAULT '[]',
+            dids_json TEXT NOT NULL DEFAULT '[]',
+            instances_json TEXT NOT NULL DEFAULT '[]',
+            projects_json TEXT NOT NULL DEFAULT '[]',
+            sessions_json TEXT NOT NULL DEFAULT '[]',
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        );
+
+        -- 评审 B4 / R2-1 / R3-3 / R3-4：上传幂等映射。
+        -- state: pending=已预留但产物尚未登记；committed=产物已登记。
+        -- namespace（principal + 动作 + 资源范围）与幂等 key 分离（RC2 §7）：
+        -- 同一 key 在不同 namespace 下是**不同操作**，不按冲突处理。
+        CREATE TABLE IF NOT EXISTS code_review_artifact_idempotency (
+            principal_id TEXT NOT NULL,
+            action TEXT NOT NULL DEFAULT 'artifact_upload',
+            resource_scope TEXT NOT NULL DEFAULT '',
+            idempotency_key TEXT NOT NULL,
+            artifact_id TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            state TEXT NOT NULL DEFAULT 'pending',
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            PRIMARY KEY (principal_id, action, resource_scope, idempotency_key)
+        );
+    """)
+
+    # 既有库：早期形状没有 namespace/state/updated_at。重建表以保留已登记的 key
+    # （§6 禁止把 key 清理后当成新操作执行），旧行以 action='artifact_upload'、
+    # resource_scope='' 迁移；空 scope 不会与新的真实 scope 命中，属一次性迁移。
+    try:
+        async with db.execute("PRAGMA table_info(code_review_artifact_idempotency)") as cur:
+            columns = {row[1] for row in await cur.fetchall()}
+    except Exception:  # pragma: no cover - 表刚创建时一定存在
+        columns = set()
+    if columns and "action" not in columns:
+        await db.execute("ALTER TABLE code_review_artifact_idempotency RENAME TO _cr_idem_old")
+        await db.execute(
+            """
+            CREATE TABLE code_review_artifact_idempotency (
+                principal_id TEXT NOT NULL,
+                action TEXT NOT NULL DEFAULT 'artifact_upload',
+                resource_scope TEXT NOT NULL DEFAULT '',
+                idempotency_key TEXT NOT NULL,
+                artifact_id TEXT NOT NULL,
+                request_digest TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'pending',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (principal_id, action, resource_scope, idempotency_key)
+            )
+            """
+        )
+        legacy_state = "'committed'" if "state" in columns else "'pending'"
+        legacy_updated = "updated_at" if "updated_at" in columns else "created_at"
+        await db.execute(
+            f"""
+            INSERT INTO code_review_artifact_idempotency
+                (principal_id, action, resource_scope, idempotency_key, artifact_id,
+                 request_digest, state, created_at, updated_at)
+            SELECT principal_id, 'artifact_upload', '', idempotency_key, artifact_id,
+                   request_digest, {legacy_state}, created_at, {legacy_updated}
+            FROM _cr_idem_old
+            """
+        )
+        await db.execute("DROP TABLE _cr_idem_old")
+
+    # artifact 的 profile 元数据（§15.4：新增字段或关联表；此处按加列实现）
+    artifact_migrations = [
+        ("ALTER TABLE artifacts ADD COLUMN media_type TEXT DEFAULT ''", "media_type"),
+        ("ALTER TABLE artifacts ADD COLUMN byte_length INTEGER DEFAULT 0", "byte_length"),
+        ("ALTER TABLE artifacts ADD COLUMN access_scope TEXT DEFAULT ''", "access_scope"),
+        ("ALTER TABLE artifacts ADD COLUMN retention_until REAL", "retention_until"),
+        ("ALTER TABLE artifacts ADD COLUMN digest_algorithm TEXT DEFAULT ''", "digest_algorithm"),
+        ("ALTER TABLE artifacts ADD COLUMN profile_session_id TEXT DEFAULT ''", "profile_session_id"),
+        # 评审 R2「协议边界」：retention_until 必须**原样**回显请求值，不能由 float 反格式化
+        ("ALTER TABLE artifacts ADD COLUMN retention_until_text TEXT DEFAULT ''", "retention_until_text"),
+    ]
+    for alter_sql, column in artifact_migrations:
+        await _safe_migrate(db, alter_sql, "artifacts", column)
+
+    # execution 的 §15.6/§15.5 字段
+    execution_migrations = [
+        ("ALTER TABLE objective_executions ADD COLUMN external_coordinator_id TEXT DEFAULT ''", "external_coordinator_id"),
+        ("ALTER TABLE objective_executions ADD COLUMN external_run_id TEXT DEFAULT ''", "external_run_id"),
+        ("ALTER TABLE objective_executions ADD COLUMN external_attempt_id TEXT DEFAULT ''", "external_attempt_id"),
+        ("ALTER TABLE objective_executions ADD COLUMN assignment_epoch INTEGER DEFAULT 0", "assignment_epoch"),
+        ("ALTER TABLE objective_executions ADD COLUMN input_manifest_digest TEXT DEFAULT ''", "input_manifest_digest"),
+        ("ALTER TABLE objective_executions ADD COLUMN output_schema TEXT DEFAULT ''", "output_schema"),
+        ("ALTER TABLE objective_executions ADD COLUMN deadline REAL", "deadline"),
+        ("ALTER TABLE objective_executions ADD COLUMN enforcement_json TEXT DEFAULT '{}'", "enforcement_json"),
+        ("ALTER TABLE objective_executions ADD COLUMN profile_session_id TEXT DEFAULT ''", "profile_session_id"),
+    ]
+    for alter_sql, column in execution_migrations:
+        await _safe_migrate(db, alter_sql, "objective_executions", column)
+
+    await db.commit()

@@ -1,0 +1,20 @@
+{
+  "delivery_id": "del_0002",
+  "run_id": "RUN-ID-2026-09-14",
+  "attempt_id": "A1",
+  "assignment_epoch": 8,
+  "input_manifest_digest": "sha256:1f4a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a",
+  "artifact_ref": {
+    "artifact_id": "art_report_0002",
+    "producer_id": "reviewer-1",
+    "media_type": "application/json",
+    "schema_version": "code_review.report.v1",
+    "digest_algorithm": "sha256-bytes-v1",
+    "digest": "sha256:6395a6edac10db12b303cccaa6cbedcb4a99e0f3721195de0312cf0d15766316",
+    "byte_length": 2704,
+    "locator": "vault://default/executions/exec_0001/result.md",
+    "access_scope": "maintenance_domain_read",
+    "retention_until": null
+  },
+  "correction_no": 1
+}

@@ -1,5 +1,13 @@
 # AgentNexus 需求文档
 
+## 新增规划：合并前代码评审（2026-09-07）
+
+2026-09-18：CR-01～CR-08 的交接、版本、状态及验收语义由 [Code Review Collaboration Profile v1](design/code-review-collaboration-profile-v1.md) 草案细化。Profile 提议复用 HCZJ 既有 ReviewRun，AgentNexus 负责适配与关联视图；待评审后确定实施分工。
+
+状态：⬚ 需求与设计草案，未实现。用户故事：开发者提交 MR 后，由 Nexus_Agent 提供固定版本的影响证据，HCZJ 评审 Skill 输出问题，AgentNexus 负责调度、过期处理和 GitLab 回写。
+
+CR-01～CR-08、接口提议、权限边界及验收标准见 [Code Review V1](design/design-code-review-v1.md)。本轮不修改现有版本发布承诺，不将建议性评审等同于自动审批。
+
 > 本文件按版本组织产品需求。每个功能项包含用户故事和验收标准。
 > 随版本推进逐步填充，已实现的标记 ✅，未开始的标记 ⬚。
 

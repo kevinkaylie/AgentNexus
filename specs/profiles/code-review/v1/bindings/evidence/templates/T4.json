@@ -1,0 +1,217 @@
+{
+  "_template": "T4",
+  "_instructions": "复制到 bindings/evidence/received/T4.json 后回填。关键点：coordinator_id 必须来自受信任部署注册与已认证 Coordinator，不取 worker 自报值；四类回执必须由对应角色签发，worker 自带 receipt/issuer_did/signature 不赋权，必须给出拒绝实证。",
+  "t_item": "T4",
+  "owner": "Hczj_Assistant_Agent",
+  "item_status": "open",
+  "item_status_reason": "__TODO__",
+  "records": {
+    "coordinator_identity": {
+      "status": "open",
+      "coordinator_id_form": "__TODO__：建议 urn:code-review:coordinator:<deployment-id>",
+      "sample_value": "__TODO__",
+      "deployment_id_source": "__TODO__：deployment-id 从何处来、如何保证唯一",
+      "restart_stability_samples": [
+        {
+          "observation": "before_restart",
+          "observed_at": "__TODO__：RFC3339 Z",
+          "coordinator_id": "__TODO__"
+        },
+        {
+          "observation": "after_restart",
+          "observed_at": "__TODO__：RFC3339 Z",
+          "coordinator_id": "__TODO__"
+        }
+      ],
+      "not_taken_from_worker": "__TODO__：如何保证不取 worker 自报值（服务端解析来源）",
+      "decided_by": "__TODO__",
+      "decided_at": "__TODO__"
+    },
+    "message_wire_contract": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "ack_contract": "__TODO__：TransportAck={message_id,status:'stored',status_url} 的实测确认；并说明它不是 received/validated/accepted 回执",
+      "samples": [
+        {
+          "case": "assignment",
+          "endpoint": "POST A/messages",
+          "message_type": "assignment",
+          "method": "POST",
+          "request_headers": "__TODO__：含 Idempotency-Key",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "assignment_acceptance",
+          "endpoint": "POST H/messages",
+          "message_type": "assignment_acceptance",
+          "method": "POST",
+          "request_headers": "__TODO__",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "delivery",
+          "endpoint": "POST H/messages",
+          "message_type": "delivery",
+          "method": "POST",
+          "request_headers": "__TODO__：幂等键为 delivery_id",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "cancel_request",
+          "endpoint": "POST A/messages",
+          "message_type": "cancel_request",
+          "method": "POST",
+          "request_headers": "__TODO__",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "cancel_acknowledgement",
+          "endpoint": "POST H/messages",
+          "message_type": "cancel_acknowledgement",
+          "method": "POST",
+          "request_headers": "__TODO__",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "duplicate_delivery",
+          "endpoint": "POST H/messages",
+          "message_type": "delivery",
+          "method": "POST",
+          "request_headers": "__TODO__：与 delivery 相同的 delivery_id",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__：期望返回原处理结果，不重复签发回执",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "returns_original_receipt": "__TODO__"
+        },
+        {
+          "case": "message_view",
+          "endpoint": "GET H/messages/{message_id}",
+          "message_type": "__TODO__",
+          "method": "GET",
+          "request_headers": "__TODO__",
+          "response_status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        }
+      ]
+    },
+    "idempotency_conflict_samples": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "samples": [
+        {
+          "case": "same_delivery_same_digest",
+          "endpoint": "POST H/messages",
+          "request_headers": "__TODO__",
+          "response_status": "__TODO__：期望 202 且返回原结果",
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        },
+        {
+          "case": "same_delivery_diff_digest_conflict",
+          "endpoint": "POST H/messages",
+          "request_headers": "__TODO__",
+          "response_status": 409,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "expected_error_code": "delivery_conflict"
+        },
+        {
+          "case": "request_id_conflict",
+          "endpoint": "POST H/requests",
+          "request_headers": "__TODO__",
+          "response_status": 409,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "expected_error_code": "idempotency_conflict"
+        },
+        {
+          "case": "same_key_new_request_id",
+          "endpoint": "POST H/requests",
+          "request_headers": "__TODO__：同 Idempotency-Key、同投影、新 request_id",
+          "response_status": "__TODO__：期望返回原 RequestAck，不另建 Run",
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__",
+          "returns_original_request_id": "__TODO__"
+        }
+      ]
+    },
+    "receipt_issuance_authority": {
+      "status": "open",
+      "attested_by": "__TODO__",
+      "receipt_kind_to_role": "__TODO__：received=存储服务 / validated=已登记 validator / accepted=HCZJ Coordinator 经 CAS / published=Publisher 实际写入后",
+      "covers_receipt_kinds": ["received", "validated", "accepted", "published"],
+      "forged_receipt_refusal": "__TODO__：说明 worker 自带 receipt/issuer_did/signature 为何不赋权（说明性字段）",
+      "refusal_samples": [
+        {
+          "case": "forged_receipt_rejected",
+          "subject": "__TODO__：自签 accepted/published 回执的 worker",
+          "endpoint": "__TODO__：投递该回执的端点",
+          "response_status": 403,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__：拒绝响应原始字节 base64（必须能解码为冻结 error 信封）",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "expected_error_code": "authority_denied",
+          "redaction_note": "__TODO__"
+        }
+      ],
+      "samples": [
+        {
+          "case": "receipt_routing_success",
+          "endpoint": "POST A/messages",
+          "request_headers": "__TODO__",
+          "response_status": 202,
+          "content_type": "application/json; charset=utf-8",
+          "raw_bytes_b64": "__TODO__",
+          "sha256": "__TODO__",
+          "byte_length": 0,
+          "redaction_note": "__TODO__"
+        }
+      ]
+    }
+  }
+}
