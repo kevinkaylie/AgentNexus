@@ -10,6 +10,8 @@ defaults:
   max_total_executions: 30
   max_wall_clock_sec: 3600
   max_output_bytes: 1048576
+  # Advisory only: local_cli does not isolate subprocess networking.
+  # Keep this declared_only; do not register it as enforced or cite it for CP-25.
   network_access: deny_by_default
 
 workers:

@@ -1,5 +1,7 @@
 # 项目现状速览
 
+> 2026-09-23 [三项残余问题修复确认](reviews/2026-09-23-three-residual-fix-confirmation.md)：HCZJ H/messages 错误码与原 S1 reviewer 归属的当前 `worker_confirmed` 路径已修复并通过单元测试，待独立代码评审；S5 台账已分离公开规则与本地历史记录。C-1 `network_access` 仍是 `declared_only`，没有网络沙箱，不构成 CP-25 强制执行证据。以下历史“未修”条目以本条为准；T1–T6 全开放、BINDING-GATE-1 继续关闭。
+
 > 2026-09-23 [第六轮复审](reviews/2026-09-23-l0-r6-review.md)：空 Coordinator 绑定在写入、旧记录上传和提交事务三个入口均被拒绝；R5-1 **代码缺陷已关闭**，本次修复通过评审。以下第五轮结论为历史状态。T1–T6 全开放、BINDING-GATE-1 继续关闭。
 
 > 2026-09-23 [第五轮复审](reviews/2026-09-23-l0-r5-review.md) R5-1 已修复，**待复审**（[修复记录](reviews/2026-09-22-l0-r3-fix-confirmation.md) §3.2）：空值围栏缺口的三条建议逐条落实——绑定入口拒绝空身份字段（422）、既有空绑定在入口 fail-closed（409）、事务内 Attempt/Coordinator/worker 比较**去掉全部真值守卫**（`(actual or "") != (expected or "")`）。负例证据：改回旧守卫报 `DID NOT RAISE`。**契约未改**（§1 已要求 ID 非空、§4 已要求在事务内校验 Coordinator，本次属实现未落实），规范包维持 `1.0-draft.2+semantic.14`；全量 **762 passed, 57 skipped, 0 failed, 0 errors**，门禁 exit 0。以下第三至五轮复审条目为历史结论，R4-2 已关闭。**未修**：H/messages 错误映射对齐属外部仓库（HCZJ 侧）；原 S1 仍开放。T1–T6 全开放，BINDING-GATE-1 关闭，未声明 wire conformance。

@@ -53,6 +53,7 @@ data/*.json
 data/*.txt
 
 # Project specific - local only docs (NOT for GitHub)
+threads/local-ledger.md
 docs/roadmap.md
 docs/wip.md
 docs/devlog.md

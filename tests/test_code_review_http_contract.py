@@ -231,7 +231,8 @@ async def world() -> World:
     )
 
     w = World()
-    await set_enforcement("provider_outbound_data", "enforced", "local-cli")
+    # 合成注册项只测试 HTTP 门禁，不构成 local_cli 网络隔离或 CP-25 实证。
+    await set_enforcement("provider_outbound_data", "enforced", "synthetic-test-enforcer")
 
     owner = await register_owner("ContractOwner")
     cs_id = _uid("cs")

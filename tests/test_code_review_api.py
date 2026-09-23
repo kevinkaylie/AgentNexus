@@ -267,11 +267,11 @@ async def _bind_assignment(
 
 
 async def _register_enforced(*constraints: str) -> None:
-    """在部署注册表里把约束登记为 enforced——§15.5 要求接单前必须能证明强制。"""
+    """测试用合成注册项验证接单门禁；不证明 local_cli 实际强制网络隔离。"""
     from agent_net.storage import set_enforcement
 
     for constraint in constraints:
-        await set_enforcement(constraint, "enforced", "local-cli")
+        await set_enforcement(constraint, "enforced", "synthetic-test-enforcer")
 
 
 # ── B1：认证与主体绑定 ────────────────────────────────────────────────

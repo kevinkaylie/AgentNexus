@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### L0 三项残余问题跟进（2026-09-23）
+
+- HCZJ H/messages 缺/错幂等头映射按 RC2 §4 修复，Delivery `reviewer_id` 与分配 worker 绑定；HCZJ 单元 4243 passed / 2 skipped。代码修复待独立评审。
+- S5 台账拆成公开规则和被 Git 忽略的本地历史记录；C-1 仍 `declared_only`，测试夹具改用合成组件名避免把 `local_cli` 误报为网络强制器。见[修复确认](docs/reviews/2026-09-23-three-residual-fix-confirmation.md)。
+- AgentNexus 全量 810 passed / 9 skipped，基线门禁 exit 0，规范包自检通过。
+
 ### L0 第六轮复审（2026-09-23）
 
 - 独立全量 810 passed / 9 skipped，回归门禁 exit 0；HTTP 契约专项 69 passed，规范包及宿主审计通过。
